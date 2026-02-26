@@ -12,7 +12,7 @@ import SwordKit
 #if os(iOS)
 /// Present a CompareView sheet using UIKit directly.
 /// Same reason as Strong's — triggered from WKScriptMessageHandler.
-func presentCompareView(book: String, chapter: Int, currentModuleName: String) {
+func presentCompareView(book: String, chapter: Int, currentModuleName: String, startVerse: Int? = nil, endVerse: Int? = nil) {
     guard let windowScene = UIApplication.shared.connectedScenes
         .compactMap({ $0 as? UIWindowScene }).first,
           let rootVC = windowScene.windows.first?.rootViewController else { return }
@@ -22,7 +22,7 @@ func presentCompareView(book: String, chapter: Int, currentModuleName: String) {
         topVC = presented
     }
 
-    let content = CompareView(book: book, chapter: chapter, currentModuleName: currentModuleName)
+    let content = CompareView(book: book, chapter: chapter, currentModuleName: currentModuleName, startVerse: startVerse, endVerse: endVerse)
     let hostingVC = UIHostingController(rootView: NavigationStack { content })
     hostingVC.modalPresentationStyle = .pageSheet
     if let sheet = hostingVC.sheetPresentationController {
@@ -32,43 +32,13 @@ func presentCompareView(book: String, chapter: Int, currentModuleName: String) {
     topVC.present(hostingVC, animated: true)
 }
 
-/// Present a LabelAssignmentView sheet using UIKit directly.
-/// Same reason as Strong's — triggered from WKScriptMessageHandler.
-/// Must pass modelContainer explicitly since UIHostingController doesn't inherit SwiftUI environment.
-func presentLabelAssignment(bookmarkId: UUID, modelContainer: ModelContainer, onDismiss: @escaping () -> Void) {
-    guard let windowScene = UIApplication.shared.connectedScenes
-        .compactMap({ $0 as? UIWindowScene }).first,
-          let rootVC = windowScene.windows.first?.rootViewController else { return }
-
-    var topVC = rootVC
-    while let presented = topVC.presentedViewController {
-        topVC = presented
-    }
-
-    let dismissCallback = onDismiss
-    var content = LabelAssignmentView(bookmarkId: bookmarkId)
-    content.onDismiss = {
-        topVC.dismiss(animated: true) {
-            dismissCallback()
-        }
-    }
-    let wrappedView = NavigationStack { content }
-        .modelContainer(modelContainer)
-    let hostingVC = UIHostingController(rootView: wrappedView)
-    hostingVC.modalPresentationStyle = .pageSheet
-    if let sheet = hostingVC.sheetPresentationController {
-        sheet.detents = [.medium(), .large()]
-        sheet.prefersScrollingExpandsWhenScrolledToEdge = true
-    }
-    topVC.present(hostingVC, animated: true)
-}
+// Label assignment is now presented via SwiftUI .sheet() in BibleWindowPane
+// (no UIKit hosting needed — avoids gesture/toolbar conflicts)
 #else
-func presentCompareView(book: String, chapter: Int, currentModuleName: String) {
+func presentCompareView(book: String, chapter: Int, currentModuleName: String, startVerse: Int? = nil, endVerse: Int? = nil) {
     // macOS: no-op for now
 }
-func presentLabelAssignment(bookmarkId: UUID, modelContainer: ModelContainer, onDismiss: @escaping () -> Void) {
-    // macOS: no-op for now
-}
+// Label assignment presented via SwiftUI .sheet() in BibleWindowPane (cross-platform)
 #endif
 
 /// The primary Bible reading view — coordinates toolbar, sheets, and multi-window split content.
@@ -106,6 +76,8 @@ public struct BibleReaderView: View {
     @State private var searchInitialQuery = ""
     @State private var showLabelManager = false
     @State private var showHelp = false
+    @State private var showRefChooser = false
+    @State private var refChooserCompletion: ((String?) -> Void)?
     #if os(iOS)
     @State private var tiltScrollService = TiltScrollService()
     #endif
@@ -479,6 +451,17 @@ public struct BibleReaderView: View {
                     }
             }
         }
+        .sheet(isPresented: $showRefChooser) {
+            NavigationStack {
+                BookChooserView { book, chapter in
+                    showRefChooser = false
+                    let osisId = BibleReaderController.osisBookId(for: book)
+                    refChooserCompletion?("\(osisId).\(chapter)")
+                    refChooserCompletion = nil
+                }
+            }
+            .presentationDetents([.large])
+        }
         // MARK: - Keyboard Shortcuts (iPad/Mac)
         .background {
             Group {
@@ -617,6 +600,11 @@ public struct BibleReaderView: View {
                     )
                 }
                 #endif
+            },
+            onRefChooserDialog: { completion in
+                // Present book chooser and return OSIS ref
+                refChooserCompletion = completion
+                showRefChooser = true
             }
         )
     }

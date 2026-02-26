@@ -8,6 +8,9 @@ import SwiftData
 import BibleView
 import BibleCore
 import SwordKit
+import os.log
+
+private let logger = Logger(subsystem: "org.andbible", category: "BibleWindowPane")
 
 /// A self-contained Bible rendering pane for a single window.
 /// Contains its own bridge, controller, and WebView — multiple panes show independent content.
@@ -20,6 +23,7 @@ struct BibleWindowPane: View {
 
     @State private var bridge = BibleBridge()
     @State private var controller: BibleReaderController?
+    @State private var pendingLabelBookmarkId: UUID?
     @Environment(WindowManager.self) private var windowManager
     @Environment(\.modelContext) private var modelContext
 
@@ -41,6 +45,7 @@ struct BibleWindowPane: View {
     var onToggleFullScreen: (() -> Void)?
     var onSearchForStrongs: ((String) -> Void)?
     var onShowStrongsSheet: ((String, String) -> Void)?
+    var onRefChooserDialog: ((@escaping (String?) -> Void) -> Void)?
 
     /// The active background color as an ARGB integer.
     private var activeBackgroundColorInt: Int {
@@ -96,6 +101,20 @@ struct BibleWindowPane: View {
         }
         .onChange(of: displaySettings) { _, newValue in
             controller?.updateDisplaySettings(newValue, nightMode: nightMode)
+        }
+        .sheet(item: $pendingLabelBookmarkId) { bookmarkId in
+            let _ = logger.info("LabelAssignment sheet PRESENTING for bookmarkId=\(bookmarkId)")
+            NavigationStack {
+                LabelAssignmentView(
+                    bookmarkId: bookmarkId,
+                    onDismiss: {
+                        let id = bookmarkId
+                        logger.info("LabelAssignment sheet onDismiss: refreshing bookmark \(id)")
+                        pendingLabelBookmarkId = nil
+                        controller?.refreshBookmarkInVueJS(bookmarkId: id)
+                    }
+                )
+            }
         }
     }
 
@@ -194,17 +213,14 @@ struct BibleWindowPane: View {
         ctrl.onShowStrongsDefinition = { json, config in onShowStrongsSheet?(json, config) }
         ctrl.onShowStrongsSearch = { strongsNum in onSearchForStrongs?(strongsNum) }
         ctrl.onShowCrossReferences = { refs in onShowCrossReferences?(refs) }
-        ctrl.onCompareVerses = { book, chapter, moduleName in
+        ctrl.onCompareVerses = { book, chapter, moduleName, startVerse, endVerse in
             #if os(iOS)
-            presentCompareView(book: book, chapter: chapter, currentModuleName: moduleName)
+            presentCompareView(book: book, chapter: chapter, currentModuleName: moduleName, startVerse: startVerse, endVerse: endVerse)
             #endif
         }
-        ctrl.onAssignLabels = { [weak ctrl] bookmarkId in
-            #if os(iOS)
-            presentLabelAssignment(bookmarkId: bookmarkId, modelContainer: modelContext.container) {
-                ctrl?.refreshBookmarkInVueJS(bookmarkId: bookmarkId)
-            }
-            #endif
+        ctrl.onAssignLabels = { bookmarkId in
+            logger.info("onAssignLabels triggered: bookmarkId=\(bookmarkId)")
+            pendingLabelBookmarkId = bookmarkId
         }
         ctrl.onPersistState = { try? modelContext.save() }
         ctrl.onShowToast = { text in onShowToast?(text) }
@@ -222,13 +238,28 @@ struct BibleWindowPane: View {
 
         ctrl.onToggleFullScreen = { onToggleFullScreen?() }
 
-        // Focus-on-interaction: any bridge message from this pane sets it as active
-        ctrl.onInteraction = { [weak windowManager] in
+        // Reference chooser dialog: present book chooser and return OSIS ref
+        ctrl.onRefChooserDialog = { completion in
+            onRefChooserDialog?(completion)
+        }
+
+        // Focus-on-interaction: any bridge message from this pane sets it as active.
+        // Wire to bridge.onAnyMessage so ANY user interaction (tap, scroll, selection)
+        // triggers focus — matching Android's onTouchEvent → activeWindow = window.
+        let focusHandler: () -> Void = { [weak windowManager] in
             guard let wm = windowManager else { return }
             if wm.activeWindow?.id != window.id {
                 wm.activeWindow = window
+                // Notify all controllers to update their active state in Vue.js
+                for (_, controllerObj) in wm.controllers {
+                    if let controller = controllerObj as? BibleReaderController {
+                        controller.emitActiveState()
+                    }
+                }
             }
         }
+        ctrl.onInteraction = focusHandler
+        bridge.onAnyMessage = focusHandler
 
         // Wire WindowManager reference for synchronized scrolling
         ctrl.windowManagerRef = windowManager

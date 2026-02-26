@@ -276,9 +276,10 @@ public final class BackupService {
             modelContext.insert(plan)
 
             // Recreate day entries from the template, marking completed ones
+            // Days are 1-based (matching ReadingPlanService.startPlan)
             if let template = ReadingPlanService.availablePlans.first(where: { $0.code == pb.planCode }) {
                 let completedSet = Set(pb.completedDays)
-                for day in 0..<pb.totalDays {
+                for day in 1...pb.totalDays {
                     let planDay = ReadingPlanDay(
                         dayNumber: day,
                         isCompleted: completedSet.contains(day),

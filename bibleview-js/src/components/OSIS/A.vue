@@ -30,9 +30,13 @@ const {openExternalLink} = inject(androidKey)!;
 const {strings} = useCommon()
 
 function openLink(event: MouseEvent, url: string) {
+    console.log('[A.vue] openLink called: url=' + url + ', target=' + (event.target as HTMLElement)?.tagName);
     addEventFunction(
         event,
-        () => openExternalLink(url),
+        () => {
+            console.log('[A.vue] eventFunction callback EXECUTING for url=' + url);
+            openExternalLink(url);
+        },
         {title: strings.externalLink, priority: EventPriorities.EXTERNAL_LINK}
     );
 }

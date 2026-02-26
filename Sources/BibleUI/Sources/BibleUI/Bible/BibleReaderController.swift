@@ -77,6 +77,11 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
     private var minLoadedChapter: Int = 0
     private var maxLoadedChapter: Int = 0
 
+    /// Last verse ordinal scrolled to (for restoring scroll position on same-chapter reloads).
+    private var lastScrollOrdinal: Int?
+    /// Whether the next loadCurrentChapter should restore scroll position (true = settings reload).
+    private var shouldRestoreScroll = false
+
     /// Whether the current module has Strong's numbers (matching Android CurrentPageManager.hasStrongs).
     var hasStrongs: Bool {
         switch currentCategory {
@@ -119,8 +124,8 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
     /// Callback for showing cross-reference results (list of parsed references with verse text).
     var onShowCrossReferences: (([CrossReference]) -> Void)?
 
-    /// Callback for presenting compare view (book, chapter, moduleName).
-    var onCompareVerses: ((String, Int, String) -> Void)?
+    /// Callback for presenting compare view (book, chapter, moduleName, startVerse?, endVerse?).
+    var onCompareVerses: ((String, Int, String, Int?, Int?) -> Void)?
 
     /// Callback for presenting native label assignment UI (bookmarkId).
     var onAssignLabels: ((UUID) -> Void)?
@@ -139,7 +144,8 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         applyNightModeBackground()
         guard clientReady else { return }
         bridge.emit(event: "set_config", data: buildConfigJSON())
-        // Reload to re-render with new options
+        // Reload to re-render with new options; restore scroll position for same-chapter reload
+        shouldRestoreScroll = true
         loadCurrentContent()
     }
 
@@ -176,7 +182,7 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
 
     /// Convert a signed ARGB integer (Android/Vue.js convention) to a CSS hex color string.
     private static func cssColor(fromArgbInt value: Int) -> String {
-        let uint = UInt32(bitPattern: Int32(value))
+        let uint = UInt32(bitPattern: Int32(truncatingIfNeeded: value))
         let r = (uint >> 16) & 0xFF
         let g = (uint >> 8) & 0xFF
         let b = uint & 0xFF
@@ -661,8 +667,7 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         bridge.emit(event: "setup_content", data: """
         {"jumpToOrdinal":null,"jumpToAnchor":null,"jumpToId":null,"topOffset":0,"bottomOffset":0}
         """)
-        let verseSelectionEnabled = displaySettings.enableVerseSelection ?? true
-        bridge.emit(event: "set_active", data: "{\"hasActiveIndicator\":false,\"isActive\":\(verseSelectionEnabled)}")
+        emitActiveState()
 
         bridge.clearSelection()
         applyNightModeBackground()
@@ -1287,6 +1292,7 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
     public func navigateTo(book: String, chapter: Int) {
         currentBook = book
         currentChapter = chapter
+        lastScrollOrdinal = nil  // New chapter — start at top
 
         // Record history
         if let store = workspaceStore, let window = activeWindow {
@@ -1352,7 +1358,10 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         loadCurrentContent()
     }
 
-    public func bridge(_ bridge: BibleBridge, saveState state: String) {}
+    public func bridge(_ bridge: BibleBridge, saveState state: String) {
+        activeWindow?.pageManager?.jsState = state
+        onPersistState?()
+    }
     public func bridge(_ bridge: BibleBridge, reportModalState isOpen: Bool) {}
     public func bridge(_ bridge: BibleBridge, reportInputFocus focused: Bool) {}
     public func bridge(_ bridge: BibleBridge, onKeyDown key: String) {
@@ -1371,6 +1380,8 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
     public func bridge(_ bridge: BibleBridge, didScrollToOrdinal ordinal: Int, key: String) {
         // Focus-on-interaction: scrolling in a pane makes it the active window
         onInteraction?()
+        // Track scroll position for restoration
+        lastScrollOrdinal = ordinal
         // Notify WindowManager for synchronized scrolling
         if let window = activeWindow {
             windowManagerRef?.notifyVerseChanged(sourceWindow: window, ordinal: ordinal, key: key)
@@ -1428,8 +1439,8 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
             logger.warning("addBookmark: bookmarkService is nil")
             return
         }
-        // Check for an existing bookmark at the same verse (by startOrdinal)
-        let existing = service.bookmarks(for: startOrdinal, endOrdinal: startOrdinal)
+        // Check for an existing bookmark at the same verse (by startOrdinal + book)
+        let existing = service.bookmarks(for: startOrdinal, endOrdinal: startOrdinal, book: currentBook)
             .first(where: { $0.ordinalStart == startOrdinal })
 
         let bookmark: BibleBookmark
@@ -1539,6 +1550,8 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         let json = buildBookmarkJSON(bookmark)
         bridge.emit(event: "add_or_update_bookmarks", data: "[\(json)]")
         sendLabelsToVueJS()
+        // Re-send config to update favouriteLabels in Vue.js appSettings
+        bridge.emit(event: "set_config", data: buildConfigJSON())
     }
 
     public func bridge(_ bridge: BibleBridge, toggleBookmarkLabel bookmarkId: String, labelId: String) {
@@ -1869,8 +1882,16 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
 
     /// Compare translations for the selected verse(s).
     func compareSelection() {
-        onCompareVerses?(currentBook, currentChapter, activeModuleName)
-        bridge.clearSelection()
+        Task { @MainActor in
+            var startVerse: Int? = nil
+            var endVerse: Int? = nil
+            if let sel = await bridge.querySelection() {
+                startVerse = sel.startOrdinal.flatMap { ordinalToVerse($0) }
+                endVerse = sel.endOrdinal.flatMap { ordinalToVerse($0) }
+            }
+            onCompareVerses?(currentBook, currentChapter, activeModuleName, startVerse, endVerse)
+            bridge.clearSelection()
+        }
     }
 
     /// Open a web search for the currently selected text.
@@ -1919,7 +1940,9 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
 
     public func bridge(_ bridge: BibleBridge, compareVerses bookInitials: String, startOrdinal: Int, endOrdinal: Int) {
         logger.info("Compare verses requested: \(startOrdinal)-\(endOrdinal)")
-        onCompareVerses?(currentBook, currentChapter, activeModuleName)
+        let startVerse = ordinalToVerse(startOrdinal)
+        let endVerse = ordinalToVerse(endOrdinal)
+        onCompareVerses?(currentBook, currentChapter, activeModuleName, startVerse, endVerse)
     }
 
     public func bridge(_ bridge: BibleBridge, speak bookInitials: String, v11n: String, startOrdinal: Int, endOrdinal: Int) {
@@ -2103,11 +2126,14 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
     /// Build a MultiFragmentDocument JSON from Strong's numbers and Robinson codes.
     /// Returns nil if no definitions were found.
     func buildStrongsMultiDocJSON(strongs: [String], robinson: [String]) -> String? {
+        logger.info("buildStrongsMultiDocJSON: strongs=\(strongs), robinson=\(robinson), swordManager=\(self.swordManager == nil ? "nil" : "alive")")
         var fragments: [(xml: String, key: String, keyName: String, bookInitials: String, bookAbbreviation: String, features: String)] = []
 
         for num in strongs {
             let lexModules = findAllLexiconModules(for: num)
+            logger.info("buildStrongsMultiDocJSON: num=\(num), lexModules=\(lexModules.map { $0.info.name })")
             let keyOptions = buildKeyOptions(for: num)
+            logger.info("buildStrongsMultiDocJSON: keyOptions=\(keyOptions)")
             for mod in lexModules {
                 if let html = lookupInModule(mod, keyOptions: keyOptions) {
                     let linkifiedHtml = Self.linkifyRefTags(html)
@@ -2310,34 +2336,30 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
     /// After setKey(), SWORD positions to the nearest entry even if the exact key
     /// doesn't exist. We must verify currentKey() matches to avoid returning wrong entries.
     private func lookupInModule(_ module: SwordModule, keyOptions: [String]) -> String? {
-        // Save current key to restore after lookup (prevents corrupting module state
-        // when multiple lookups share the same SwordModule handle).
-        let savedKey = module.currentKey()
-
-        defer {
-            // Restore the module position so subsequent lookups aren't affected
-            module.setKey(savedKey.isEmpty ? keyOptions.first ?? "" : savedKey)
-        }
+        logger.info("lookupInModule: \(module.info.name), keyOptions=\(keyOptions)")
 
         for key in keyOptions {
-            module.setKey(key)
-            let actualKey = module.currentKey().trimmingCharacters(in: .whitespacesAndNewlines)
+            // Atomic setKey + currentKey + renderText in one queue.sync block
+            // to prevent SWORD state interleaving between calls.
+            let (actualKey, candidate) = module.setKeyAndRender(key)
+            let trimmedKey = actualKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            logger.info("lookupInModule: tried key='\(key)', actualKey='\(trimmedKey)', renderLen=\(candidate.count)")
 
             // Verify the key actually matched. SWORD dictionary modules silently
             // position to the nearest entry when the exact key doesn't exist.
-            if !actualKey.isEmpty {
-                if !keysMatchNormalized(requested: key, actual: actualKey) {
+            if !trimmedKey.isEmpty {
+                if !keysMatchNormalized(requested: key, actual: trimmedKey) {
+                    logger.info("lookupInModule: key mismatch, skipping")
                     continue
                 }
             }
 
-            let candidate = module.renderText()
             if candidate.isEmpty || candidate.contains("@@@@") { continue }
 
             // For modules where currentKey() returns empty (some zLD modules like
             // BDBGlosses), verify the content references the requested Strong's number.
             // Without this check, these modules return whatever entry they're stuck on.
-            if actualKey.isEmpty {
+            if trimmedKey.isEmpty {
                 let numericKey = normalizeNumericKey(key)
                 if !numericKey.isEmpty && !candidate.contains(numericKey) {
                     continue
@@ -2376,7 +2398,10 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
 
     /// Find ALL lexicon/dictionary modules that can look up the given Strong's number.
     private func findAllLexiconModules(for strongsNumber: String) -> [SwordModule] {
-        guard let mgr = swordManager else { return [] }
+        guard let mgr = swordManager else {
+            logger.error("findAllLexiconModules: swordManager is nil!")
+            return []
+        }
 
         let isHebrew: Bool
         if strongsNumber.hasPrefix("H") {
@@ -2390,6 +2415,7 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         let feature: ModuleFeatures = isHebrew ? .hebrewDef : .greekDef
 
         let allModules = mgr.installedModules()
+        logger.info("findAllLexiconModules: \(allModules.count) installed modules, isHebrew=\(isHebrew), categories: \(allModules.map { $0.name + ":" + String(describing: $0.category) }.joined(separator: ", "))")
         var result: [SwordModule] = []
         var seen = Set<String>()
 
@@ -2550,15 +2576,138 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
 
     // MARK: - BibleBridgeDelegate — Dialogs
 
+    /// Callback for presenting a reference chooser dialog (returns OSIS ref via completion).
+    var onRefChooserDialog: ((@escaping (String?) -> Void) -> Void)?
+
     public func bridge(_ bridge: BibleBridge, refChooserDialog callId: Int) {
-        // Return null to dismiss — full implementation would show a reference picker
-        bridge.sendResponse(callId: callId, value: "null")
+        // Show a reference picker and return the selected OSIS ref
+        if let handler = onRefChooserDialog {
+            handler { [weak bridge] osisRef in
+                guard let bridge else { return }
+                if let ref = osisRef {
+                    bridge.sendResponse(callId: callId, value: "\"\(ref)\"")
+                } else {
+                    bridge.sendResponse(callId: callId, value: "null")
+                }
+            }
+        } else {
+            bridge.sendResponse(callId: callId, value: "null")
+        }
     }
 
     public func bridge(_ bridge: BibleBridge, parseRef callId: Int, text: String) {
-        // Basic reference parsing — return the text as-is for now
-        let escaped = text.replacingOccurrences(of: "\"", with: "\\\"")
-        bridge.sendResponse(callId: callId, value: "\"\(escaped)\"")
+        // Try to resolve human-readable reference to OSIS key
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            bridge.sendResponse(callId: callId, value: "null")
+            return
+        }
+
+        // If already OSIS format (e.g. "Gen.1.1"), validate and return
+        if let osisRef = resolveOsisRef(trimmed) {
+            let escaped = osisRef.replacingOccurrences(of: "\"", with: "\\\"")
+            bridge.sendResponse(callId: callId, value: "\"\(escaped)\"")
+            return
+        }
+
+        // Try parsing as human-readable (e.g. "Genesis 1:1", "Gen 1:1", "Matt 5:3-7")
+        if let osisRef = resolveHumanRef(trimmed) {
+            let escaped = osisRef.replacingOccurrences(of: "\"", with: "\\\"")
+            bridge.sendResponse(callId: callId, value: "\"\(escaped)\"")
+            return
+        }
+
+        // Fallback: return null if we can't parse
+        bridge.sendResponse(callId: callId, value: "null")
+    }
+
+    /// Try to validate/resolve an OSIS-format reference like "Gen.1.1"
+    private func resolveOsisRef(_ text: String) -> String? {
+        let parts = text.components(separatedBy: ".")
+        guard parts.count >= 2 else { return nil }
+        // Check if first part is a valid OSIS book ID
+        guard Self.bookName(forOsisId: parts[0]) != nil else { return nil }
+        guard Int(parts[1]) != nil else { return nil }
+        return text
+    }
+
+    /// Try to resolve a human-readable reference like "Genesis 1:1" or "Gen 1:1"
+    private func resolveHumanRef(_ text: String) -> String? {
+        // Pattern: BookName Chapter:Verse or BookName Chapter
+        // Handle numbered books: "1 Sam 1:1", "2 Kings 3:4"
+        let pattern = #"^(\d?\s*[A-Za-z]+(?:\s+[A-Za-z]+)*)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else {
+            return nil
+        }
+
+        guard let bookRange = Range(match.range(at: 1), in: text),
+              let chapterRange = Range(match.range(at: 2), in: text) else { return nil }
+
+        let bookText = String(text[bookRange]).trimmingCharacters(in: .whitespaces)
+        guard let chapter = Int(text[chapterRange]) else { return nil }
+
+        // Look up OSIS book ID
+        guard let osisId = Self.osisBookId(forHumanName: bookText) else { return nil }
+
+        if match.range(at: 3).location != NSNotFound,
+           let verseRange = Range(match.range(at: 3), in: text),
+           let verse = Int(text[verseRange]) {
+            return "\(osisId).\(chapter).\(verse)"
+        }
+        return "\(osisId).\(chapter)"
+    }
+
+    /// Look up OSIS ID from a human-readable book name or abbreviation.
+    private static func osisBookId(forHumanName name: String) -> String? {
+        let lower = name.lowercased()
+        // Try exact match first
+        if let osisId = osisBookId(for: name) as String?, !osisId.isEmpty {
+            return osisId
+        }
+        // Try case-insensitive match against full book names
+        for book in allBooks {
+            if book.lowercased() == lower {
+                return osisBookId(for: book)
+            }
+        }
+        // Try abbreviation matching (first 3+ characters)
+        for book in allBooks {
+            if book.lowercased().hasPrefix(lower) || lower.hasPrefix(book.lowercased().prefix(3).description) {
+                return osisBookId(for: book)
+            }
+        }
+        // Try common abbreviations
+        let abbreviations: [String: String] = [
+            "gen": "Gen", "ex": "Exod", "exo": "Exod", "lev": "Lev",
+            "num": "Num", "deut": "Deut", "deu": "Deut", "dt": "Deut",
+            "josh": "Josh", "judg": "Judg", "jdg": "Judg",
+            "1 sam": "1Sam", "2 sam": "2Sam", "1 ki": "1Kgs", "2 ki": "2Kgs",
+            "1 chr": "1Chr", "2 chr": "2Chr", "neh": "Neh", "est": "Esth",
+            "ps": "Ps", "psa": "Ps", "prov": "Prov", "pro": "Prov",
+            "eccl": "Eccl", "ecc": "Eccl", "song": "Song", "sos": "Song",
+            "isa": "Isa", "jer": "Jer", "lam": "Lam", "ezek": "Ezek", "eze": "Ezek",
+            "dan": "Dan", "hos": "Hos", "joe": "Joel", "amo": "Amos",
+            "oba": "Obad", "jon": "Jonah", "mic": "Mic", "nah": "Nah",
+            "hab": "Hab", "zeph": "Zeph", "zep": "Zeph",
+            "hag": "Hag", "zech": "Zech", "zec": "Zech", "mal": "Mal",
+            "matt": "Matt", "mat": "Matt", "mk": "Mark", "luk": "Luke", "lk": "Luke",
+            "jn": "John", "joh": "John", "act": "Acts",
+            "rom": "Rom", "1 cor": "1Cor", "2 cor": "2Cor",
+            "gal": "Gal", "eph": "Eph", "phil": "Phil", "php": "Phil",
+            "col": "Col", "1 thess": "1Thess", "2 thess": "2Thess", "1 th": "1Thess", "2 th": "2Thess",
+            "1 tim": "1Tim", "2 tim": "2Tim", "tit": "Titus", "phm": "Phlm", "philem": "Phlm",
+            "heb": "Heb", "jas": "Jas", "jam": "Jas",
+            "1 pet": "1Pet", "2 pet": "2Pet", "1 pe": "1Pet", "2 pe": "2Pet",
+            "1 jn": "1John", "2 jn": "2John", "3 jn": "3John",
+            "1 john": "1John", "2 john": "2John", "3 john": "3John",
+            "jude": "Jude", "jud": "Jude",
+            "rev": "Rev", "reve": "Rev",
+        ]
+        if let osisId = abbreviations[lower] {
+            return osisId
+        }
+        return nil
     }
 
     public func bridge(_ bridge: BibleBridge, helpDialog content: String, title: String?) {
@@ -2622,6 +2771,13 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         guard let manager = swordManager else { return }
         let languages = Array(Set(manager.installedModules().map { $0.language })).sorted()
         bridge.updateActiveLanguages(languages.isEmpty ? ["en"] : languages)
+    }
+
+    /// Convert an ordinal back to a verse number within the current chapter.
+    /// Ordinals use the formula: (chapter - 1) * 40 + verse.
+    private func ordinalToVerse(_ ordinal: Int) -> Int? {
+        let verse = ordinal - (currentChapter - 1) * 40
+        return verse >= 1 ? verse : nil
     }
 
     /// Get plain text for a verse range using SWORD stripText.
@@ -2693,11 +2849,13 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         minLoadedChapter = currentChapter
         maxLoadedChapter = currentChapter
 
+        // Restore scroll position only on same-chapter reloads (e.g. display settings change)
+        let jumpOrdinal = shouldRestoreScroll ? (lastScrollOrdinal.map { String($0) } ?? "null") : "null"
+        shouldRestoreScroll = false
         bridge.emit(event: "setup_content", data: """
-        {"jumpToOrdinal":null,"jumpToAnchor":null,"jumpToId":null,"topOffset":0,"bottomOffset":0}
+        {"jumpToOrdinal":\(jumpOrdinal),"jumpToAnchor":null,"jumpToId":null,"topOffset":0,"bottomOffset":0}
         """)
-        let verseSelectionEnabled = displaySettings.enableVerseSelection ?? true
-        bridge.emit(event: "set_active", data: "{\"hasActiveIndicator\":false,\"isActive\":\(verseSelectionEnabled)}")
+        emitActiveState()
 
         // Clear any accidental text selection and re-apply background
         bridge.clearSelection()
@@ -2922,12 +3080,12 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
 
     // MARK: - Bookmark Helpers
 
-    /// Query bookmarks for the current chapter's ordinal range.
+    /// Query bookmarks for the current chapter's ordinal range, filtered by current book.
     private func bookmarksForCurrentChapter(verseCount: Int) -> [BibleBookmark] {
         guard let service = bookmarkService else { return [] }
         let ordinalStart = (currentChapter - 1) * 40 + 1
         let ordinalEnd = (currentChapter - 1) * 40 + verseCount
-        return service.bookmarks(for: ordinalStart, endOrdinal: ordinalEnd)
+        return service.bookmarks(for: ordinalStart, endOrdinal: ordinalEnd, book: currentBook)
     }
 
     // MARK: - Default Labels
@@ -3358,12 +3516,32 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         }
     }
 
+    // MARK: - Active Window State
+
+    /// Whether this controller's window is the active (focused) window.
+    /// Matches Android: `windowControl.activeWindow.id == window.id`
+    private func computeIsActiveWindow() -> Bool {
+        guard let myWindow = activeWindow,
+              let wm = windowManagerRef else { return true }
+        return wm.activeWindow?.id == myWindow.id
+    }
+
+    /// Emit set_active event to Vue.js with current active window state.
+    /// Called after content load and when active window changes.
+    func emitActiveState() {
+        let isActive = computeIsActiveWindow()
+        let hasIndicator = isActive && (windowManagerRef?.visibleWindows.count ?? 0) > 1
+        bridge.emit(event: "set_active", data: "{\"hasActiveIndicator\":\(hasIndicator),\"isActive\":\(isActive)}")
+    }
+
     // MARK: - JSON Builders
 
     private func buildConfigJSON() -> String {
         let s = displaySettings
         let d = TextDisplaySettings.appDefaults
-        let verseSelectionEnabled = s.enableVerseSelection ?? d.enableVerseSelection ?? true
+        // Compute active window state (matching Android: isActive = activeWindow.id == window.id)
+        let isActiveWindow = computeIsActiveWindow()
+        let hasActiveIndicator = isActiveWindow && (windowManagerRef?.visibleWindows.count ?? 0) > 1
 
         // Build recent labels JSON array
         let recentJSON = "[" + recentLabelIds.map { "\"\($0)\"" }.joined(separator: ",") + "]"
@@ -3389,7 +3567,7 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         let hideCompareJSON = "[" + hiddenCompareDocuments.map { "\"\($0)\"" }.joined(separator: ",") + "]"
 
         return """
-        {"config":{"developmentMode":false,"testMode":false,"showAnnotations":true,"showChapterNumbers":true,"showVerseNumbers":\(s.showVerseNumbers ?? d.showVerseNumbers ?? true),"strongsMode":\(s.strongsMode ?? d.strongsMode ?? 0),"showMorphology":\(s.showMorphology ?? d.showMorphology ?? false),"showRedLetters":\(s.showRedLetters ?? d.showRedLetters ?? true),"showVersePerLine":\(s.showVersePerLine ?? d.showVersePerLine ?? false),"showNonCanonical":true,"makeNonCanonicalItalic":true,"showSectionTitles":\(s.showSectionTitles ?? d.showSectionTitles ?? true),"showStrongsSeparately":false,"showFootNotes":\(s.showFootNotes ?? d.showFootNotes ?? false),"showFootNotesInline":\(s.showFootNotesInline ?? d.showFootNotesInline ?? false),"showXrefs":\(s.showXrefs ?? d.showXrefs ?? false),"expandXrefs":\(s.expandXrefs ?? d.expandXrefs ?? false),"fontFamily":"\(s.fontFamily ?? d.fontFamily ?? "sans-serif")","fontSize":\(s.fontSize ?? d.fontSize ?? 18),"disableBookmarking":false,"showBookmarks":\(s.showBookmarks ?? d.showBookmarks ?? true),"showMyNotes":\(s.showMyNotes ?? d.showMyNotes ?? true),"bookmarksHideLabels":[],"bookmarksAssignLabels":[],"colors":{"dayBackground":\(s.dayBackground ?? d.dayBackground ?? -1),"dayNoise":\(s.dayNoise ?? d.dayNoise ?? 0),"nightBackground":\(s.nightBackground ?? d.nightBackground ?? -16777216),"nightNoise":\(s.nightNoise ?? d.nightNoise ?? 0),"dayTextColor":\(s.dayTextColor ?? d.dayTextColor ?? -16777216),"nightTextColor":\(s.nightTextColor ?? d.nightTextColor ?? -1)},"hyphenation":\(s.hyphenation ?? d.hyphenation ?? true),"lineSpacing":\(s.lineSpacing ?? d.lineSpacing ?? 10),"justifyText":\(s.justifyText ?? d.justifyText ?? false),"marginSize":{"marginLeft":\(s.marginLeft ?? d.marginLeft ?? 2),"marginRight":\(s.marginRight ?? d.marginRight ?? 2),"maxWidth":\(s.maxWidth ?? d.maxWidth ?? 600)},"topMargin":\(s.topMargin ?? d.topMargin ?? 0),"showPageNumber":\(s.showPageNumber ?? d.showPageNumber ?? false)},"appSettings":{"nightMode":\(nightMode),"errorBox":false,"favouriteLabels":\(favouriteJSON),"recentLabels":\(recentJSON),"studyPadCursors":\(cursorsJSON),"autoAssignLabels":\(autoAssignJSON),"hideCompareDocuments":\(hideCompareJSON),"activeWindow":\(verseSelectionEnabled),"rightToLeft":false,"actionMode":false,"hasActiveIndicator":false,"activeSince":\(Int(Date().timeIntervalSince1970 * 1000) - 1000),"limitAmbiguousModalSize":false,"windowId":"","disableBibleModalButtons":[],"disableGenericModalButtons":[],"monochromeMode":false,"disableAnimations":false,"disableClickToEdit":false,"fontSizeMultiplier":1.0,"enabledExperimentalFeatures":[]},"initial":false}
+        {"config":{"developmentMode":false,"testMode":false,"showAnnotations":true,"showChapterNumbers":true,"showVerseNumbers":\(s.showVerseNumbers ?? d.showVerseNumbers ?? true),"strongsMode":\(s.strongsMode ?? d.strongsMode ?? 0),"showMorphology":\(s.showMorphology ?? d.showMorphology ?? false),"showRedLetters":\(s.showRedLetters ?? d.showRedLetters ?? true),"showVersePerLine":\(s.showVersePerLine ?? d.showVersePerLine ?? false),"showNonCanonical":true,"makeNonCanonicalItalic":true,"showSectionTitles":\(s.showSectionTitles ?? d.showSectionTitles ?? true),"showStrongsSeparately":false,"showFootNotes":\(s.showFootNotes ?? d.showFootNotes ?? false),"showFootNotesInline":\(s.showFootNotesInline ?? d.showFootNotesInline ?? false),"showXrefs":\(s.showXrefs ?? d.showXrefs ?? false),"expandXrefs":\(s.expandXrefs ?? d.expandXrefs ?? false),"fontFamily":"\(s.fontFamily ?? d.fontFamily ?? "sans-serif")","fontSize":\(s.fontSize ?? d.fontSize ?? 18),"disableBookmarking":false,"showBookmarks":\(s.showBookmarks ?? d.showBookmarks ?? true),"showMyNotes":\(s.showMyNotes ?? d.showMyNotes ?? true),"bookmarksHideLabels":[],"bookmarksAssignLabels":[],"colors":{"dayBackground":\(s.dayBackground ?? d.dayBackground ?? -1),"dayNoise":\(s.dayNoise ?? d.dayNoise ?? 0),"nightBackground":\(s.nightBackground ?? d.nightBackground ?? -16777216),"nightNoise":\(s.nightNoise ?? d.nightNoise ?? 0),"dayTextColor":\(s.dayTextColor ?? d.dayTextColor ?? -16777216),"nightTextColor":\(s.nightTextColor ?? d.nightTextColor ?? -1)},"hyphenation":\(s.hyphenation ?? d.hyphenation ?? true),"lineSpacing":\(s.lineSpacing ?? d.lineSpacing ?? 10),"justifyText":\(s.justifyText ?? d.justifyText ?? false),"marginSize":{"marginLeft":\(s.marginLeft ?? d.marginLeft ?? 2),"marginRight":\(s.marginRight ?? d.marginRight ?? 2),"maxWidth":\(s.maxWidth ?? d.maxWidth ?? 600)},"topMargin":\(s.topMargin ?? d.topMargin ?? 0),"showPageNumber":\(s.showPageNumber ?? d.showPageNumber ?? false)},"appSettings":{"nightMode":\(nightMode),"errorBox":false,"favouriteLabels":\(favouriteJSON),"recentLabels":\(recentJSON),"studyPadCursors":\(cursorsJSON),"autoAssignLabels":\(autoAssignJSON),"hideCompareDocuments":\(hideCompareJSON),"activeWindow":\(isActiveWindow),"rightToLeft":false,"actionMode":false,"hasActiveIndicator":\(hasActiveIndicator),"activeSince":\(Int(Date().timeIntervalSince1970 * 1000) - 1000),"limitAmbiguousModalSize":false,"windowId":"","disableBibleModalButtons":[],"disableGenericModalButtons":[],"monochromeMode":false,"disableAnimations":false,"disableClickToEdit":false,"fontSizeMultiplier":1.0,"enabledExperimentalFeatures":[]},"initial":false}
         """
     }
 

@@ -20,7 +20,7 @@ extension Color {
     /// Create a Color from a signed ARGB integer (Vue.js convention).
     /// -1 = white (0xFFFFFFFF), -16777216 = black (0xFF000000).
     init(argbInt: Int) {
-        let uint = UInt32(bitPattern: Int32(argbInt))
+        let uint = UInt32(bitPattern: Int32(truncatingIfNeeded: argbInt))
         let a = Double((uint >> 24) & 0xFF) / 255.0
         let r = Double((uint >> 16) & 0xFF) / 255.0
         let g = Double((uint >> 8) & 0xFF) / 255.0

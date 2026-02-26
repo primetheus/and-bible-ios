@@ -80,7 +80,7 @@ public struct BibleWebView: UIViewControllerRepresentable {
 
     /// Convert a signed ARGB integer to UIColor.
     static func uiColor(fromArgbInt value: Int) -> UIColor {
-        let uint = UInt32(bitPattern: Int32(value))
+        let uint = UInt32(bitPattern: Int32(truncatingIfNeeded: value))
         let a = CGFloat((uint >> 24) & 0xFF) / 255.0
         let r = CGFloat((uint >> 16) & 0xFF) / 255.0
         let g = CGFloat((uint >> 8) & 0xFF) / 255.0
@@ -165,6 +165,45 @@ extension BibleWebView {
                 'a.morph, a.morph:link, a.morph:visited, a.morph:active { color: var(--verse-number-color, #aaa) !important; }',
             ].join(' ');
             (document.head || document.documentElement).appendChild(style);
+            // Route console.log/error/warn to native bridge for debugging
+            (function() {
+                var origLog = console.log;
+                var origError = console.error;
+                var origWarn = console.warn;
+                console.log = function() {
+                    origLog.apply(console, arguments);
+                    try {
+                        var msg = Array.prototype.slice.call(arguments).map(function(a) {
+                            return typeof a === 'object' ? JSON.stringify(a) : String(a);
+                        }).join(' ');
+                        window.webkit.messageHandlers.bibleView.postMessage({
+                            method: 'jsLog', args: ['LOG', msg]
+                        });
+                    } catch(e) {}
+                };
+                console.error = function() {
+                    origError.apply(console, arguments);
+                    try {
+                        var msg = Array.prototype.slice.call(arguments).map(function(a) {
+                            return typeof a === 'object' ? JSON.stringify(a) : String(a);
+                        }).join(' ');
+                        window.webkit.messageHandlers.bibleView.postMessage({
+                            method: 'jsLog', args: ['ERROR', msg]
+                        });
+                    } catch(e) {}
+                };
+                console.warn = function() {
+                    origWarn.apply(console, arguments);
+                    try {
+                        var msg = Array.prototype.slice.call(arguments).map(function(a) {
+                            return typeof a === 'object' ? JSON.stringify(a) : String(a);
+                        }).join(' ');
+                        window.webkit.messageHandlers.bibleView.postMessage({
+                            method: 'jsLog', args: ['WARN', msg]
+                        });
+                    } catch(e) {}
+                };
+            })();
             // Double-click/tap toggles fullscreen mode (matching Android behavior)
             document.addEventListener('dblclick', function(e) {
                 // Don't toggle fullscreen if clicking on interactive elements

@@ -33,13 +33,33 @@ func presentStrongsSheet(
             topVC = presented
         }
 
-        let content = StrongsSheetContent(
+        // Back button (hidden initially, shown when history exists)
+        let backButton = UIBarButtonItem(
+            image: UIImage(systemName: "chevron.left"),
+            style: .plain,
+            target: nil,
+            action: nil
+        )
+        backButton.isHidden = true
+
+        var content = StrongsSheetContent(
             multiDocJSON: multiDocJSON,
             configJSON: configJSON,
             backgroundColorInt: backgroundColorInt,
             controller: controller,
             onFindAll: onFindAll
         )
+        content.onDelegateReady = { delegate in
+            // Wire back button action
+            backButton.primaryAction = UIAction { _ in
+                delegate.goBack()
+            }
+            // Update back button visibility when history changes
+            delegate.onHistoryChanged = { canGoBack in
+                backButton.isHidden = !canGoBack
+            }
+        }
+
         let hostingVC = UIHostingController(rootView: content)
         let nav = UINavigationController(rootViewController: hostingVC)
         nav.modalPresentationStyle = .pageSheet
@@ -53,6 +73,7 @@ func presentStrongsSheet(
             systemItem: .done,
             primaryAction: UIAction { _ in nav.dismiss(animated: true) }
         )
+        hostingVC.navigationItem.rightBarButtonItem = backButton
         topVC.present(nav, animated: true)
     }
 
@@ -80,6 +101,8 @@ struct StrongsSheetContent: View {
     let backgroundColorInt: Int
     let controller: BibleReaderController
     let onFindAll: ((String) -> Void)?
+    /// Set by presentStrongsSheet to allow updating the back button.
+    var onDelegateReady: ((StrongsSheetDelegate) -> Void)?
 
     @State private var bridge = BibleBridge()
     @State private var sheetDelegate: StrongsSheetDelegate?
@@ -97,6 +120,7 @@ struct StrongsSheetContent: View {
                 )
                 bridge.delegate = delegate
                 sheetDelegate = delegate // retain
+                onDelegateReady?(delegate)
             }
     }
 }
@@ -107,10 +131,14 @@ struct StrongsSheetContent: View {
 final class StrongsSheetDelegate: NSObject, BibleBridgeDelegate {
     private let bridge: BibleBridge
     private var currentDocJSON: String
+    private var historyStack: [String] = []  // previous doc JSONs for back navigation
+    var onHistoryChanged: ((Bool) -> Void)?  // callback: canGoBack changed
     private let configJSON: String
     private let backgroundColorInt: Int
     private weak var controller: BibleReaderController?
     private let onFindAll: ((String) -> Void)?
+
+    var canGoBack: Bool { !historyStack.isEmpty }
 
     init(bridge: BibleBridge, multiDocJSON: String, configJSON: String,
          backgroundColorInt: Int,
@@ -122,6 +150,17 @@ final class StrongsSheetDelegate: NSObject, BibleBridgeDelegate {
         self.controller = controller
         self.onFindAll = onFindAll
         super.init()
+    }
+
+    func goBack() {
+        guard let previousJSON = historyStack.popLast() else { return }
+        currentDocJSON = previousJSON
+        bridge.emit(event: "clear_document")
+        bridge.emit(event: "add_documents", data: previousJSON)
+        bridge.emit(event: "setup_content", data: """
+        {"jumpToOrdinal":null,"jumpToAnchor":null,"jumpToId":null,"topOffset":0,"bottomOffset":0}
+        """)
+        onHistoryChanged?(canGoBack)
     }
 
     // MARK: - Core: Client Ready → Load Document
@@ -146,11 +185,40 @@ final class StrongsSheetDelegate: NSObject, BibleBridgeDelegate {
             s.textContent = '#content { padding-left: 16px !important; padding-right: 16px !important; max-width: none !important; } .sense { display: block; margin-left: 1.5em; margin-top: 0.15em; } .entryFree { display: none; } ol, ul { padding-left: 1.5em; margin: 0.3em 0; } li { margin: 0.15em 0; } dl { margin: 0.3em 0; } dd { margin-left: 1.5em; } blockquote { margin-left: 1.5em; padding-left: 0.5em; border-left: 2px solid rgba(128,128,128,0.3); }';
             document.head.appendChild(s);
         }
+        // Debug logging for click events in Strong's sheet
+        if (!window.__strongsDebug__) {
+            window.__strongsDebug__ = true;
+            document.addEventListener('click', function(event) {
+                var ef = event.eventFunctions;
+                var efCount = 0;
+                var efKeys = [];
+                if (ef) {
+                    efKeys = Object.keys(ef);
+                    efKeys.forEach(function(k) { efCount += ef[k].length; });
+                }
+                console.log('[StrongsSheet] click event: target=' + event.target.tagName +
+                    ', href=' + (event.target.getAttribute && event.target.getAttribute('href') || 'none') +
+                    ', eventFunctions=' + efCount + ' (priorities: ' + efKeys.join(',') + ')' +
+                    ', bubbles=' + event.bubbles +
+                    ', defaultPrevented=' + event.defaultPrevented);
+            }, true); // capture phase - fires before Vue handlers
+            document.addEventListener('click', function(event) {
+                var ef = event.eventFunctions;
+                var efCount = 0;
+                var efKeys = [];
+                if (ef) {
+                    efKeys = Object.keys(ef);
+                    efKeys.forEach(function(k) { efCount += ef[k].length; });
+                }
+                console.log('[StrongsSheet] click BUBBLE: eventFunctions=' + efCount +
+                    ' (priorities: ' + efKeys.join(',') + ')');
+            }, false); // bubble phase - fires after Vue handlers
+        }
         """)
     }
 
     private static func cssColor(fromArgbInt value: Int) -> String {
-        let uint = UInt32(bitPattern: Int32(value))
+        let uint = UInt32(bitPattern: Int32(truncatingIfNeeded: value))
         let r = (uint >> 16) & 0xFF
         let g = (uint >> 8) & 0xFF
         let b = uint & 0xFF
@@ -160,24 +228,31 @@ final class StrongsSheetDelegate: NSObject, BibleBridgeDelegate {
     // MARK: - Link Handling
 
     func bridge(_ bridge: BibleBridge, openExternalLink link: String) {
+        logger.info("StrongsSheet openExternalLink: '\(link)'")
         // Recursive Strong's navigation within the sheet
         if link.hasPrefix("ab-w://") {
+            logger.info("StrongsSheet: handling as Strong's link")
             handleStrongsLink(link)
             return
         }
         // "Find all occurrences" → dismiss sheet and open search
         if link.hasPrefix("ab-find-all://") {
+            logger.info("StrongsSheet: handling as find-all link")
             handleFindAllLink(link)
             return
         }
         // External links
+        logger.info("StrongsSheet: handling as external URL")
         if let url = URL(string: link) {
             UIApplication.shared.open(url)
         }
     }
 
     private func handleStrongsLink(_ link: String) {
-        guard let components = URLComponents(string: link) else { return }
+        guard let components = URLComponents(string: link) else {
+            logger.error("handleStrongsLink: failed to parse URL: '\(link)'")
+            return
+        }
         let items = components.queryItems ?? []
 
         var strongs: [String] = []
@@ -192,13 +267,25 @@ final class StrongsSheetDelegate: NSObject, BibleBridgeDelegate {
             }
         }
 
-        guard !strongs.isEmpty || !robinson.isEmpty else { return }
+        logger.info("handleStrongsLink: strongs=\(strongs), robinson=\(robinson)")
+
+        guard !strongs.isEmpty || !robinson.isEmpty else {
+            logger.error("handleStrongsLink: no strongs or robinson values found")
+            return
+        }
 
         // Use the controller to look up definitions (it has SwordManager access)
-        guard let newJSON = controller?.buildStrongsMultiDocJSON(strongs: strongs, robinson: robinson) else { return }
+        logger.info("handleStrongsLink: controller is \(self.controller == nil ? "nil" : "alive")")
+        guard let newJSON = self.controller?.buildStrongsMultiDocJSON(strongs: strongs, robinson: robinson) else {
+            logger.error("handleStrongsLink: buildStrongsMultiDocJSON returned nil")
+            return
+        }
 
-        // Navigate in-place within the sheet
+        // Push current to history, then navigate in-place within the sheet
+        logger.info("handleStrongsLink: navigating in-place, JSON length=\(newJSON.count)")
+        historyStack.append(currentDocJSON)
         currentDocJSON = newJSON
+        onHistoryChanged?(canGoBack)
         bridge.emit(event: "clear_document")
         bridge.emit(event: "add_documents", data: newJSON)
         bridge.emit(event: "setup_content", data: """

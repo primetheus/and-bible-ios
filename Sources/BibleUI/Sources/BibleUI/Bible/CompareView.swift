@@ -9,6 +9,8 @@ struct CompareView: View {
     let book: String
     let chapter: Int
     let currentModuleName: String
+    var startVerse: Int? = nil
+    var endVerse: Int? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var installedModules: [String] = []
     @State private var selectedModules: Set<String> = []
@@ -20,6 +22,15 @@ struct CompareView: View {
         let verseNumber: Int
         let translations: [(name: String, text: String)]
         var id: Int { verseNumber }
+    }
+
+    private var compareTitle: String {
+        if let sv = startVerse, let ev = endVerse, sv != ev {
+            return "\(book) \(chapter):\(sv)-\(ev)"
+        } else if let sv = startVerse {
+            return "\(book) \(chapter):\(sv)"
+        }
+        return "\(book) \(chapter)"
     }
 
     var body: some View {
@@ -50,7 +61,7 @@ struct CompareView: View {
                 verseComparisonList
             }
         }
-        .navigationTitle("\(book) \(chapter)")
+        .navigationTitle(compareTitle)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
@@ -247,10 +258,12 @@ struct CompareView: View {
                 return
             }
 
-            // Build verse-by-verse comparisons
+            // Build verse-by-verse comparisons (respecting optional verse range)
             var verseComparisons: [VerseComparison] = []
+            let firstVerse = startVerse ?? 1
+            let lastVerse = endVerse ?? maxVerse
 
-            for verse in 1...maxVerse {
+            for verse in firstVerse...min(lastVerse, maxVerse) {
                 var translations: [(name: String, text: String)] = []
 
                 for (name, mod) in modules {

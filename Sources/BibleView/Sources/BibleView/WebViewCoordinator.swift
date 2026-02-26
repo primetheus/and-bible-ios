@@ -40,8 +40,11 @@ public class WebViewCoordinator: NSObject, WKNavigationDelegate {
                 bridge.delegate?.bridge(bridge, openExternalLink: url.absoluteString)
                 decisionHandler(.cancel)
             } else if url.scheme == "ab-w" {
-                // ab-w:// links (Strong's/morphology) are handled via postMessage
-                // from navigateLink() in Vue.js — just cancel the <a> tag navigation.
+                // ab-w:// links from raw HTML <a> tags (e.g. linkified Strong's refs).
+                // Vue.js components use navigateLink() → postMessage, but raw <a href>
+                // tags in v-html content trigger navigation directly.
+                logger.info("decidePolicyFor: intercepted ab-w:// navigation: \(url.absoluteString)")
+                bridge.delegate?.bridge(bridge, openExternalLink: url.absoluteString)
                 decisionHandler(.cancel)
             } else if url.scheme == "ab-find-all" {
                 // "Find all occurrences" links from FeaturesLink.vue

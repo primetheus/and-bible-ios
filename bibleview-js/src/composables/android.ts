@@ -330,6 +330,7 @@ export function useAndroid({bookmarks}: { bookmarks: Ref<BaseBookmark[]> }, conf
     }
 
     function openExternalLink(link: string) {
+        console.log('[android.ts] openExternalLink called with:', link);
         window.android.openExternalLink(link);
     }
 

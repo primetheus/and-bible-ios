@@ -104,6 +104,9 @@ public final class BibleBridge: NSObject, WKScriptMessageHandler {
     /// Whether the ambiguous selection modal should be size-limited.
     public var limitAmbiguousModalSize: Bool = false
 
+    /// Fires on every bridge message — used to detect user interaction for active window tracking.
+    public var onAnyMessage: (() -> Void)?
+
     public override init() {
         super.init()
     }
@@ -122,10 +125,33 @@ public final class BibleBridge: NSObject, WKScriptMessageHandler {
 
         let args = body["args"] as? [Any] ?? []
 
+        // Notify listener for active window tracking, but skip passive/background
+        // messages that don't represent user interaction to avoid focus ping-pong.
+        switch method {
+        case "console", "jsLog", "reportModalState", "reportInputFocus",
+             "setClientReady", "saveState", "setLimitAmbiguousModalSize",
+             "selectionCleared", "setEditing":
+            break
+        default:
+            onAnyMessage?()
+        }
+
         switch method {
         // --- Tier 1: Logging & State ---
         case "console":
             handleConsole(args)
+        case "jsLog":
+            // Routed from console.log/error/warn interceptor in BibleWebView.swift
+            if let level = args.first as? String, let msg = args.last as? String {
+                switch level {
+                case "ERROR":
+                    logger.error("[JS] \(msg)")
+                case "WARN":
+                    logger.warning("[JS] \(msg)")
+                default:
+                    logger.info("[JS] \(msg)")
+                }
+            }
         case "toast":
             handleToast(args)
         case "setClientReady":
@@ -325,7 +351,10 @@ public final class BibleBridge: NSObject, WKScriptMessageHandler {
         // --- Navigation ---
         case "openExternalLink":
             if let link = args.first as? String {
+                logger.info("openExternalLink received from JS: '\(link)', delegate=\(self.delegate != nil)")
                 delegate?.bridge(self, openExternalLink: link)
+            } else {
+                logger.error("openExternalLink: args missing or not a string, args=\(String(describing: args))")
             }
         case "openEpubLink":
             if let bookInitials = args[safe: 0] as? String,

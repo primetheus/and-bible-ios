@@ -81,8 +81,9 @@ public final class BookmarkService {
     }
 
     /// Get bookmarks overlapping a verse range (for rendering highlights).
-    public func bookmarks(for startOrdinal: Int, endOrdinal: Int) -> [BibleBookmark] {
-        store.bibleBookmarks(overlapping: startOrdinal, endOrdinal: endOrdinal)
+    /// Pass `book` to prevent cross-book ordinal collisions.
+    public func bookmarks(for startOrdinal: Int, endOrdinal: Int, book: String? = nil) -> [BibleBookmark] {
+        store.bibleBookmarks(overlapping: startOrdinal, endOrdinal: endOrdinal, book: book)
     }
 
     /// Find a single Bible bookmark by ID.

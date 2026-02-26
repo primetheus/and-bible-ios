@@ -106,6 +106,18 @@ public final class SwordModule: @unchecked Sendable {
 
     // MARK: - Text Retrieval
 
+    /// Atomically set key, read back actual key, and render text in one queue.sync block.
+    /// This prevents interleaving with other SWORD operations between setKey/currentKey/renderText.
+    /// Returns (actualKey, renderedText).
+    public func setKeyAndRender(_ keyText: String) -> (actualKey: String, text: String) {
+        queue.sync {
+            SWModule_setKeyText(handle, keyText)
+            let actualKey = String(cString: SWModule_getKeyText(handle))
+            let text = String(cString: SWModule_getRenderText(handle))
+            return (actualKey, text)
+        }
+    }
+
     /// Get rendered text (with markup/HTML) at the current position.
     public func renderText() -> String {
         queue.sync {

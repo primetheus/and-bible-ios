@@ -45,13 +45,22 @@ public final class BookmarkStore {
         return try? modelContext.fetch(descriptor).first
     }
 
-    /// Fetch Bible bookmarks overlapping an ordinal range.
-    public func bibleBookmarks(overlapping startOrdinal: Int, endOrdinal: Int) -> [BibleBookmark] {
-        let descriptor = FetchDescriptor<BibleBookmark>(
-            predicate: #Predicate {
-                $0.kjvOrdinalStart <= endOrdinal && $0.kjvOrdinalEnd >= startOrdinal
-            }
-        )
+    /// Fetch Bible bookmarks overlapping an ordinal range, optionally filtered by book.
+    public func bibleBookmarks(overlapping startOrdinal: Int, endOrdinal: Int, book: String? = nil) -> [BibleBookmark] {
+        let descriptor: FetchDescriptor<BibleBookmark>
+        if let book {
+            descriptor = FetchDescriptor<BibleBookmark>(
+                predicate: #Predicate {
+                    $0.kjvOrdinalStart <= endOrdinal && $0.kjvOrdinalEnd >= startOrdinal && $0.book == book
+                }
+            )
+        } else {
+            descriptor = FetchDescriptor<BibleBookmark>(
+                predicate: #Predicate {
+                    $0.kjvOrdinalStart <= endOrdinal && $0.kjvOrdinalEnd >= startOrdinal
+                }
+            )
+        }
         return (try? modelContext.fetch(descriptor)) ?? []
     }
 

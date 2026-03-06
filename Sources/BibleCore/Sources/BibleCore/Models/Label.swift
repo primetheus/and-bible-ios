@@ -103,6 +103,50 @@ public final class Label {
     public var isRealLabel: Bool {
         !isSystemLabel
     }
+
+    // MARK: - Icon Mapping (Android canonical name ↔ SF Symbol)
+
+    /// Maps Android canonical icon names (used by Vue.js `customIconMap`) to SF Symbols.
+    public static let iconToSFSymbol: [String: String] = [
+        "book": "book.fill",
+        "book-bible": "book.closed.fill",
+        "cross": "cross.fill",
+        "church": "building.columns.fill",
+        "star-of-david": "starofdavid.fill",
+        "person-praying": "figure.mind.and.body",
+        "info": "info.circle.fill",
+        "question": "questionmark.circle.fill",
+        "exclamation": "exclamationmark.circle.fill",
+        "lightbulb": "lightbulb.fill",
+        "bell": "bell.fill",
+        "flag": "flag.fill",
+        "star": "star.fill",
+        "tag": "tag.fill",
+        "envelope": "envelope.fill",
+        "comment": "text.bubble.fill",
+        "share-nodes": "square.and.arrow.up",
+        "link": "link",
+        "handshake": "hands.clap.fill",
+        "clock": "clock.fill",
+        "map-marker": "mappin.and.ellipse",
+        "globe": "globe",
+        "landmark": "building.columns",
+        "calendar": "calendar",
+        "user": "person.fill",
+        "music": "music.note",
+        "microphone": "mic.fill",
+        "key": "key.fill",
+        "crown": "crown.fill",
+        "heart": "heart.fill",
+        "heart-crack": "heart.slash.fill",
+    ]
+
+    /// Returns the SF Symbol name for a given icon name (Android canonical or SF Symbol).
+    /// Falls back to the raw value if no mapping exists (backward compat with existing SF Symbol names).
+    public static func sfSymbol(for iconName: String?) -> String? {
+        guard let name = iconName, !name.isEmpty else { return nil }
+        return iconToSFSymbol[name] ?? name
+    }
 }
 
 /// Predefined bookmark highlight styles matching Android's BookmarkStyle enum.

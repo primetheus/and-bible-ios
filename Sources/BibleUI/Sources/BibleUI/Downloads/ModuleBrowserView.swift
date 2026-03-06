@@ -94,10 +94,10 @@ public struct ModuleBrowserView: View {
             // Category picker
             Section {
                 Picker("Category", selection: $selectedCategory) {
-                    Text("Bibles").tag(ModuleCategory.bible)
-                    Text("Commentaries").tag(ModuleCategory.commentary)
-                    Text("Dictionaries").tag(ModuleCategory.dictionary)
-                    Text("Books").tag(ModuleCategory.generalBook)
+                    Text(String(localized: "bibles")).tag(ModuleCategory.bible)
+                    Text(String(localized: "commentaries")).tag(ModuleCategory.commentary)
+                    Text(String(localized: "dictionaries")).tag(ModuleCategory.dictionary)
+                    Text(String(localized: "category_books")).tag(ModuleCategory.generalBook)
                 }
                 .pickerStyle(.segmented)
                 .onChange(of: selectedCategory) {
@@ -110,7 +110,7 @@ public struct ModuleBrowserView: View {
             if !availableLanguages.isEmpty {
                 Section {
                     Picker("Language", selection: $selectedLanguage) {
-                        Text("All Languages (\(availableLanguages.count))")
+                        Text(String(localized: "all_languages_count \(availableLanguages.count)"))
                             .tag("")
                         ForEach(availableLanguages, id: \.self) { lang in
                             Text(displayName(for: lang))
@@ -147,7 +147,7 @@ public struct ModuleBrowserView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            Text("Refreshing catalog...")
+                            Text(String(localized: "refreshing_catalog"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -157,7 +157,7 @@ public struct ModuleBrowserView: View {
                 }
             } else if filteredAvailableModules.isEmpty && !availableModules.isEmpty {
                 Section {
-                    Text("No modules match your filters")
+                    Text(String(localized: "no_modules_match_filters"))
                         .foregroundStyle(.secondary)
                 }
             } else if !filteredAvailableModules.isEmpty {
@@ -169,9 +169,9 @@ public struct ModuleBrowserView: View {
             } else if availableModules.isEmpty && !isRefreshing {
                 Section {
                     VStack(spacing: 8) {
-                        Text("Tap Refresh to load available modules")
+                        Text(String(localized: "tap_refresh_to_load"))
                             .foregroundStyle(.secondary)
-                        Button("Refresh Catalog") {
+                        Button(String(localized: "refresh_catalog")) {
                             refreshCatalog()
                         }
                     }
@@ -180,8 +180,8 @@ public struct ModuleBrowserView: View {
                 }
             }
         }
-        .searchable(text: $searchText, prompt: "Search modules")
-        .navigationTitle("Downloads")
+        .searchable(text: $searchText, prompt: String(localized: "search_modules"))
+        .navigationTitle(String(localized: "downloads"))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 12) {

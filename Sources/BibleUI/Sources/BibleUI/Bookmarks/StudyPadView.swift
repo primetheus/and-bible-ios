@@ -23,21 +23,21 @@ public struct StudyPadView: View {
         Group {
             if entries.isEmpty && bookmarkEntries.isEmpty {
                 ContentUnavailableView(
-                    "Empty StudyPad",
+                    String(localized: "studypad_empty"),
                     systemImage: "note.text",
-                    description: Text("Add notes or bookmark verses to build your study journal.")
+                    description: Text(String(localized: "studypad_empty_description"))
                 )
             } else {
                 entryList
             }
         }
-        .navigationTitle(label?.name ?? "StudyPad")
+        .navigationTitle(label?.name ?? String(localized: "studypad"))
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Add Note", systemImage: "plus") {
+                Button(String(localized: "add_note"), systemImage: "plus") {
                     showNewNote = true
                 }
             }
@@ -158,14 +158,14 @@ private struct NoteEntryRow: View {
                 Image(systemName: "note.text")
                     .foregroundStyle(.orange)
                     .font(.caption)
-                Text("Note")
+                Text(String(localized: "note"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
 
                 Menu {
-                    Button("Edit", systemImage: "pencil") { onEdit() }
-                    Button("Delete", systemImage: "trash", role: .destructive) { onDelete() }
+                    Button(String(localized: "edit"), systemImage: "pencil") { onEdit() }
+                    Button(String(localized: "delete"), systemImage: "trash", role: .destructive) { onDelete() }
                 } label: {
                     Image(systemName: "ellipsis")
                         .foregroundStyle(.secondary)
@@ -203,16 +203,16 @@ private struct NoteEditorView: View {
                 )
                 .padding()
         }
-        .navigationTitle(existingEntry == nil ? "New Note" : "Edit Note")
+        .navigationTitle(existingEntry == nil ? String(localized: "new_note") : String(localized: "edit_note"))
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }
+                Button(String(localized: "cancel")) { dismiss() }
             }
             ToolbarItem(placement: .confirmationAction) {
-                Button("Save") {
+                Button(String(localized: "save")) {
                     saveNote()
                     dismiss()
                 }

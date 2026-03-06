@@ -65,7 +65,7 @@ public struct LabelManagerView: View {
                 } label: {
                     HStack(spacing: 10) {
                         if let icon = label.customIcon, !icon.isEmpty {
-                            Image(systemName: icon)
+                            Image(systemName: BibleCore.Label.sfSymbol(for: icon) ?? icon)
                                 .font(.body)
                                 .foregroundStyle(Color(argbInt: label.color))
                         } else {
@@ -158,18 +158,19 @@ private struct LabelEditView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    // SF Symbol icons matching Android's 27 predefined drawable icons + extras
-    private static let iconSymbols: [String] = [
-        "book.fill", "book.closed.fill", "cross.fill",
-        "building.columns.fill", "starofdavid.fill", "figure.mind.and.body",
-        "info.circle.fill", "questionmark.circle.fill", "exclamationmark.circle.fill",
-        "lightbulb.fill", "bell.fill", "flag.fill",
-        "star.fill", "tag.fill", "envelope.fill",
-        "text.bubble.fill", "square.and.arrow.up", "link",
-        "hands.clap.fill", "clock.fill", "mappin.and.ellipse",
-        "globe", "calendar", "person.fill",
-        "music.note", "mic.fill", "key.fill",
-        "crown.fill", "heart.fill", "heart.slash.fill",
+    // Android canonical icon names — stored in Label.customIcon for Vue.js compatibility.
+    // Displayed via Label.sfSymbol(for:) which maps to SF Symbols for native rendering.
+    private static let iconNames: [String] = [
+        "book", "book-bible", "cross",
+        "church", "star-of-david", "person-praying",
+        "info", "question", "exclamation",
+        "lightbulb", "bell", "flag",
+        "star", "tag", "envelope",
+        "comment", "share-nodes", "link",
+        "handshake", "clock", "map-marker",
+        "globe", "landmark", "calendar",
+        "user", "music", "microphone",
+        "key", "crown", "heart", "heart-crack",
     ]
 
     // Preset colors matching Android's highlight palette
@@ -232,19 +233,19 @@ private struct LabelEditView: View {
                     }
                     .buttonStyle(.plain)
 
-                    ForEach(Self.iconSymbols, id: \.self) { symbol in
+                    ForEach(Self.iconNames, id: \.self) { canonicalName in
                         Button {
-                            if label.customIcon == symbol {
+                            if label.customIcon == canonicalName {
                                 label.customIcon = nil
                             } else {
-                                label.customIcon = symbol
+                                label.customIcon = canonicalName
                             }
                             save()
                         } label: {
-                            Image(systemName: symbol)
+                            Image(systemName: BibleCore.Label.sfSymbol(for: canonicalName) ?? "questionmark")
                                 .font(.title2)
                                 .frame(width: 36, height: 36)
-                                .foregroundStyle(label.customIcon == symbol ? Color(argbInt: label.color) : Color.secondary)
+                                .foregroundStyle(label.customIcon == canonicalName ? Color(argbInt: label.color) : Color.secondary)
                         }
                         .buttonStyle(.plain)
                     }

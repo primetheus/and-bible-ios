@@ -281,7 +281,7 @@ private struct BookmarkRow: View {
             }
 
             if let icon = bookmark.customIcon, !icon.isEmpty {
-                Image(systemName: icon)
+                Image(systemName: BibleCore.Label.sfSymbol(for: icon) ?? icon)
                     .font(.headline)
             }
 

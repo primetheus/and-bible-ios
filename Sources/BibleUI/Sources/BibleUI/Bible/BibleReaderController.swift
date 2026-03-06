@@ -82,9 +82,11 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
     private(set) var currentEpubHref: String?
     private(set) var currentEpubTitle: String?
 
-    /// Infinite scroll: tracks the range of chapters currently loaded in the WebView.
+    /// Infinite scroll: tracks the range of chapters/books currently loaded in the WebView.
     private var minLoadedChapter: Int = 0
     private var maxLoadedChapter: Int = 0
+    private var minLoadedBook: String = "Genesis"
+    private var maxLoadedBook: String = "Genesis"
 
     /// Last verse ordinal scrolled to (for restoring scroll position on same-chapter reloads).
     private var lastScrollOrdinal: Int?
@@ -1403,6 +1405,35 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         onInteraction?()
         // Track scroll position for restoration
         lastScrollOrdinal = ordinal
+
+        // Update toolbar header when scrolling into a different chapter/book (infinite scroll)
+        if !key.isEmpty, let dotIdx = key.lastIndex(of: ".") {
+            let chapterStr = String(key[key.index(after: dotIdx)...])
+            let osisId = String(key[key.startIndex..<dotIdx])
+            if let chapter = Int(chapterStr), chapter != currentChapter {
+                currentChapter = chapter
+                if let name = bookName(forOsisId: osisId), name != currentBook {
+                    currentBook = name
+                }
+                // Persist updated position to PageManager
+                if let pm = activeWindow?.pageManager {
+                    pm.bibleChapterNo = chapter
+                    if let bookIdx = bookList.firstIndex(where: { $0.name == currentBook }) {
+                        pm.bibleBibleBook = bookIdx
+                    }
+                    onPersistState?()
+                }
+            } else if let name = bookName(forOsisId: osisId), name != currentBook {
+                currentBook = name
+                if let pm = activeWindow?.pageManager {
+                    if let bookIdx = bookList.firstIndex(where: { $0.name == currentBook }) {
+                        pm.bibleBibleBook = bookIdx
+                    }
+                    onPersistState?()
+                }
+            }
+        }
+
         // Notify WindowManager for synchronized scrolling
         if let window = activeWindow {
             windowManagerRef?.notifyVerseChanged(sourceWindow: window, ordinal: ordinal, key: key)
@@ -1421,11 +1452,23 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         }
         let newChapter = minLoadedChapter - 1
         if newChapter < 1 {
-            bridge.sendResponse(callId: callId, value: "null")
+            // Cross-book: try loading the last chapter of the previous book
+            if let prevBook = previousBook(before: minLoadedBook) {
+                let lastChap = chapterCount(for: prevBook)
+                if let document = loadChapterJSON(book: prevBook, chapter: lastChap) {
+                    minLoadedBook = prevBook
+                    minLoadedChapter = lastChap
+                    bridge.sendResponse(callId: callId, value: document)
+                } else {
+                    bridge.sendResponse(callId: callId, value: "null")
+                }
+            } else {
+                bridge.sendResponse(callId: callId, value: "null")
+            }
             return
         }
         minLoadedChapter = newChapter
-        if let document = loadChapterJSON(book: currentBook, chapter: newChapter) {
+        if let document = loadChapterJSON(book: minLoadedBook, chapter: newChapter) {
             bridge.sendResponse(callId: callId, value: document)
         } else {
             minLoadedChapter = newChapter + 1 // revert
@@ -1438,14 +1481,25 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
             bridge.sendResponse(callId: callId, value: "null")
             return
         }
-        let lastChapter = chapterCount(for: currentBook)
+        let lastChapter = chapterCount(for: maxLoadedBook)
         let newChapter = maxLoadedChapter + 1
         if newChapter > lastChapter {
-            bridge.sendResponse(callId: callId, value: "null")
+            // Cross-book: try loading chapter 1 of the next book
+            if let nextBk = nextBook(after: maxLoadedBook) {
+                if let document = loadChapterJSON(book: nextBk, chapter: 1) {
+                    maxLoadedBook = nextBk
+                    maxLoadedChapter = 1
+                    bridge.sendResponse(callId: callId, value: document)
+                } else {
+                    bridge.sendResponse(callId: callId, value: "null")
+                }
+            } else {
+                bridge.sendResponse(callId: callId, value: "null")
+            }
             return
         }
         maxLoadedChapter = newChapter
-        if let document = loadChapterJSON(book: currentBook, chapter: newChapter) {
+        if let document = loadChapterJSON(book: maxLoadedBook, chapter: newChapter) {
             bridge.sendResponse(callId: callId, value: document)
         } else {
             maxLoadedChapter = newChapter - 1 // revert
@@ -3056,9 +3110,11 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         )
         bridge.emit(event: "add_documents", data: document)
 
-        // Track loaded chapter range for infinite scroll
+        // Track loaded chapter/book range for infinite scroll
         minLoadedChapter = currentChapter
         maxLoadedChapter = currentChapter
+        minLoadedBook = currentBook
+        maxLoadedBook = currentBook
 
         // Restore scroll position only on same-chapter reloads (e.g. display settings change)
         let jumpOrdinal = shouldRestoreScroll ? (lastScrollOrdinal.map { String($0) } ?? "null") : "null"

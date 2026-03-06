@@ -367,3 +367,19 @@
 "disable_sync" = "Disable Sync";
 "disable_sync_warning" = "Data already synced to iCloud will remain. New changes will only be saved locally.";
 
+
+/* Phase H: Module Browser */
+"category_books" = "Books";
+"all_languages_count %lld" = "All Languages (%lld)";
+"refreshing_catalog" = "Refreshing catalog...";
+"no_modules_match_filters" = "No modules match your filters";
+"tap_refresh_to_load" = "Tap Refresh to load available modules";
+"search_modules" = "Search modules";
+
+/* Phase H: StudyPad */
+"studypad_empty" = "Empty StudyPad";
+"studypad_empty_description" = "Add notes or bookmark verses to build your study journal.";
+"add_note" = "Add Note";
+"note" = "Note";
+"new_note" = "New Note";
+"edit_note" = "Edit Note";

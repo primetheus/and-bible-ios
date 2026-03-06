@@ -121,6 +121,12 @@
 "favourite" = "Favourite";
 "underline_style" = "Underline Style";
 "underline_whole_verse" = "Underline Whole Verse";
+"studypad_empty" = "Empty StudyPad";
+"studypad_empty_description" = "Add notes or bookmark verses to build your study journal.";
+"add_note" = "Add Note";
+"note" = "Note";
+"new_note" = "New Note";
+"edit_note" = "Edit Note";
 
 /* ========================================
    Search
@@ -153,10 +159,16 @@
 "bibles" = "Bibles";
 "commentaries" = "Commentaries";
 "dictionaries" = "Dictionaries";
+"category_books" = "Books";
 "install" = "Install";
 "uninstall" = "Uninstall";
 "refresh_catalog" = "Refresh Catalog";
 "repositories" = "Repositories";
+"all_languages_count %lld" = "All Languages (%lld)";
+"refreshing_catalog" = "Refreshing catalog...";
+"no_modules_match_filters" = "No modules match your filters";
+"tap_refresh_to_load" = "Tap Refresh to load available modules";
+"search_modules" = "Search modules";
 
 /* ========================================
    Settings

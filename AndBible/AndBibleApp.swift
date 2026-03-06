@@ -20,7 +20,7 @@ struct AndBibleApp: App {
     /// Core services shared across the app.
     @State private var windowManager: WindowManager
     private let speakService = SpeakService()
-    @State private var syncService = SyncService()
+    @State private var syncService: SyncService
     @State private var searchIndexService = SearchIndexService()
 
     /// Discrete mode persists across launches. The unlock just reveals Bible for this session.
@@ -28,9 +28,20 @@ struct AndBibleApp: App {
     /// Temporary unlock for the current session — does NOT change the persisted setting.
     @State private var isUnlocked = false
 
+    /// UserDefaults key for the iCloud sync toggle.
+    /// Read from UserDefaults (not SwiftData) because we need it before the container is created.
+    static let iCloudSyncEnabledKey = "icloud_sync_enabled"
+
     init() {
-        // Configure SwiftData with all model types
-        let schema = Schema([
+        // Repair any stale migration state before creating the ModelContainer
+        DataMigration.migrateIfNeeded()
+
+        // Read iCloud sync preference from UserDefaults (before container creation)
+        let iCloudEnabled = UserDefaults.standard.bool(forKey: Self.iCloudSyncEnabledKey)
+
+        // -- User data models: keep config name "AndBible" so existing store file is reused.
+        // When iCloud sync is enabled, these models sync via CloudKit. --
+        let cloudModels: [any PersistentModel.Type] = [
             Workspace.self,
             Window.self,
             PageManager.self,
@@ -46,21 +57,43 @@ struct AndBibleApp: App {
             StudyPadTextEntryText.self,
             ReadingPlan.self,
             ReadingPlanDay.self,
+        ]
+
+        // -- Device-local models: never sync, separate store. --
+        let localModels: [any PersistentModel.Type] = [
             Repository.self,
             Setting.self,
-        ])
+        ]
 
-        let modelConfiguration = ModelConfiguration(
+        let allModels = cloudModels + localModels
+        let schema = Schema(allModels)
+
+        // Keep the original config name "AndBible" so SwiftData reuses the existing
+        // "AndBible.store" file. Changing the name would break PersistentIdentifiers.
+        let cloudConfig = ModelConfiguration(
             "AndBible",
-            schema: schema,
-            isStoredInMemoryOnly: false
+            schema: Schema(cloudModels),
+            isStoredInMemoryOnly: false,
+            cloudKitDatabase: iCloudEnabled ? .private("iCloud.org.andbible.ios") : .none
+        )
+
+        let localConfig = ModelConfiguration(
+            "LocalStore",
+            schema: Schema(localModels),
+            isStoredInMemoryOnly: false,
+            cloudKitDatabase: .none
         )
 
         // Set up SWORD module directory before creating any SwordManager
         SwordSetup.ensureModulesReady()
 
+        // Initialize SyncService with current toggle state
+        let sync = SyncService()
+        sync.setInitialState(enabled: iCloudEnabled)
+        self._syncService = State(initialValue: sync)
+
         do {
-            let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
+            let container = try ModelContainer(for: schema, configurations: [cloudConfig, localConfig])
             self.modelContainer = container
 
             // Initialize services that need ModelContext
@@ -90,6 +123,11 @@ struct AndBibleApp: App {
             let bookmarkStore = BookmarkStore(modelContext: context)
             let bookmarkService = BookmarkService(store: bookmarkStore)
             bookmarkService.prepareDefaultLabels()
+            // Ensure system labels use deterministic UUIDs for CloudKit dedup
+            bookmarkService.ensureSystemLabels()
+
+            // Start monitoring iCloud account status
+            sync.startMonitoring(container: container)
         } catch {
             fatalError("Failed to initialize SwiftData: \(error)")
         }

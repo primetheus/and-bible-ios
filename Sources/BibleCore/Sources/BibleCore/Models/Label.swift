@@ -87,6 +87,11 @@ public final class Label {
     public static let unlabeledName = "__UNLABELED__"
     public static let paragraphBreakLabelName = "__PARAGRAPH_BREAK_LABEL__"
 
+    /// Deterministic UUIDs for system labels — ensures cross-device dedup on CloudKit sync.
+    public static let speakLabelId = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+    public static let unlabeledId = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+    public static let paragraphBreakLabelId = UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+
     /// Whether this is a system-reserved label.
     public var isSystemLabel: Bool {
         name == Label.speakLabelName ||

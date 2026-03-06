@@ -48,6 +48,7 @@
 		CA1C01A1D3E74B1F00A1C002 /* CalculatorIcon@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "CalculatorIcon@2x.png"; sourceTree = "<group>"; };
 		CA1C01A1D3E74B1F00A1C003 /* CalculatorIcon@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "CalculatorIcon@3x.png"; sourceTree = "<group>"; };
 		F57750A41A385FA784921EB2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		CA1C01A1D3E74B1F00A1C010 /* AndBible.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AndBible.entitlements; sourceTree = "<group>"; };
 		B83687E30A3647745B9C9D89 /* af */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = af; path = af.lproj/Localizable.strings; sourceTree = "<group>"; };
 		B4DF2B8CE674D3EF067FC84F /* ar */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ar; path = ar.lproj/Localizable.strings; sourceTree = "<group>"; };
 		37EDDC4A77E22D6947ABD3A4 /* az */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = az; path = az.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -122,6 +123,7 @@
 			isa = PBXGroup;
 			children = (
 				AB1FB2406B7E9DD316E296F7 /* AndBibleApp.swift */,
+				CA1C01A1D3E74B1F00A1C010 /* AndBible.entitlements */,
 				6AC3AEB9ADE0BA981610EA58 /* Assets.xcassets */,
 				CA1C01A1D3E74B1F00A1C001 /* CalculatorIcon.png */,
 				CA1C01A1D3E74B1F00A1C002 /* CalculatorIcon@2x.png */,
@@ -476,6 +478,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AndBible/AndBible.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"AndBible/Preview Content\"";
@@ -563,6 +566,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AndBible/AndBible.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"AndBible/Preview Content\"";

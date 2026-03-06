@@ -3302,7 +3302,7 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
     // MARK: - Default Labels
 
     /// Fixed UUID for the "Unlabeled" system label, sent to Vue.js so bookmarks always have a valid label reference.
-    private static let unlabeledLabelId = "00000000-0000-0000-0000-000000000001"
+    private static let unlabeledLabelId = BibleCore.Label.unlabeledId.uuidString
 
     /// Recently used label IDs (most recent first, max 5).
     private var recentLabelIds: [String] = []

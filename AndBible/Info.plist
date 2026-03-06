@@ -45,6 +45,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>remote-notification</string>
 	</array>
 	<key>NSMotionUsageDescription</key>
 	<string>AndBible uses motion sensors for tilt-to-scroll functionality.</string>

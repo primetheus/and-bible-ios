@@ -139,6 +139,9 @@ public struct SettingsView: View {
                 NavigationLink(String(localized: "import_export")) {
                     ImportExportView()
                 }
+                NavigationLink(String(localized: "icloud_sync")) {
+                    SyncSettingsView()
+                }
                 NavigationLink(String(localized: "labels")) {
                     LabelManagerView()
                 }

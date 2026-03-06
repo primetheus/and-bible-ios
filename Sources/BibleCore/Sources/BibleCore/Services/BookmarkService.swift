@@ -212,6 +212,32 @@ public final class BookmarkService {
 
     // MARK: - Labels CRUD
 
+    /// Ensure system labels exist with deterministic UUIDs for CloudKit cross-device dedup.
+    /// If a system label already exists with a different UUID, update it to the canonical UUID.
+    /// If it doesn't exist, create it. System labels are invisible to users.
+    public func ensureSystemLabels() {
+        let systemLabels: [(name: String, id: UUID)] = [
+            (Label.speakLabelName, Label.speakLabelId),
+            (Label.unlabeledName, Label.unlabeledId),
+            (Label.paragraphBreakLabelName, Label.paragraphBreakLabelId),
+        ]
+
+        let allLabels = store.labels(includeSystem: true)
+
+        for (name, canonicalId) in systemLabels {
+            if let existing = allLabels.first(where: { $0.name == name }) {
+                // Already exists — fix UUID if needed
+                if existing.id != canonicalId {
+                    existing.id = canonicalId
+                }
+            } else if store.label(id: canonicalId) == nil {
+                // Create with deterministic UUID
+                let label = Label(id: canonicalId, name: name)
+                store.insert(label)
+            }
+        }
+    }
+
     /// Seed default highlight labels on first launch (matches Android).
     /// Only creates labels if no user labels exist yet.
     public func prepareDefaultLabels() {

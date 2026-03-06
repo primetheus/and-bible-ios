@@ -388,13 +388,6 @@
 "reader_no_epub_loaded" = "No EPUB is loaded. Open one from the EPUB Library first.";
 
 /* ========================================
-   Sync
-   ======================================== */
-"icloud_sync" = "iCloud Sync";
-"syncing" = "Syncing...";
-"last_synced" = "Last synced";
-
-/* ========================================
    Backup (legacy keys)
    ======================================== */
 "backup_data" = "Backup Data";
@@ -495,3 +488,27 @@
 "help_workspaces_body" = "Save different window arrangements as workspaces. Switch between them from the overflow menu.";
 "help_hidden" = "Hidden Features";
 "help_hidden_body" = "Double-tap the Bible text for fullscreen mode. Enable Tilt to Scroll in the overflow menu. Discrete calculator mode is available in Settings.";
+
+/* iCloud Sync */
+"icloud_sync" = "iCloud Sync";
+"icloud_sync_enabled" = "Enable iCloud Sync";
+"icloud_sync_description" = "Sync bookmarks, labels, workspaces, reading plans, and notes across your devices via iCloud. Requires an iCloud account.";
+"sync_status" = "Status";
+"status" = "Status";
+"icloud_account" = "iCloud Account";
+"last_sync" = "Last Sync";
+"sync_active" = "Active";
+"sync_disabled" = "Disabled";
+"syncing" = "Syncing…";
+"no_icloud_account" = "No iCloud Account";
+"icloud_signed_in" = "Signed In";
+"icloud_restricted" = "iCloud Restricted";
+"icloud_could_not_determine" = "Could Not Determine iCloud Status";
+"icloud_temporarily_unavailable" = "iCloud Temporarily Unavailable";
+"sync_data_included" = "Synced Data";
+"sync_what_syncs" = "Bookmarks, labels, notes, workspaces, windows, reading plan progress, and StudyPad entries are synced. Module downloads and app settings stay on this device.";
+"restart_required" = "Restart Required";
+"restart_to_apply_sync" = "Please restart the app to apply sync changes.";
+"disable_sync_title" = "Disable iCloud Sync?";
+"disable_sync" = "Disable Sync";
+"disable_sync_warning" = "Data already synced to iCloud will remain. New changes will only be saved locally.";

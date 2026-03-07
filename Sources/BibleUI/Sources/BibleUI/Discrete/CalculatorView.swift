@@ -27,6 +27,7 @@ public struct CalculatorView: View {
     @State private var currentOperation: Operation?
     @State private var secretTapCount = 0
     @State private var shouldShowBible = false
+    @AppStorage("calculator_pin") private var calculatorPin = "1234"
 
     private let secretTapThreshold = 7 // Taps on "=" to unlock Bible
 
@@ -127,7 +128,15 @@ public struct CalculatorView: View {
             calculateResult()
             currentOperation = nil
 
-            // Secret unlock gesture: tap "=" multiple times
+            // PIN-based unlock: if display matches PIN
+            let pin = calculatorPin.trimmingCharacters(in: .whitespaces)
+            let displayValue = display.trimmingCharacters(in: .whitespaces)
+            if !pin.isEmpty && displayValue == pin {
+                onUnlock()
+                return
+            }
+
+            // Fallback: secret unlock gesture — tap "=" multiple times
             secretTapCount += 1
             if secretTapCount >= secretTapThreshold {
                 secretTapCount = 0

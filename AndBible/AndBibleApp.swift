@@ -23,8 +23,12 @@ struct AndBibleApp: App {
     @State private var syncService: SyncService
     @State private var searchIndexService = SearchIndexService()
 
-    /// Discrete mode persists across launches. The unlock just reveals Bible for this session.
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// Discrete mode persists across launches — controls icon switching.
     @AppStorage("discrete_mode") private var isDiscreteMode = false
+    /// When enabled, calculator gate appears on every app launch/resume.
+    @AppStorage("show_calculator") private var showCalculator = false
     /// Temporary unlock for the current session — does NOT change the persisted setting.
     @State private var isUnlocked = false
 
@@ -136,7 +140,7 @@ struct AndBibleApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if isDiscreteMode && !isUnlocked {
+                if showCalculator && !isUnlocked {
                     CalculatorView {
                         withAnimation {
                             isUnlocked = true
@@ -149,23 +153,41 @@ struct AndBibleApp: App {
                         .environment(searchIndexService)
                 }
             }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    // Reconcile icon state when app becomes active
+                    // (setAlternateIconName fails if called before app is fully active)
+                    updateAppIcon(discrete: isDiscreteMode)
+                }
+            }
             .onChange(of: isDiscreteMode) { _, newValue in
-                // When user turns off discrete mode in Settings, clear unlock state
+                updateAppIcon(discrete: newValue)
+            }
+            .onChange(of: showCalculator) { _, newValue in
+                // When user turns off calculator gate, clear unlock state
                 if !newValue {
                     isUnlocked = false
                 }
-                updateAppIcon(discrete: newValue)
             }
         }
         .modelContainer(modelContainer)
     }
 
-    private func updateAppIcon(discrete: Bool) {
+    private func updateAppIcon(discrete: Bool, retryCount: Int = 0) {
         #if os(iOS)
         let iconName: String? = discrete ? "CalculatorIcon" : nil
+        let currentIcon = UIApplication.shared.alternateIconName
         guard UIApplication.shared.supportsAlternateIcons,
-              UIApplication.shared.alternateIconName != iconName else { return }
-        UIApplication.shared.setAlternateIconName(iconName)
+              currentIcon != iconName else { return }
+        UIApplication.shared.setAlternateIconName(iconName) { error in
+            if error != nil, retryCount < 3 {
+                // Retry with increasing delay (startup timing can cause transient failures)
+                let delay = Double(retryCount + 1) * 1.5
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    self.updateAppIcon(discrete: discrete, retryCount: retryCount + 1)
+                }
+            }
+        }
         #endif
     }
 }

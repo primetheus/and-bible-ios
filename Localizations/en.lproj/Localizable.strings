@@ -219,10 +219,21 @@
 "settings_data" = "Data";
 "import_export" = "Import & Export";
 
-/* Security */
-"settings_security" = "Security";
-"discrete_mode" = "Discrete Mode";
-"discrete_mode_description" = "When enabled, the app always launches as a calculator. Tap = seven times to temporarily access the Bible. Disable this toggle to return to normal.";
+/* Security — Settings for the persecuted */
+"settings_security" = "Settings for the persecuted";
+"discrete_mode" = "Hide religious symbols";
+"discrete_mode_description" = "Show a different icon in the launcher. On iOS, the app name cannot be changed at runtime.";
+"show_calculator" = "Calculator";
+"show_calculator_description" = "Before entering the app, calculator screen is displayed. In it, you can do standard calculus, and when you want to enter the app, you just type your PIN code (default is 1234) and then press = button. You can set up a custom PIN code by Calculator PIN setting.";
+"calculator_pin" = "Calculator PIN";
+"calculator_pin_placeholder" = "1234";
+"calculator_pin_description" = "PIN code to enter the app when the calculator is shown.";
+"discrete_help_title" = "Read this first!";
+"discrete_help_summary" = "Instructions for the settings and information about specific discrete build.";
+"discrete_help_par1" = "Before entering the app, the calculator screen is displayed. In it, you can do standard calculus, and when you want to enter the app, you just type your PIN code (default is 1234) and then press the = button.";
+"discrete_help_par2" = "You can set up a custom PIN code by Calculator PIN setting. You can also tap = seven times quickly as a fallback.";
+"discrete_help_par3" = "The 'Hide religious symbols' setting changes the app icon to a calculator icon in the launcher.";
+"discrete_help_ios_note" = "Note: On iOS, the app icon changes to a calculator when 'Hide religious symbols' is enabled, but the app display name cannot be changed at runtime due to platform limitations.";
 
 /* About */
 "settings_language" = "Language";

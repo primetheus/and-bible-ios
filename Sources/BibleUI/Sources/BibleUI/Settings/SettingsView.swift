@@ -20,8 +20,11 @@ public struct SettingsView: View {
     @State private var preferredHebrewDict: String = ""
     @State private var preferredGreekDict: String = ""
     @AppStorage("discrete_mode") private var discreteMode = false
+    @AppStorage("show_calculator") private var showCalculator = false
+    @AppStorage("calculator_pin") private var calculatorPin = "1234"
     @State private var selectedLanguage: String = ""
     @State private var showRestartAlert = false
+    @State private var showDiscreteHelp = false
 
     /// Available languages with their .lproj directories in the app bundle.
     private static let availableLanguages: [(code: String, name: String)] = {
@@ -148,8 +151,46 @@ public struct SettingsView: View {
             }
 
             Section(String(localized: "settings_security")) {
+                Button {
+                    showDiscreteHelp = true
+                } label: {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                        VStack(alignment: .leading) {
+                            Text(String(localized: "discrete_help_title"))
+                                .foregroundStyle(.primary)
+                            Text(String(localized: "discrete_help_summary"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 Toggle(String(localized: "discrete_mode"), isOn: $discreteMode)
                 Text(String(localized: "discrete_mode_description"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle(String(localized: "show_calculator"), isOn: $showCalculator)
+                Text(String(localized: "show_calculator_description"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Text(String(localized: "calculator_pin"))
+                    Spacer()
+                    TextField(String(localized: "calculator_pin_placeholder"), text: $calculatorPin)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 100)
+                        .onChange(of: calculatorPin) { _, newValue in
+                            // Strip non-numeric characters
+                            let filtered = newValue.filter { $0.isNumber }
+                            if filtered != newValue { calculatorPin = filtered }
+                        }
+                }
+                Text(String(localized: "calculator_pin_description"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -168,6 +209,29 @@ public struct SettingsView: View {
             Button(String(localized: "ok")) {}
         } message: {
             Text(String(localized: "language_restart_required"))
+        }
+        .sheet(isPresented: $showDiscreteHelp) {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(String(localized: "discrete_help_par1"))
+                        Text(String(localized: "discrete_help_par2"))
+                        Text(String(localized: "discrete_help_par3"))
+                        Text(String(localized: "discrete_help_ios_note"))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                }
+                .navigationTitle(String(localized: "settings_security"))
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(String(localized: "done")) { showDiscreteHelp = false }
+                    }
+                }
+            }
         }
         .onAppear {
             // Load installed dictionary modules

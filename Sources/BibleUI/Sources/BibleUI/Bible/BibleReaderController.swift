@@ -1981,6 +1981,31 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         #endif
     }
 
+    /// Look up the currently selected text in configured plain dictionaries.
+    /// Matches Android parity for `disabled_word_lookup_dictionaries`:
+    /// all plain dictionaries are enabled unless explicitly disabled.
+    func lookupSelectionInDictionaries() {
+        guard !selectedText.isEmpty else { return }
+        let query = normalizeWordLookupQuery(selectedText)
+        guard !query.isEmpty else {
+            onShowToast?(String(
+                localized: "word_not_found_in_dictionaries",
+                defaultValue: "Word not found in any dictionary"
+            ))
+            return
+        }
+        guard let multiDocJSON = buildWordLookupMultiDocJSON(query: query) else {
+            onShowToast?(String(
+                localized: "word_not_found_in_dictionaries",
+                defaultValue: "Word not found in any dictionary"
+            ))
+            return
+        }
+        let configJSON = buildConfigJSON()
+        onShowStrongsDefinition?(multiDocJSON, configJSON)
+        bridge.clearSelection()
+    }
+
     // MARK: - BibleBridgeDelegate — Content Actions
 
     /// Callback for presenting action sheets (set by BibleReaderView)
@@ -1991,6 +2016,8 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
     private(set) var hasActiveSelection = false
     /// The currently selected text.
     private(set) var selectedText: String = ""
+    /// Whether any plain word-lookup dictionaries are currently available.
+    var hasWordLookupDictionaries: Bool { !findWordLookupDictionaryModules().isEmpty }
 
     public func bridge(_ bridge: BibleBridge, shareVerse bookInitials: String, startOrdinal: Int, endOrdinal: Int) {
         let text = getVerseText(startOrdinal: startOrdinal, endOrdinal: endOrdinal)
@@ -2521,34 +2548,42 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         var result: [SwordModule] = []
         var seen = Set<String>()
 
-        // 1. User-preferred dictionary first
-        let prefKey = isHebrew ? "preferred_hebrew_dict" : "preferred_greek_dict"
-        if let preferred = settingsStore?.getString(prefKey), !preferred.isEmpty,
-           let mod = mgr.module(named: preferred), seen.insert(preferred).inserted {
-            result.append(mod)
+        // 1. Explicit user selection (Android parity: when non-empty, use only selected modules)
+        let selectionKey: AppPreferenceKey = isHebrew ? .strongsHebrewDictionary : .strongsGreekDictionary
+        let selectedNames = settingsStore?.getStringSet(selectionKey) ?? []
+        if !selectedNames.isEmpty {
+            for name in selectedNames where seen.insert(name).inserted {
+                if let mod = mgr.module(named: name),
+                   (mod.info.category == .dictionary || mod.info.category == .glossary),
+                   mod.info.features.contains(feature) {
+                    result.append(mod)
+                }
+            }
+            // Fall back to runtime defaults when persisted values are stale/invalid.
+            if !result.isEmpty {
+                return result
+            }
         }
 
-        // 2. All modules with the matching feature flag
-        for info in allModules where info.features.contains(feature) {
+        // 2. Runtime default: dictionary/glossary modules with matching feature
+        for info in allModules where
+            (info.category == .dictionary || info.category == .glossary) &&
+                info.features.contains(feature) {
             if seen.insert(info.name).inserted, let mod = mgr.module(named: info.name) {
                 result.append(mod)
             }
         }
 
-        // 3. Known lexicon module names
+        if !result.isEmpty {
+            return result
+        }
+
+        // 3. Known lexicon module names fallback
         let lexiconNames = isHebrew
             ? ["StrongsHebrew", "OSHB", "BDB"]
             : ["StrongsGreek", "StrongsRealGreek", "Thayer", "ISBE"]
         for name in lexiconNames {
             if seen.insert(name).inserted, let mod = mgr.module(named: name) {
-                result.append(mod)
-            }
-        }
-
-        // 4. Any other dictionary module as fallback (only if nothing found so far)
-        if result.isEmpty {
-            if let info = allModules.first(where: { $0.category == .dictionary }),
-               let mod = mgr.module(named: info.name) {
                 result.append(mod)
             }
         }
@@ -2563,21 +2598,95 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         var result: [SwordModule] = []
         var seen = Set<String>()
 
-        // Check for modules with morphology features
-        for info in allModules where info.features.contains(.greekParse) || info.features.contains(.hebrewParse) {
+        // 1. Explicit user selection (Android parity: when non-empty, use only selected modules)
+        let selectedNames = settingsStore?.getStringSet(.robinsonGreekMorphology) ?? []
+        if !selectedNames.isEmpty {
+            for name in selectedNames where seen.insert(name).inserted {
+                if let mod = mgr.module(named: name),
+                   (mod.info.category == .dictionary || mod.info.category == .glossary),
+                   mod.info.features.contains(.greekParse) {
+                    result.append(mod)
+                }
+            }
+            // Fall back to runtime defaults when persisted values are stale/invalid.
+            if !result.isEmpty {
+                return result
+            }
+        }
+
+        // 2. Runtime default: dictionary/glossary modules with Greek morphology
+        for info in allModules where
+            (info.category == .dictionary || info.category == .glossary) &&
+                info.features.contains(.greekParse) {
             if seen.insert(info.name).inserted, let mod = mgr.module(named: info.name) {
                 result.append(mod)
             }
         }
 
-        // Fallback to known morphology module names
-        for name in ["Robinson", "Packard"] {
+        if !result.isEmpty {
+            return result
+        }
+
+        // 3. Known morphology module fallback
+        for name in ["Robinson"] {
             if seen.insert(name).inserted, let mod = mgr.module(named: name) {
                 result.append(mod)
             }
         }
 
         return result
+    }
+
+    /// Find plain dictionaries used by "Lookup in dictionaries".
+    /// Mirrors Android `SwordDocumentFacade.wordLookupDictionaries`.
+    private func findWordLookupDictionaryModules() -> [SwordModule] {
+        guard let mgr = swordManager else { return [] }
+        let disabled = Set(settingsStore?.getStringSet(.disabledWordLookupDictionaries) ?? [])
+        let allModules = mgr.installedModules()
+
+        var result: [SwordModule] = []
+        for info in allModules where
+            info.category == .dictionary &&
+                !info.features.contains(.greekDef) &&
+                !info.features.contains(.hebrewDef) &&
+                !info.features.contains(.greekParse) &&
+                !disabled.contains(info.name) {
+            if let module = mgr.module(named: info.name) {
+                result.append(module)
+            }
+        }
+        return result
+    }
+
+    private func normalizeWordLookupQuery(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: #"[.,;:!?"'()\[\]]+$"#, with: "", options: .regularExpression)
+    }
+
+    private func buildWordLookupMultiDocJSON(query: String) -> String? {
+        let modules = findWordLookupDictionaryModules()
+        guard !modules.isEmpty else { return nil }
+
+        // Try common case variants, while still requiring exact key match after normalization.
+        let keyOptions = [query, query.lowercased(), query.capitalized]
+        var fragments: [(xml: String, key: String, keyName: String, bookInitials: String, bookAbbreviation: String, features: String)] = []
+
+        for mod in modules {
+            guard let html = lookupInModule(mod, keyOptions: keyOptions) else { continue }
+            let escapedTitle = escapeXML(query)
+            let xml = "<div><title type=\"x-gen\">\(escapedTitle)</title><div type=\"paragraph\">\(html)</div></div>"
+            fragments.append((
+                xml: xml,
+                key: "\(mod.info.name)--\(query)",
+                keyName: query,
+                bookInitials: mod.info.name,
+                bookAbbreviation: String(mod.info.name.prefix(10)),
+                features: "{}"
+            ))
+        }
+
+        guard !fragments.isEmpty else { return nil }
+        return buildMultiFragmentJSON(fragments: fragments)
     }
 
     /// Handle a single cross-reference link: osis://?osis=Matt.1.1&v11n=KJV
@@ -3014,6 +3123,8 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
     public var onToggleFullScreen: (() -> Void)?
 
     public func bridgeDidRequestToggleFullScreen(_ bridge: BibleBridge) {
+        // Match Android: double-tap fullscreen can be disabled by user preference.
+        guard appPreferenceBool(.doubleTapToFullscreen) else { return }
         onToggleFullScreen?()
     }
 
@@ -3797,18 +3908,52 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
     /// Called after content load and when active window changes.
     func emitActiveState() {
         let isActive = computeIsActiveWindow()
-        let hasIndicator = isActive && (windowManagerRef?.visibleWindows.count ?? 0) > 1
+        let indicatorEnabled = appPreferenceBool(.showActiveWindowIndicator)
+        let hasIndicator = indicatorEnabled && isActive && (windowManagerRef?.visibleWindows.count ?? 0) > 1
         bridge.emit(event: "set_active", data: "{\"hasActiveIndicator\":\(hasIndicator),\"isActive\":\(isActive)}")
     }
 
     // MARK: - JSON Builders
+
+    private func appPreferenceBool(_ key: AppPreferenceKey) -> Bool {
+        settingsStore?.getBool(key) ?? (AppPreferenceRegistry.boolDefault(for: key) ?? false)
+    }
+
+    private func appPreferenceInt(_ key: AppPreferenceKey) -> Int {
+        settingsStore?.getInt(key) ?? (AppPreferenceRegistry.intDefault(for: key) ?? 0)
+    }
+
+    private func appPreferenceStringSet(_ key: AppPreferenceKey) -> [String] {
+        settingsStore?.getStringSet(key) ?? []
+    }
+
+    private static func jsonStringArray(_ values: [String]) -> String {
+        let escaped = values.map {
+            $0
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+        }
+        return "[" + escaped.map { "\"\($0)\"" }.joined(separator: ",") + "]"
+    }
 
     private func buildConfigJSON() -> String {
         let s = displaySettings
         let d = TextDisplaySettings.appDefaults
         // Compute active window state (matching Android: isActive = activeWindow.id == window.id)
         let isActiveWindow = computeIsActiveWindow()
-        let hasActiveIndicator = isActiveWindow && (windowManagerRef?.visibleWindows.count ?? 0) > 1
+        let activeIndicatorEnabled = appPreferenceBool(.showActiveWindowIndicator)
+        let hasActiveIndicator = activeIndicatorEnabled && isActiveWindow && (windowManagerRef?.visibleWindows.count ?? 0) > 1
+
+        // Parity-managed appSettings values from persisted preferences.
+        let showErrorBox = appPreferenceBool(.showErrorBox)
+        let monochromeMode = appPreferenceBool(.monochromeMode)
+        let disableAnimations = appPreferenceBool(.disableAnimations)
+        let disableClickToEdit = appPreferenceBool(.disableClickToEdit)
+        let fontSizeMultiplierPercent = max(10, appPreferenceInt(.fontSizeMultiplier))
+        let fontSizeMultiplier = Double(fontSizeMultiplierPercent) / 100.0
+        let disableBibleModalButtonsJSON = Self.jsonStringArray(appPreferenceStringSet(.disableBibleBookmarkModalButtons))
+        let disableGenericModalButtonsJSON = Self.jsonStringArray(appPreferenceStringSet(.disableGenBookmarkModalButtons))
+        let enabledExperimentalFeaturesJSON = Self.jsonStringArray(appPreferenceStringSet(.experimentalFeatures))
 
         // Build recent labels JSON array
         let recentJSON = "[" + recentLabelIds.map { "\"\($0)\"" }.joined(separator: ",") + "]"
@@ -3834,7 +3979,7 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         let hideCompareJSON = "[" + hiddenCompareDocuments.map { "\"\($0)\"" }.joined(separator: ",") + "]"
 
         return """
-        {"config":{"developmentMode":false,"testMode":false,"showAnnotations":true,"showChapterNumbers":true,"showVerseNumbers":\(s.showVerseNumbers ?? d.showVerseNumbers ?? true),"strongsMode":\(s.strongsMode ?? d.strongsMode ?? 0),"showMorphology":\(s.showMorphology ?? d.showMorphology ?? false),"showRedLetters":\(s.showRedLetters ?? d.showRedLetters ?? true),"showVersePerLine":\(s.showVersePerLine ?? d.showVersePerLine ?? false),"showNonCanonical":true,"makeNonCanonicalItalic":true,"showSectionTitles":\(s.showSectionTitles ?? d.showSectionTitles ?? true),"showStrongsSeparately":false,"showFootNotes":\(s.showFootNotes ?? d.showFootNotes ?? false),"showFootNotesInline":\(s.showFootNotesInline ?? d.showFootNotesInline ?? false),"showXrefs":\(s.showXrefs ?? d.showXrefs ?? false),"expandXrefs":\(s.expandXrefs ?? d.expandXrefs ?? false),"fontFamily":"\(s.fontFamily ?? d.fontFamily ?? "sans-serif")","fontSize":\(s.fontSize ?? d.fontSize ?? 18),"disableBookmarking":false,"showBookmarks":\(s.showBookmarks ?? d.showBookmarks ?? true),"showMyNotes":\(s.showMyNotes ?? d.showMyNotes ?? true),"bookmarksHideLabels":[],"bookmarksAssignLabels":[],"colors":{"dayBackground":\(s.dayBackground ?? d.dayBackground ?? -1),"dayNoise":\(s.dayNoise ?? d.dayNoise ?? 0),"nightBackground":\(s.nightBackground ?? d.nightBackground ?? -16777216),"nightNoise":\(s.nightNoise ?? d.nightNoise ?? 0),"dayTextColor":\(s.dayTextColor ?? d.dayTextColor ?? -16777216),"nightTextColor":\(s.nightTextColor ?? d.nightTextColor ?? -1)},"hyphenation":\(s.hyphenation ?? d.hyphenation ?? true),"lineSpacing":\(s.lineSpacing ?? d.lineSpacing ?? 10),"justifyText":\(s.justifyText ?? d.justifyText ?? false),"marginSize":{"marginLeft":\(s.marginLeft ?? d.marginLeft ?? 2),"marginRight":\(s.marginRight ?? d.marginRight ?? 2),"maxWidth":\(s.maxWidth ?? d.maxWidth ?? 600)},"topMargin":\(s.topMargin ?? d.topMargin ?? 0),"showPageNumber":\(s.showPageNumber ?? d.showPageNumber ?? false)},"appSettings":{"nightMode":\(nightMode),"errorBox":false,"favouriteLabels":\(favouriteJSON),"recentLabels":\(recentJSON),"studyPadCursors":\(cursorsJSON),"autoAssignLabels":\(autoAssignJSON),"hideCompareDocuments":\(hideCompareJSON),"activeWindow":\(isActiveWindow),"rightToLeft":false,"actionMode":false,"hasActiveIndicator":\(hasActiveIndicator),"activeSince":\(Int(Date().timeIntervalSince1970 * 1000) - 1000),"limitAmbiguousModalSize":false,"windowId":"","disableBibleModalButtons":[],"disableGenericModalButtons":[],"monochromeMode":false,"disableAnimations":false,"disableClickToEdit":false,"fontSizeMultiplier":1.0,"enabledExperimentalFeatures":[]},"initial":false}
+        {"config":{"developmentMode":false,"testMode":false,"showAnnotations":true,"showChapterNumbers":true,"showVerseNumbers":\(s.showVerseNumbers ?? d.showVerseNumbers ?? true),"strongsMode":\(s.strongsMode ?? d.strongsMode ?? 0),"showMorphology":\(s.showMorphology ?? d.showMorphology ?? false),"showRedLetters":\(s.showRedLetters ?? d.showRedLetters ?? true),"showVersePerLine":\(s.showVersePerLine ?? d.showVersePerLine ?? false),"showNonCanonical":true,"makeNonCanonicalItalic":true,"showSectionTitles":\(s.showSectionTitles ?? d.showSectionTitles ?? true),"showStrongsSeparately":false,"showFootNotes":\(s.showFootNotes ?? d.showFootNotes ?? false),"showFootNotesInline":\(s.showFootNotesInline ?? d.showFootNotesInline ?? false),"showXrefs":\(s.showXrefs ?? d.showXrefs ?? false),"expandXrefs":\(s.expandXrefs ?? d.expandXrefs ?? false),"fontFamily":"\(s.fontFamily ?? d.fontFamily ?? "sans-serif")","fontSize":\(s.fontSize ?? d.fontSize ?? 18),"disableBookmarking":false,"showBookmarks":\(s.showBookmarks ?? d.showBookmarks ?? true),"showMyNotes":\(s.showMyNotes ?? d.showMyNotes ?? true),"bookmarksHideLabels":[],"bookmarksAssignLabels":[],"colors":{"dayBackground":\(s.dayBackground ?? d.dayBackground ?? -1),"dayNoise":\(s.dayNoise ?? d.dayNoise ?? 0),"nightBackground":\(s.nightBackground ?? d.nightBackground ?? -16777216),"nightNoise":\(s.nightNoise ?? d.nightNoise ?? 0),"dayTextColor":\(s.dayTextColor ?? d.dayTextColor ?? -16777216),"nightTextColor":\(s.nightTextColor ?? d.nightTextColor ?? -1)},"hyphenation":\(s.hyphenation ?? d.hyphenation ?? true),"lineSpacing":\(s.lineSpacing ?? d.lineSpacing ?? 10),"justifyText":\(s.justifyText ?? d.justifyText ?? false),"marginSize":{"marginLeft":\(s.marginLeft ?? d.marginLeft ?? 2),"marginRight":\(s.marginRight ?? d.marginRight ?? 2),"maxWidth":\(s.maxWidth ?? d.maxWidth ?? 600)},"topMargin":\(s.topMargin ?? d.topMargin ?? 0),"showPageNumber":\(s.showPageNumber ?? d.showPageNumber ?? false)},"appSettings":{"nightMode":\(nightMode),"errorBox":\(showErrorBox),"favouriteLabels":\(favouriteJSON),"recentLabels":\(recentJSON),"studyPadCursors":\(cursorsJSON),"autoAssignLabels":\(autoAssignJSON),"hideCompareDocuments":\(hideCompareJSON),"activeWindow":\(isActiveWindow),"rightToLeft":false,"actionMode":false,"hasActiveIndicator":\(hasActiveIndicator),"activeSince":\(Int(Date().timeIntervalSince1970 * 1000) - 1000),"limitAmbiguousModalSize":false,"windowId":"","disableBibleModalButtons":\(disableBibleModalButtonsJSON),"disableGenericModalButtons":\(disableGenericModalButtonsJSON),"monochromeMode":\(monochromeMode),"disableAnimations":\(disableAnimations),"disableClickToEdit":\(disableClickToEdit),"fontSizeMultiplier":\(fontSizeMultiplier),"enabledExperimentalFeatures":\(enabledExperimentalFeaturesJSON)},"initial":false}
         """
     }
 

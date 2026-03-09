@@ -267,6 +267,7 @@ extension BibleWebView {
         webView.scrollView.delaysContentTouches = false
         webView.scrollView.canCancelContentTouches = true
         webView.scrollView.delegate = coordinator
+        coordinator.installSwipeRecognizersIfNeeded(on: webView)
         #endif
 
         bridge.webView = webView

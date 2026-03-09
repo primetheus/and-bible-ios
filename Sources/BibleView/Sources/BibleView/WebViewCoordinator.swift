@@ -15,6 +15,7 @@ public class WebViewCoordinator: NSObject, WKNavigationDelegate {
     weak var webView: WKWebView?
     #if os(iOS)
     private var lastUserScrollOffsetY: CGFloat?
+    private var didInstallSwipeRecognizers = false
     #endif
 
     init(bridge: BibleBridge) {
@@ -77,7 +78,43 @@ public class WebViewCoordinator: NSObject, WKNavigationDelegate {
 }
 
 #if os(iOS)
-extension WebViewCoordinator: UIScrollViewDelegate {
+extension WebViewCoordinator: UIScrollViewDelegate, UIGestureRecognizerDelegate {
+    func installSwipeRecognizersIfNeeded(on webView: WKWebView) {
+        guard !didInstallSwipeRecognizers else { return }
+        didInstallSwipeRecognizers = true
+
+        let left = UISwipeGestureRecognizer(target: self, action: #selector(handleHorizontalSwipe(_:)))
+        left.direction = .left
+        left.cancelsTouchesInView = false
+        left.delegate = self
+
+        let right = UISwipeGestureRecognizer(target: self, action: #selector(handleHorizontalSwipe(_:)))
+        right.direction = .right
+        right.cancelsTouchesInView = false
+        right.delegate = self
+
+        webView.addGestureRecognizer(left)
+        webView.addGestureRecognizer(right)
+    }
+
+    @objc private func handleHorizontalSwipe(_ recognizer: UISwipeGestureRecognizer) {
+        switch recognizer.direction {
+        case .left:
+            bridge.onNativeHorizontalSwipe?(.left)
+        case .right:
+            bridge.onNativeHorizontalSwipe?(.right)
+        default:
+            break
+        }
+    }
+
+    public func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        true
+    }
+
     public func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         lastUserScrollOffsetY = scrollView.contentOffset.y
     }

@@ -50,6 +50,7 @@ public struct BibleReaderView: View {
     @Environment(WindowManager.self) private var windowManager
     @Environment(SearchIndexService.self) private var searchIndexService
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showBookChooser = false
     @State private var showSearch = false
     @State private var showBookmarks = false
@@ -61,6 +62,7 @@ public struct BibleReaderView: View {
     @State private var showSpeakControls = false
     @State private var displaySettings: TextDisplaySettings = .appDefaults
     @State private var nightMode = false
+    @State private var nightModeMode = AppPreferenceRegistry.stringDefault(for: .nightModePref3) ?? NightModeSetting.system.rawValue
     @StateObject private var speakService = SpeakService()
     @State private var shareText: String?
     @State private var crossReferences: [CrossReference]?
@@ -72,6 +74,14 @@ public struct BibleReaderView: View {
     @State private var isFullScreen = false
     @State private var navigateToVersePref = AppPreferenceRegistry.boolDefault(for: .navigateToVersePref) ?? false
     @State private var autoFullscreenPref = AppPreferenceRegistry.boolDefault(for: .autoFullscreenPref) ?? false
+    @State private var bibleViewSwipeMode =
+        AppPreferenceRegistry.stringDefault(for: .bibleViewSwipeMode) ?? "CHAPTER"
+    @State private var fullScreenHideButtonsPref =
+        AppPreferenceRegistry.boolDefault(for: .fullScreenHideButtonsPref) ?? true
+    @State private var hideWindowButtonsPref =
+        AppPreferenceRegistry.boolDefault(for: .hideWindowButtons) ?? false
+    @State private var hideBibleReferenceOverlayPref =
+        AppPreferenceRegistry.boolDefault(for: .hideBibleReferenceOverlay) ?? false
     @State private var lastFullScreenByDoubleTap = false
     @State private var autoFullscreenDirectionDown: Bool?
     @State private var autoFullscreenDistance: Double = 0
@@ -107,6 +117,37 @@ public struct BibleReaderView: View {
         return "\(ctrl.currentBook) \(ctrl.currentChapter)"
     }
 
+    private var preferredColorSchemeOverride: ColorScheme? {
+        switch NightModeSettingsResolver.effectiveMode(from: nightModeMode) {
+        case .system:
+            return nil
+        case .automatic, .manual:
+            return nightMode ? .dark : .light
+        }
+    }
+
+    private var isNightModeQuickToggleEnabled: Bool {
+        NightModeSettingsResolver.isManualMode(rawValue: nightModeMode)
+    }
+
+    private var shouldShowWindowTabBar: Bool {
+        !isFullScreen || !fullScreenHideButtonsPref
+    }
+
+    private var shouldShowBibleReferenceOverlay: Bool {
+        isFullScreen &&
+            !hideBibleReferenceOverlayPref &&
+            focusedController?.currentCategory == .bible
+    }
+
+    private var bibleReferenceOverlayBottomPadding: CGFloat {
+        var padding: CGFloat = shouldShowWindowTabBar ? 58 : 16
+        if speakService.isSpeaking {
+            padding += 56
+        }
+        return padding
+    }
+
     public init() {}
 
     public var body: some View {
@@ -126,7 +167,7 @@ public struct BibleReaderView: View {
             }
 
             // Bottom window tab bar — hidden in fullscreen mode
-            if !isFullScreen {
+            if shouldShowWindowTabBar {
                 WindowTabBar(
                     onShowToast: { text in
                         toastWorkItem?.cancel()
@@ -149,6 +190,22 @@ public struct BibleReaderView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: isFullScreen)
         .overlay(alignment: .bottom) {
+            if shouldShowBibleReferenceOverlay {
+                Text(currentReference)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(
+                        Capsule().strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
+                    )
+                    .padding(.bottom, bibleReferenceOverlayBottomPadding)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .bottom) {
             if let message = toastMessage {
                 Text(message)
                     .font(.subheadline)
@@ -168,9 +225,19 @@ public struct BibleReaderView: View {
         .onAppear {
             // Load persisted settings
             let store = SettingsStore(modelContext: modelContext)
-            nightMode = store.getBool("night_mode")
+            nightModeMode = store.getString(.nightModePref3)
+            let manualNightMode = store.getBool("night_mode")
+            nightMode = NightModeSettingsResolver.isNightMode(
+                rawValue: nightModeMode,
+                manualNightMode: manualNightMode,
+                systemIsDark: colorScheme == .dark
+            )
             navigateToVersePref = store.getBool(.navigateToVersePref)
             autoFullscreenPref = store.getBool(.autoFullscreenPref)
+            bibleViewSwipeMode = store.getString(.bibleViewSwipeMode)
+            fullScreenHideButtonsPref = store.getBool(.fullScreenHideButtonsPref)
+            hideWindowButtonsPref = store.getBool(.hideWindowButtons)
+            hideBibleReferenceOverlayPref = store.getBool(.hideBibleReferenceOverlay)
             #if os(iOS)
             UIApplication.shared.isIdleTimerDisabled = store.getBool(.screenKeepOnPref)
             #endif
@@ -253,7 +320,7 @@ public struct BibleReaderView: View {
             tiltScrollService.stop()
         }
         #endif
-        .preferredColorScheme(nightMode ? .dark : nil)
+        .preferredColorScheme(preferredColorSchemeOverride)
         .sheet(isPresented: $showBookChooser) {
             NavigationStack {
                 BookChooserView(
@@ -302,6 +369,7 @@ public struct BibleReaderView: View {
                 SettingsView(
                     displaySettings: $displaySettings,
                     nightMode: $nightMode,
+                    nightModeMode: $nightModeMode,
                     onSettingsChanged: {
                         // Persist display settings to workspace
                         if let workspace = windowManager.activeWorkspace {
@@ -314,9 +382,7 @@ public struct BibleReaderView: View {
                                 ctrl.updateDisplaySettings(displaySettings, nightMode: nightMode)
                             }
                         }
-                        let store = SettingsStore(modelContext: modelContext)
-                        navigateToVersePref = store.getBool(.navigateToVersePref)
-                        autoFullscreenPref = store.getBool(.autoFullscreenPref)
+                        reloadBehaviorPreferences()
                     }
                 )
                 .toolbar {
@@ -330,6 +396,15 @@ public struct BibleReaderView: View {
             if !isPresented {
                 reloadBehaviorPreferences()
             }
+        }
+        .onChange(of: colorScheme) { _, _ in
+            let store = SettingsStore(modelContext: modelContext)
+            let manualNightMode = store.getBool("night_mode")
+            nightMode = NightModeSettingsResolver.isNightMode(
+                rawValue: nightModeMode,
+                manualNightMode: manualNightMode,
+                systemIsDark: colorScheme == .dark
+            )
         }
         .onChange(of: isFullScreen) { _, fullScreen in
             if !fullScreen {
@@ -612,6 +687,7 @@ public struct BibleReaderView: View {
             isFocused: window.id == windowManager.activeWindow?.id,
             displaySettings: displaySettings,
             nightMode: nightMode,
+            hideWindowButtons: hideWindowButtonsPref,
             speakService: speakService,
             onShowBookChooser: { showBookChooser = true },
             onShowSearch: { showSearch = true },
@@ -679,6 +755,9 @@ public struct BibleReaderView: View {
             },
             onUserScrollDeltaY: { deltaY in
                 handleAutoFullscreenScroll(from: window, deltaY: deltaY)
+            },
+            onUserHorizontalSwipe: { direction in
+                handleHorizontalSwipe(from: window, direction: direction)
             }
         )
     }
@@ -1079,20 +1158,26 @@ public struct BibleReaderView: View {
                                 SwiftUI.Label(String(localized: "fullscreen"), systemImage: "arrow.up.left.and.arrow.down.right")
                             }
 
-                            Toggle(isOn: Binding(
-                                get: { nightMode },
-                                set: { newValue in
-                                    nightMode = newValue
-                                    let store = SettingsStore(modelContext: modelContext)
-                                    store.setBool("night_mode", value: newValue)
-                                    for window in windowManager.visibleWindows {
-                                        if let ctrl = windowManager.controllers[window.id] as? BibleReaderController {
-                                            ctrl.updateDisplaySettings(displaySettings, nightMode: nightMode)
+                            if isNightModeQuickToggleEnabled {
+                                Toggle(isOn: Binding(
+                                    get: { nightMode },
+                                    set: { newValue in
+                                        let store = SettingsStore(modelContext: modelContext)
+                                        store.setBool("night_mode", value: newValue)
+                                        nightMode = NightModeSettingsResolver.isNightMode(
+                                            rawValue: nightModeMode,
+                                            manualNightMode: newValue,
+                                            systemIsDark: colorScheme == .dark
+                                        )
+                                        for window in windowManager.visibleWindows {
+                                            if let ctrl = windowManager.controllers[window.id] as? BibleReaderController {
+                                                ctrl.updateDisplaySettings(displaySettings, nightMode: nightMode)
+                                            }
                                         }
                                     }
+                                )) {
+                                    SwiftUI.Label(String(localized: "night_mode"), systemImage: "moon.fill")
                                 }
-                            )) {
-                                SwiftUI.Label(String(localized: "night_mode"), systemImage: "moon.fill")
                             }
 
                             #if os(iOS)
@@ -1365,6 +1450,17 @@ public struct BibleReaderView: View {
         let store = SettingsStore(modelContext: modelContext)
         navigateToVersePref = store.getBool(.navigateToVersePref)
         autoFullscreenPref = store.getBool(.autoFullscreenPref)
+        bibleViewSwipeMode = store.getString(.bibleViewSwipeMode)
+        fullScreenHideButtonsPref = store.getBool(.fullScreenHideButtonsPref)
+        hideWindowButtonsPref = store.getBool(.hideWindowButtons)
+        hideBibleReferenceOverlayPref = store.getBool(.hideBibleReferenceOverlay)
+        nightModeMode = store.getString(.nightModePref3)
+        let manualNightMode = store.getBool("night_mode")
+        nightMode = NightModeSettingsResolver.isNightMode(
+            rawValue: nightModeMode,
+            manualNightMode: manualNightMode,
+            systemIsDark: colorScheme == .dark
+        )
     }
 
     private func resetAutoFullscreenTracking() {
@@ -1401,6 +1497,29 @@ public struct BibleReaderView: View {
         }
     }
 
+    private func handleHorizontalSwipe(from window: Window, direction: NativeHorizontalSwipeDirection) {
+        guard windowManager.activeWindow?.id == window.id else { return }
+        guard let ctrl = windowManager.controllers[window.id] as? BibleReaderController else { return }
+        guard !ctrl.hasActiveSelection else { return }
+
+        switch BibleSwipeMode(rawValue: bibleViewSwipeMode) ?? .chapter {
+        case .chapter:
+            if direction == .left {
+                ctrl.navigateNext()
+            } else {
+                ctrl.navigatePrevious()
+            }
+        case .page:
+            if direction == .left {
+                ctrl.scrollPageDown()
+            } else {
+                ctrl.scrollPageUp()
+            }
+        case .none:
+            return
+        }
+    }
+
     #if os(iOS)
     /// Start tilt-to-scroll by wiring CoreMotion to the focused WebView.
     private func startTiltToScroll() {
@@ -1433,4 +1552,10 @@ enum StrongsMode: Int, CaseIterable, Identifiable {
         case .hidden: String(localized: "strongs_hidden")
         }
     }
+}
+
+private enum BibleSwipeMode: String {
+    case chapter = "CHAPTER"
+    case page = "PAGE"
+    case none = "NONE"
 }

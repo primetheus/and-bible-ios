@@ -7,6 +7,11 @@ import os.log
 
 private let logger = Logger(subsystem: "org.andbible", category: "BibleBridge")
 
+public enum NativeHorizontalSwipeDirection: Sendable {
+    case left
+    case right
+}
+
 /// Protocol for handling bridge events from the Vue.js WebView.
 public protocol BibleBridgeDelegate: AnyObject {
     // MARK: - Navigation & Scroll
@@ -109,6 +114,9 @@ public final class BibleBridge: NSObject, WKScriptMessageHandler {
 
     /// Fires for native user-driven webview scroll deltas (positive = down).
     public var onNativeScrollDeltaY: ((Double) -> Void)?
+
+    /// Fires for native user-driven horizontal swipe gestures.
+    public var onNativeHorizontalSwipe: ((NativeHorizontalSwipeDirection) -> Void)?
 
     public override init() {
         super.init()

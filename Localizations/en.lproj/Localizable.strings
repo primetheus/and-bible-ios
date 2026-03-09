@@ -480,3 +480,7 @@
 /* Workspace */
 "%lld window" = "%lld window";
 "%lld windows" = "%lld windows";
+
+"prefs_behavior_customization_cat" = "Application behavior";
+"prefs_display_customization_cat" = "Look & feel";
+"prefs_advanced_settings_cat" = "Advanced settings";

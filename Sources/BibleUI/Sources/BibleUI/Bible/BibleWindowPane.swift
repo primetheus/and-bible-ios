@@ -19,6 +19,7 @@ struct BibleWindowPane: View {
     let isFocused: Bool
     let displaySettings: TextDisplaySettings
     let nightMode: Bool
+    let hideWindowButtons: Bool
     let speakService: SpeakService
 
     @State private var bridge = BibleBridge()
@@ -49,6 +50,7 @@ struct BibleWindowPane: View {
     var onShowStrongsSheet: ((String, String) -> Void)?
     var onRefChooserDialog: ((@escaping (String?) -> Void) -> Void)?
     var onUserScrollDeltaY: ((Double) -> Void)?
+    var onUserHorizontalSwipe: ((NativeHorizontalSwipeDirection) -> Void)?
 
     /// The active background color as an ARGB integer.
     private var activeBackgroundColorInt: Int {
@@ -73,7 +75,7 @@ struct BibleWindowPane: View {
         }
         .overlay(alignment: .topTrailing) {
             // Window menu button — matches Android's hamburger button in top-right of each pane
-            if windowManager.visibleWindows.count > 1 || windowManager.allWindows.count > 1 {
+            if !hideWindowButtons && (windowManager.visibleWindows.count > 1 || windowManager.allWindows.count > 1) {
                 windowMenuButton
                     .padding(6)
             }
@@ -327,6 +329,9 @@ struct BibleWindowPane: View {
         bridge.onAnyMessage = focusHandler
         bridge.onNativeScrollDeltaY = { deltaY in
             onUserScrollDeltaY?(deltaY)
+        }
+        bridge.onNativeHorizontalSwipe = { direction in
+            onUserHorizontalSwipe?(direction)
         }
 
         // Wire WindowManager reference for synchronized scrolling

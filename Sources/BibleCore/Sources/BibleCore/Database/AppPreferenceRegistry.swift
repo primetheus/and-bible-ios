@@ -184,7 +184,9 @@ public enum AppPreferenceRegistry {
             key: .nightModePref3,
             storage: .swiftData,
             valueType: .string,
-            defaultValue: "manual",
+            // Android settings runtime changes default to "system"
+            // (SettingsActivity.kt:225-234), even though XML default is "manual".
+            defaultValue: "system",
             androidReference: "settings.xml:113"
         ),
         .localePref: .init(

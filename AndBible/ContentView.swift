@@ -14,8 +14,10 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var showWorkspaces = false
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.colorScheme) private var colorScheme
     @State private var displaySettings: TextDisplaySettings = .appDefaults
     @State private var nightMode = false
+    @State private var nightModeMode = AppPreferenceRegistry.stringDefault(for: .nightModePref3) ?? NightModeSetting.system.rawValue
 
     enum Tab: Hashable {
         case bible
@@ -32,11 +34,33 @@ struct ContentView: View {
             adaptiveLayout
             #endif
         }
-        .preferredColorScheme(nightMode ? .dark : nil)
+        .preferredColorScheme(preferredColorSchemeOverride)
         .onAppear {
-            let store = SettingsStore(modelContext: modelContext)
-            nightMode = store.getBool("night_mode")
+            reloadNightModePreferences()
         }
+        .onChange(of: colorScheme) { _, _ in
+            reloadNightModePreferences()
+        }
+    }
+
+    private var preferredColorSchemeOverride: ColorScheme? {
+        switch NightModeSettingsResolver.effectiveMode(from: nightModeMode) {
+        case .system:
+            return nil
+        case .automatic, .manual:
+            return nightMode ? .dark : .light
+        }
+    }
+
+    private func reloadNightModePreferences() {
+        let store = SettingsStore(modelContext: modelContext)
+        nightModeMode = store.getString(.nightModePref3)
+        let manualNightMode = store.getBool("night_mode")
+        nightMode = NightModeSettingsResolver.isNightMode(
+            rawValue: nightModeMode,
+            manualNightMode: manualNightMode,
+            systemIsDark: colorScheme == .dark
+        )
     }
 
     // MARK: - iOS Layout (adapts for iPhone vs iPad)
@@ -123,7 +147,8 @@ struct ContentView: View {
                 NavigationLink {
                     SettingsView(
                         displaySettings: $displaySettings,
-                        nightMode: $nightMode
+                        nightMode: $nightMode,
+                        nightModeMode: $nightModeMode
                     )
                 } label: {
                     Label("Settings", systemImage: "gear")

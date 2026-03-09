@@ -397,3 +397,7 @@
 "discrete_help_par2" = "You can set up a custom PIN code by Calculator PIN setting. You can also tap = seven times quickly as a fallback.";
 "discrete_help_par3" = "The 'Hide religious symbols' setting changes the app icon to a calculator icon in the launcher.";
 "discrete_help_ios_note" = "Note: On iOS, the app icon changes to a calculator when 'Hide religious symbols' is enabled, but the app display name cannot be changed at runtime due to platform limitations.";
+
+"prefs_behavior_customization_cat" = "Comportamentul aplicației";
+"prefs_display_customization_cat" = "Aspectul aplicației";
+"prefs_advanced_settings_cat" = "Reglări avansate";

@@ -11,8 +11,10 @@ import UIKit
 /// Main settings screen for the app.
 public struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var displaySettings: TextDisplaySettings
     @Binding var nightMode: Bool
+    @Binding var nightModeMode: String
     var onSettingsChanged: (() -> Void)?
 
     @State private var strongsGreekDictionaries: [ModuleInfo] = []
@@ -38,39 +40,86 @@ public struct SettingsView: View {
         AppPreferenceRegistry.boolDefault(for: .showActiveWindowIndicator) ?? true
     @State private var showErrorBox = AppPreferenceRegistry.boolDefault(for: .showErrorBox) ?? false
     @State private var fontSizeMultiplier = AppPreferenceRegistry.intDefault(for: .fontSizeMultiplier) ?? 100
+    @State private var fullScreenHideButtons =
+        AppPreferenceRegistry.boolDefault(for: .fullScreenHideButtonsPref) ?? true
+    @State private var hideWindowButtons =
+        AppPreferenceRegistry.boolDefault(for: .hideWindowButtons) ?? false
+    @State private var hideBibleReferenceOverlay =
+        AppPreferenceRegistry.boolDefault(for: .hideBibleReferenceOverlay) ?? false
     @State private var navigateToVerse = AppPreferenceRegistry.boolDefault(for: .navigateToVersePref) ?? false
     @State private var screenKeepOn = AppPreferenceRegistry.boolDefault(for: .screenKeepOnPref) ?? false
     @State private var doubleTapToFullscreen =
         AppPreferenceRegistry.boolDefault(for: .doubleTapToFullscreen) ?? true
     @State private var autoFullscreen = AppPreferenceRegistry.boolDefault(for: .autoFullscreenPref) ?? false
-    @State private var selectedLanguage: String = ""
+    @State private var bibleViewSwipeMode =
+        AppPreferenceRegistry.stringDefault(for: .bibleViewSwipeMode) ?? "CHAPTER"
+    @State private var selectedLanguage: String = AppPreferenceRegistry.stringDefault(for: .localePref) ?? ""
     @State private var showRestartAlert = false
     @State private var showDiscreteHelp = false
+    @State private var hasLoadedPreferences = false
 
-    /// Available languages with their .lproj directories in the app bundle.
-    private static let availableLanguages: [(code: String, name: String)] = {
-        let codes = [
-            "af", "ar", "az", "bg", "bn", "cs", "de", "el", "en", "eo",
-            "es", "et", "fi", "fr", "he", "hi", "hr", "hu", "id", "it",
-            "kk", "ko", "lt", "ml", "my", "nb", "nl", "pl", "pt-BR", "pt",
-            "ro", "ru", "sk", "sl", "sr-Latn", "sr", "sv", "ta", "te", "tr",
-            "uk", "uz", "yue", "zh-Hans", "zh-Hant"
-        ]
-        return codes.map { code in
-            let locale = Locale(identifier: code)
-            // Show the language name in its own script (e.g., "Deutsch" for German)
-            let nativeName = locale.localizedString(forIdentifier: code) ?? code
-            return (code: code, name: nativeName)
-        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }()
+    private struct LocaleOption: Identifiable {
+        let value: String
+        let labelKey: String
+        let labelDefault: String
+        var id: String { value.isEmpty ? "__default" : value }
+    }
+
+    /// Locale options mirror Android arrays.xml order/value contract.
+    private static let localeOptions: [LocaleOption] = [
+        .init(value: "", labelKey: "lang_default", labelDefault: "Default"),
+        .init(value: "af", labelKey: "lang_afrikaans", labelDefault: "Afrikaans"),
+        .init(value: "ar", labelKey: "lang_arabic", labelDefault: "Arabic"),
+        .init(value: "bg", labelKey: "lang_bulgarian", labelDefault: "Bulgarian"),
+        .init(value: "bn", labelKey: "lang_bengali", labelDefault: "Bengali"),
+        .init(value: "my", labelKey: "lang_burmese", labelDefault: "Burmese"),
+        .init(value: "cs", labelKey: "lang_czech", labelDefault: "Czech"),
+        .init(value: "de", labelKey: "lang_german", labelDefault: "German"),
+        .init(value: "en", labelKey: "lang_english", labelDefault: "English"),
+        .init(value: "eo", labelKey: "lang_esperanto", labelDefault: "Esperanto"),
+        .init(value: "es", labelKey: "lang_spanish", labelDefault: "Spanish"),
+        .init(value: "et", labelKey: "lang_estonian", labelDefault: "Estonian"),
+        .init(value: "fi", labelKey: "lang_finnish", labelDefault: "Finnish"),
+        .init(value: "fr", labelKey: "lang_french", labelDefault: "French"),
+        .init(value: "iw", labelKey: "lang_hebrew", labelDefault: "Hebrew"),
+        .init(value: "hi", labelKey: "lang_hindi", labelDefault: "Hindi"),
+        .init(value: "hr", labelKey: "lang_croatian", labelDefault: "Croatian"),
+        .init(value: "hu", labelKey: "lang_hungarian", labelDefault: "Hungarian"),
+        .init(value: "in", labelKey: "lang_indonesian", labelDefault: "Indonesian"),
+        .init(value: "it", labelKey: "lang_italian", labelDefault: "Italian"),
+        .init(value: "kk", labelKey: "lang_kazakh", labelDefault: "Kazakh"),
+        .init(value: "ko", labelKey: "lang_korean", labelDefault: "Korean"),
+        .init(value: "lt", labelKey: "lang_lithuanian", labelDefault: "Lithuanian"),
+        .init(value: "nb", labelKey: "lang_norwegian_bokmal", labelDefault: "Norwegian Bokmal"),
+        .init(value: "nl", labelKey: "lang_dutch", labelDefault: "Dutch"),
+        .init(value: "pl", labelKey: "lang_polish", labelDefault: "Polish"),
+        .init(value: "pt", labelKey: "lang_portuguese", labelDefault: "Portuguese"),
+        .init(value: "pt-BR", labelKey: "lang_portuguese_brazil", labelDefault: "Portuguese (Brazil)"),
+        .init(value: "ro", labelKey: "lang_romanian", labelDefault: "Romanian"),
+        .init(value: "ru", labelKey: "lang_russian", labelDefault: "Russian"),
+        .init(value: "sk", labelKey: "lang_slovak", labelDefault: "Slovak"),
+        .init(value: "sl", labelKey: "lang_slovenian", labelDefault: "Slovenian"),
+        .init(value: "sr", labelKey: "lang_serbian", labelDefault: "Serbian"),
+        .init(value: "sr-Latn", labelKey: "lang_serbian_latin", labelDefault: "Serbian (Latin)"),
+        .init(value: "ta", labelKey: "lang_tamil", labelDefault: "Tamil"),
+        .init(value: "tr", labelKey: "lang_turkish", labelDefault: "Turkish"),
+        .init(value: "te", labelKey: "lang_telugu", labelDefault: "Telugu"),
+        .init(value: "uk", labelKey: "lang_ukrainian", labelDefault: "Ukrainian"),
+        .init(value: "uz", labelKey: "lang_uzbek", labelDefault: "Uzbek"),
+        .init(value: "yue", labelKey: "lang_cantonese", labelDefault: "Cantonese"),
+        .init(value: "zh-Hant-TW", labelKey: "lang_chinese_traditional", labelDefault: "Chinese (Traditional)"),
+        .init(value: "zh-Hans-CN", labelKey: "lang_chinese_simplified", labelDefault: "Chinese (Simplified)")
+    ]
 
     public init(
         displaySettings: Binding<TextDisplaySettings>,
         nightMode: Binding<Bool>,
+        nightModeMode: Binding<String>,
         onSettingsChanged: (() -> Void)? = nil
     ) {
         self._displaySettings = displaySettings
         self._nightMode = nightMode
+        self._nightModeMode = nightModeMode
         self.onSettingsChanged = onSettingsChanged
     }
 
@@ -268,6 +317,33 @@ public struct SettingsView: View {
                 ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Picker(
+                    String(
+                        localized: "prefs_bible_view_swipe_mode_title",
+                        defaultValue: "Action for swipe left / right gesture"
+                    ),
+                    selection: Binding(
+                        get: { Self.normalizedBibleViewSwipeMode(bibleViewSwipeMode) },
+                        set: { newValue in
+                            bibleViewSwipeMode = Self.normalizedBibleViewSwipeMode(newValue)
+                            let store = SettingsStore(modelContext: modelContext)
+                            store.setString(.bibleViewSwipeMode, value: bibleViewSwipeMode)
+                        }
+                    )
+                ) {
+                    Text(String(localized: "prefs_swipe_mode_chapter", defaultValue: "Chapter"))
+                        .tag("CHAPTER")
+                    Text(String(localized: "prefs_swipe_mode_page", defaultValue: "Page"))
+                        .tag("PAGE")
+                    Text(String(localized: "prefs_swipe_mode_none", defaultValue: "None"))
+                        .tag("NONE")
+                }
+                Text(String(
+                    localized: "prefs_bible_view_swipe_mode_summary",
+                    defaultValue: "Swipe left / right gesture can be used to go to next page / chapter."
+                ))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Toggle(String(localized: "verse_selection"), isOn: Binding(
                     get: { displaySettings.enableVerseSelection ?? true },
                     set: {
@@ -297,142 +373,7 @@ public struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section(String(localized: "prefs_display_customization_cat", defaultValue: "Look & feel")) {
-                NavigationLink(String(localized: "settings_text_display")) {
-                    TextDisplaySettingsView(settings: $displaySettings, onChange: onSettingsChanged)
-                }
-                NavigationLink(String(localized: "settings_colors")) {
-                    ColorSettingsView(settings: $displaySettings, onChange: onSettingsChanged)
-                }
-                Toggle(String(localized: "night_mode"), isOn: Binding(
-                    get: { nightMode },
-                    set: {
-                        nightMode = $0
-                        let store = SettingsStore(modelContext: modelContext)
-                        store.setBool("night_mode", value: $0)
-                        onSettingsChanged?()
-                    }
-                ))
-                Toggle(
-                    String(localized: "prefs_e_ink_mode_title", defaultValue: "Black & white mode"),
-                    isOn: Binding(
-                        get: { monochromeMode },
-                        set: { newValue in
-                            monochromeMode = newValue
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setBool(.monochromeMode, value: newValue)
-                            onSettingsChanged?()
-                        }
-                    )
-                )
-                Text(String(
-                    localized: "prefs_eink_mode_summary",
-                    defaultValue: "Use application in monochrome mode (no colors), making it more suitable for E-ink devices."
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Toggle(
-                    String(localized: "prefs_disable_animations_title", defaultValue: "Disable animations"),
-                    isOn: Binding(
-                        get: { disableAnimations },
-                        set: { newValue in
-                            disableAnimations = newValue
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setBool(.disableAnimations, value: newValue)
-                            onSettingsChanged?()
-                        }
-                    )
-                )
-                Text(String(
-                    localized: "prefs_disable_animations_summary",
-                    defaultValue: "Disable various animations such as smooth scrolling."
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Toggle(
-                    String(
-                        localized: "prefs_disable_click_to_edit_title",
-                        defaultValue: "Disable Study Pad click-to-edit"
-                    ),
-                    isOn: Binding(
-                        get: { disableClickToEdit },
-                        set: { newValue in
-                            disableClickToEdit = newValue
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setBool(.disableClickToEdit, value: newValue)
-                            onSettingsChanged?()
-                        }
-                    )
-                )
-                Text(String(
-                    localized: "prefs_disable_click_to_edit_summary",
-                    defaultValue: "Requires using the edit button to edit notes in the Study Pad."
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Stepper(
-                    value: Binding(
-                        get: { fontSizeMultiplier },
-                        set: { newValue in
-                            fontSizeMultiplier = min(max(newValue, 10), 500)
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setInt(.fontSizeMultiplier, value: fontSizeMultiplier)
-                            onSettingsChanged?()
-                        }
-                    ),
-                    in: 10...500,
-                    step: 10
-                ) {
-                    HStack {
-                        Text(String(
-                            localized: "pref_font_size_multiplier_title",
-                            defaultValue: "Font size multiplier"
-                        ))
-                        Spacer()
-                        Text("\(fontSizeMultiplier)%")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Toggle(
-                    String(
-                        localized: "active_window_indicator_title",
-                        defaultValue: "Show active window indicator"
-                    ),
-                    isOn: Binding(
-                        get: { showActiveWindowIndicator },
-                        set: { newValue in
-                            showActiveWindowIndicator = newValue
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setBool(.showActiveWindowIndicator, value: newValue)
-                            onSettingsChanged?()
-                        }
-                    )
-                )
-                Text(String(
-                    localized: "active_window_indicator_summary",
-                    defaultValue: "Highlight window corners to help recognising which window is active"
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Picker(String(localized: "settings_language"), selection: $selectedLanguage) {
-                    Text(String(localized: "language_system_default")).tag("")
-                    ForEach(Self.availableLanguages, id: \.code) { lang in
-                        Text(lang.name).tag(lang.code)
-                    }
-                }
-                .onChange(of: selectedLanguage) { _, newValue in
-                    if newValue.isEmpty {
-                        UserDefaults.standard.removeObject(forKey: "AppleLanguages")
-                    } else {
-                        UserDefaults.standard.set([newValue], forKey: "AppleLanguages")
-                    }
-                    UserDefaults.standard.synchronize()
-                    showRestartAlert = true
-                }
-                Text(String(localized: "language_restart_required"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            lookAndFeelSection
 
             Section(String(localized: "settings_security")) {
                 Button {
@@ -532,7 +473,10 @@ public struct SettingsView: View {
             }
         }
         .navigationTitle(String(localized: "settings"))
-        .alert(String(localized: "settings_language"), isPresented: $showRestartAlert) {
+        .alert(
+            String(localized: "prefs_interface_locale_title", defaultValue: "Application language"),
+            isPresented: $showRestartAlert
+        ) {
             Button(String(localized: "ok")) {}
         } message: {
             Text(String(localized: "language_restart_required"))
@@ -591,6 +535,7 @@ public struct SettingsView: View {
                     }
                     .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             }
+            hasLoadedPreferences = false
             // Load persisted preferences
             let store = SettingsStore(modelContext: modelContext)
             selectedStrongsGreekDictionaryNames = Set(store.getStringSet(.strongsGreekDictionary))
@@ -605,19 +550,40 @@ public struct SettingsView: View {
             showActiveWindowIndicator = store.getBool(.showActiveWindowIndicator)
             showErrorBox = store.getBool(.showErrorBox)
             fontSizeMultiplier = store.getInt(.fontSizeMultiplier)
+            fullScreenHideButtons = store.getBool(.fullScreenHideButtonsPref)
+            hideWindowButtons = store.getBool(.hideWindowButtons)
+            hideBibleReferenceOverlay = store.getBool(.hideBibleReferenceOverlay)
             navigateToVerse = store.getBool(.navigateToVersePref)
             screenKeepOn = store.getBool(.screenKeepOnPref)
             doubleTapToFullscreen = store.getBool(.doubleTapToFullscreen)
             autoFullscreen = store.getBool(.autoFullscreenPref)
+            bibleViewSwipeMode = Self.normalizedBibleViewSwipeMode(store.getString(.bibleViewSwipeMode))
+            nightModeMode = store.getString(.nightModePref3)
+            let manualNightMode = store.getBool("night_mode")
+            nightMode = NightModeSettingsResolver.isNightMode(
+                rawValue: nightModeMode,
+                manualNightMode: manualNightMode,
+                systemIsDark: colorScheme == .dark
+            )
             applyScreenKeepOn(screenKeepOn)
-            // Load current language override
-            if let overrideLangs = UserDefaults.standard.array(forKey: "AppleLanguages") as? [String],
-               let first = overrideLangs.first,
-               Self.availableLanguages.contains(where: { $0.code == first }) {
-                selectedLanguage = first
+            // Load locale_pref first. Fallback to any existing AppleLanguages override from older builds.
+            let persistedLocale = store.getString(.localePref)
+            if Self.localeOptions.contains(where: { $0.value == persistedLocale }) {
+                selectedLanguage = persistedLocale
             } else {
                 selectedLanguage = ""
+                if !persistedLocale.isEmpty {
+                    store.setString(.localePref, value: "")
+                }
             }
+            if selectedLanguage.isEmpty,
+               let overrideLangs = UserDefaults.standard.array(forKey: "AppleLanguages") as? [String],
+               let first = overrideLangs.first,
+               let mapped = Self.localePrefValue(forAppleLanguage: first) {
+                selectedLanguage = mapped
+                store.setString(.localePref, value: mapped)
+            }
+            hasLoadedPreferences = true
         }
         .onChange(of: selectedStrongsGreekDictionaryNames) { _, newValue in
             let store = SettingsStore(modelContext: modelContext)
@@ -634,6 +600,246 @@ public struct SettingsView: View {
         .onChange(of: disabledWordLookupDictionaryNames) { _, newValue in
             let store = SettingsStore(modelContext: modelContext)
             store.setStringSet(.disabledWordLookupDictionaries, values: Array(newValue))
+        }
+    }
+
+    @ViewBuilder
+    private var lookAndFeelSection: some View {
+        Section(String(localized: "prefs_display_customization_cat", defaultValue: "Look & feel")) {
+            NavigationLink(String(localized: "settings_text_display")) {
+                TextDisplaySettingsView(settings: $displaySettings, onChange: onSettingsChanged)
+            }
+            NavigationLink(String(localized: "settings_colors")) {
+                ColorSettingsView(settings: $displaySettings, onChange: onSettingsChanged)
+            }
+            Picker(
+                String(localized: "prefs_night_mode_title", defaultValue: "Night mode switching"),
+                selection: Binding(
+                    get: { Self.nightModePickerSelection(from: nightModeMode) },
+                    set: { newValue in
+                        nightModeMode = newValue
+                        let store = SettingsStore(modelContext: modelContext)
+                        store.setString(.nightModePref3, value: newValue)
+                        let manualNightMode = store.getBool("night_mode")
+                        nightMode = NightModeSettingsResolver.isNightMode(
+                            rawValue: newValue,
+                            manualNightMode: manualNightMode,
+                            systemIsDark: colorScheme == .dark
+                        )
+                        onSettingsChanged?()
+                    }
+                )
+            ) {
+                ForEach(NightModeSettingsResolver.availableModes, id: \.rawValue) { mode in
+                    Text(Self.nightModeModeTitle(mode)).tag(mode.rawValue)
+                }
+            }
+            Text(String(
+                localized: "prefs_night_mode_summary",
+                defaultValue: "Whether to switch to night mode manually or via system setting. Manual switching can be done from the 3-dot options menu on the main screen."
+            ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle(
+                String(localized: "prefs_e_ink_mode_title", defaultValue: "Black & white mode"),
+                isOn: Binding(
+                    get: { monochromeMode },
+                    set: { newValue in
+                        monochromeMode = newValue
+                        let store = SettingsStore(modelContext: modelContext)
+                        store.setBool(.monochromeMode, value: newValue)
+                        onSettingsChanged?()
+                    }
+                )
+            )
+            Text(String(
+                localized: "prefs_eink_mode_summary",
+                defaultValue: "Use application in monochrome mode (no colors), making it more suitable for E-ink devices."
+            ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle(
+                String(localized: "prefs_disable_animations_title", defaultValue: "Disable animations"),
+                isOn: Binding(
+                    get: { disableAnimations },
+                    set: { newValue in
+                        disableAnimations = newValue
+                        let store = SettingsStore(modelContext: modelContext)
+                        store.setBool(.disableAnimations, value: newValue)
+                        onSettingsChanged?()
+                    }
+                )
+            )
+            Text(String(
+                localized: "prefs_disable_animations_summary",
+                defaultValue: "Disable various animations such as smooth scrolling."
+            ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle(
+                String(
+                    localized: "prefs_disable_click_to_edit_title",
+                    defaultValue: "Disable Study Pad click-to-edit"
+                ),
+                isOn: Binding(
+                    get: { disableClickToEdit },
+                    set: { newValue in
+                        disableClickToEdit = newValue
+                        let store = SettingsStore(modelContext: modelContext)
+                        store.setBool(.disableClickToEdit, value: newValue)
+                        onSettingsChanged?()
+                    }
+                )
+            )
+            Text(String(
+                localized: "prefs_disable_click_to_edit_summary",
+                defaultValue: "Requires using the edit button to edit notes in the Study Pad."
+            ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Stepper(
+                value: Binding(
+                    get: { fontSizeMultiplier },
+                    set: { newValue in
+                        fontSizeMultiplier = min(max(newValue, 10), 500)
+                        let store = SettingsStore(modelContext: modelContext)
+                        store.setInt(.fontSizeMultiplier, value: fontSizeMultiplier)
+                        onSettingsChanged?()
+                    }
+                ),
+                in: 10...500,
+                step: 10
+            ) {
+                HStack {
+                    Text(String(
+                        localized: "pref_font_size_multiplier_title",
+                        defaultValue: "Font size multiplier"
+                    ))
+                    Spacer()
+                    Text("\(fontSizeMultiplier)%")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Toggle(
+                String(
+                    localized: "full_screen_hide_buttons_pref_title",
+                    defaultValue: "Hide window button bar in fullscreen"
+                ),
+                isOn: Binding(
+                    get: { fullScreenHideButtons },
+                    set: { newValue in
+                        fullScreenHideButtons = newValue
+                        let store = SettingsStore(modelContext: modelContext)
+                        store.setBool(.fullScreenHideButtonsPref, value: newValue)
+                        onSettingsChanged?()
+                    }
+                )
+            )
+            Text(String(
+                localized: "full_screen_hide_buttons_pref_summary",
+                defaultValue: "When switching to fullscreen mode, hide automatically window button bar that is on the bottom of the screen"
+            ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle(
+                String(
+                    localized: "hide_window_buttons_title",
+                    defaultValue: "Hide window buttons"
+                ),
+                isOn: Binding(
+                    get: { hideWindowButtons },
+                    set: { newValue in
+                        hideWindowButtons = newValue
+                        let store = SettingsStore(modelContext: modelContext)
+                        store.setBool(.hideWindowButtons, value: newValue)
+                        onSettingsChanged?()
+                    }
+                )
+            )
+            Text(String(
+                localized: "hide_window_buttons_summary",
+                defaultValue: "Window buttons that are displayed on right side of the Bible views are hidden. Window navigation bar on the bottom is still displayed and you may open window popup menu by long-clicking them."
+            ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle(
+                String(
+                    localized: "hide_bible_reference_overlay_title",
+                    defaultValue: "Hide Bible reference overlay"
+                ),
+                isOn: Binding(
+                    get: { hideBibleReferenceOverlay },
+                    set: { newValue in
+                        hideBibleReferenceOverlay = newValue
+                        let store = SettingsStore(modelContext: modelContext)
+                        store.setBool(.hideBibleReferenceOverlay, value: newValue)
+                        onSettingsChanged?()
+                    }
+                )
+            )
+            Text(String(
+                localized: "hide_bible_reference_overlay_summary",
+                defaultValue: "Do not show the semi-transparent Bible reference overlay when app is in fullscreen mode"
+            ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle(
+                String(
+                    localized: "active_window_indicator_title",
+                    defaultValue: "Show active window indicator"
+                ),
+                isOn: Binding(
+                    get: { showActiveWindowIndicator },
+                    set: { newValue in
+                        showActiveWindowIndicator = newValue
+                        let store = SettingsStore(modelContext: modelContext)
+                        store.setBool(.showActiveWindowIndicator, value: newValue)
+                        onSettingsChanged?()
+                    }
+                )
+            )
+            Text(String(
+                localized: "active_window_indicator_summary",
+                defaultValue: "Highlight window corners to help recognising which window is active"
+            ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Picker(
+                String(localized: "prefs_interface_locale_title", defaultValue: "Application language"),
+                selection: $selectedLanguage
+            ) {
+                ForEach(Self.localeOptions) { lang in
+                    Text(Self.localizedLocaleOptionLabel(lang)).tag(lang.value)
+                }
+            }
+            .onChange(of: selectedLanguage) { _, newValue in
+                guard hasLoadedPreferences else { return }
+                let normalized = Self.localeOptions.contains(where: { $0.value == newValue }) ? newValue : ""
+                if normalized != selectedLanguage {
+                    selectedLanguage = normalized
+                    return
+                }
+
+                let store = SettingsStore(modelContext: modelContext)
+                store.setString(.localePref, value: normalized)
+
+                if let mapped = Self.appleLanguageCode(forLocalePrefValue: normalized) {
+                    UserDefaults.standard.set([mapped], forKey: "AppleLanguages")
+                } else {
+                    UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+                }
+                UserDefaults.standard.synchronize()
+                showRestartAlert = true
+            }
+            Text(String(
+                localized: "prefs_interface_locale_summary",
+                defaultValue: "Select custom user interface language"
+            ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(String(localized: "language_restart_required"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -723,6 +929,84 @@ public struct SettingsView: View {
         if sanitizedDisabled != disabledWordLookupDictionaryNames {
             disabledWordLookupDictionaryNames = sanitizedDisabled
             store.setStringSet(.disabledWordLookupDictionaries, values: Array(sanitizedDisabled))
+        }
+    }
+
+    private static func nightModePickerSelection(from rawValue: String) -> String {
+        if NightModeSettingsResolver.availableModes.contains(where: { $0.rawValue == rawValue }) {
+            return rawValue
+        }
+        if rawValue == NightModeSetting.automatic.rawValue && !NightModeSettingsResolver.autoModeAvailable {
+            return NightModeSetting.manual.rawValue
+        }
+        return NightModeSetting.system.rawValue
+    }
+
+    private static func normalizedBibleViewSwipeMode(_ rawValue: String) -> String {
+        switch rawValue {
+        case "CHAPTER", "PAGE", "NONE":
+            return rawValue
+        default:
+            return "CHAPTER"
+        }
+    }
+
+    private static func nightModeModeTitle(_ mode: NightModeSetting) -> String {
+        switch mode {
+        case .system:
+            return String(localized: "prefs_night_mode_system", defaultValue: "System")
+        case .automatic:
+            return String(localized: "prefs_night_mode_automatic", defaultValue: "Automatic")
+        case .manual:
+            return String(localized: "prefs_night_mode_manual", defaultValue: "Manual")
+        }
+    }
+
+    private static func localizedLocaleOptionLabel(_ option: LocaleOption) -> String {
+        let localized = String(localized: String.LocalizationValue(option.labelKey))
+        return localized == option.labelKey ? option.labelDefault : localized
+    }
+
+    private static func appleLanguageCode(forLocalePrefValue value: String) -> String? {
+        switch value {
+        case "":
+            return nil
+        case "iw":
+            return "he"
+        case "in":
+            return "id"
+        case "zh-Hant-TW":
+            return "zh-Hant"
+        case "zh-Hans-CN":
+            return "zh-Hans"
+        default:
+            return value
+        }
+    }
+
+    private static func localePrefValue(forAppleLanguage appleLanguage: String) -> String? {
+        let normalized = appleLanguage.replacingOccurrences(of: "_", with: "-")
+        let directValues = Set(localeOptions.map(\.value))
+        if directValues.contains(normalized) {
+            return normalized
+        }
+        switch normalized {
+        case "he", "iw":
+            return "iw"
+        case "id", "in":
+            return "in"
+        default:
+            if normalized.hasPrefix("zh-Hant") {
+                return "zh-Hant-TW"
+            }
+            if normalized.hasPrefix("zh-Hans") {
+                return "zh-Hans-CN"
+            }
+            if let base = normalized.split(separator: "-").first.map(String.init),
+               directValues.contains(base) {
+                return base
+            }
+            return nil
         }
     }
 }

@@ -1355,6 +1355,18 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         // At Genesis 1, do nothing
     }
 
+    /// Scroll down by one viewport page (Android parity: PAGE swipe mode).
+    public func scrollPageDown() {
+        guard clientReady else { return }
+        bridge.emit(event: "scroll_down")
+    }
+
+    /// Scroll up by one viewport page (Android parity: PAGE swipe mode).
+    public func scrollPageUp() {
+        guard clientReady else { return }
+        bridge.emit(event: "scroll_up")
+    }
+
     /// Whether there's a next chapter available.
     public var hasNext: Bool {
         let maxChapter = chapterCount(for: currentBook)

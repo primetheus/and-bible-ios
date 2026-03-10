@@ -14,6 +14,14 @@ Prevent regressions in settings localization parity by enforcing:
 python3 scripts/check_settings_localization_guardrails.py
 ```
 
+By default the script uses live Android resources from:
+
+- `../and-bible/app/src/main/res` (when available)
+
+If that path is missing (for example in CI), it automatically falls back to:
+
+- `docs/settings-localization-android-baseline.json`
+
 ## Baseline Update
 
 Only run after intentional localization changes:
@@ -26,7 +34,20 @@ This updates:
 
 - `docs/settings-localization-guardrail-baseline.json`
 
+## Android Snapshot Update
+
+Only run when Android source translations changed and you want to refresh the CI fallback snapshot:
+
+```bash
+python3 scripts/check_settings_localization_guardrails.py --write-android-snapshot
+```
+
+This updates:
+
+- `docs/settings-localization-android-baseline.json`
+
 ## Notes
 
 - Baseline is keyed to the current parity-key set and locale set.
 - If Android adds new locale translations, iOS will fail guardrails until matching translations are added (or explicitly updated via approved baseline process).
+- CI integration: `.github/workflows/ios-ci.yml` runs this guardrail on pull requests and `main` pushes.

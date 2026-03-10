@@ -10,6 +10,7 @@ Checks:
 Usage:
   python3 scripts/check_settings_localization_guardrails.py
   python3 scripts/check_settings_localization_guardrails.py --write-baseline
+  python3 scripts/check_settings_localization_guardrails.py --write-android-snapshot
 """
 
 from __future__ import annotations
@@ -138,6 +139,18 @@ LOCALE_TO_ANDROID_VALUES = {
 LINE_RE = re.compile(r'^"(?P<key>[^"]+)"\s*=\s*"(?P<val>(?:[^"\\]|\\.)*)";\s*$')
 
 
+def default_repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def default_android_root() -> Path:
+    return Path(__file__).resolve().parents[2] / "and-bible" / "app" / "src" / "main" / "res"
+
+
+def default_android_snapshot() -> Path:
+    return default_repo_root() / "docs" / "settings-localization-android-baseline.json"
+
+
 def parse_ios_strings(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -163,15 +176,66 @@ def parse_android_strings(path: Path) -> dict[str, str]:
     return values
 
 
+def build_android_non_english_by_key(android_root: Path) -> dict[str, list[str]]:
+    android_base = parse_android_strings(android_root / "values" / "strings.xml")
+    android_base.update(parse_android_strings(android_root / "values" / "untranslated_strings.xml"))
+    android_by_locale = {
+        loc: parse_android_strings(android_root / qualifier / "strings.xml")
+        for loc, qualifier in LOCALE_TO_ANDROID_VALUES.items()
+    }
+
+    non_english_by_key: dict[str, list[str]] = {k: [] for k in PARITY_KEYS}
+    for key in PARITY_KEYS:
+        base_value = android_base.get(key, "")
+        for locale, locale_strings in android_by_locale.items():
+            locale_value = locale_strings.get(key)
+            if locale_value is not None and locale_value != base_value:
+                non_english_by_key[key].append(locale)
+        non_english_by_key[key].sort()
+
+    return non_english_by_key
+
+
+def load_android_non_english_snapshot(path: Path) -> dict[str, list[str]]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    raw = payload.get("android_non_english_by_key", {})
+    non_english_by_key: dict[str, list[str]] = {}
+    for key in PARITY_KEYS:
+        values = raw.get(key, [])
+        non_english_by_key[key] = sorted(str(locale) for locale in values)
+    return non_english_by_key
+
+
+def write_android_non_english_snapshot(
+    path: Path,
+    android_root: Path,
+    non_english_by_key: dict[str, list[str]],
+) -> None:
+    payload = {
+        "generated_on": date.today().isoformat(),
+        "source_android_res": str(android_root),
+        "parity_keys": PARITY_KEYS,
+        "locale_to_android_values": LOCALE_TO_ANDROID_VALUES,
+        "android_non_english_by_key": non_english_by_key,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 @dataclass
 class Audit:
     locales: list[str]
     english_placeholder_by_key: dict[str, list[str]]
     ios_gap_by_key: dict[str, list[str]]
     tree_mismatches: list[str]
+    android_source: str
 
 
-def run_audit(repo_root: Path, android_root: Path) -> Audit:
+def run_audit(
+    repo_root: Path,
+    android_non_english_by_key: dict[str, list[str]],
+    android_source: str,
+) -> Audit:
     ios_a_root = repo_root / "AndBible"
     ios_b_root = repo_root / "Localizations"
 
@@ -186,13 +250,6 @@ def run_audit(repo_root: Path, android_root: Path) -> Audit:
         elif en_a[key] != en_b[key]:
             tree_mismatches.append(f"en_tree_mismatch:{key}")
 
-    android_base = parse_android_strings(android_root / "values" / "strings.xml")
-    android_base.update(parse_android_strings(android_root / "values" / "untranslated_strings.xml"))
-    android_by_locale = {
-        loc: parse_android_strings(android_root / qualifier / "strings.xml")
-        for loc, qualifier in LOCALE_TO_ANDROID_VALUES.items()
-    }
-
     locales = sorted(
         p.name.replace(".lproj", "")
         for p in ios_a_root.glob("*.lproj")
@@ -205,7 +262,6 @@ def run_audit(repo_root: Path, android_root: Path) -> Audit:
     for locale in locales:
         ios_a = parse_ios_strings(ios_a_root / f"{locale}.lproj" / "Localizable.strings")
         ios_b = parse_ios_strings(ios_b_root / f"{locale}.lproj" / "Localizable.strings")
-        android_loc = android_by_locale.get(locale, {})
 
         for key in PARITY_KEYS:
             if key not in ios_a or key not in ios_b:
@@ -221,12 +277,8 @@ def run_audit(repo_root: Path, android_root: Path) -> Audit:
             if ios_is_english:
                 english_placeholder_by_key[key].append(locale)
 
-            a_has = key in android_loc
-            if a_has:
-                a_val = android_loc[key]
-                a_base = android_base.get(key, "")
-                if ios_is_english and a_val != a_base:
-                    ios_gap_by_key[key].append(locale)
+            if ios_is_english and locale in android_non_english_by_key.get(key, []):
+                ios_gap_by_key[key].append(locale)
 
     for key in PARITY_KEYS:
         english_placeholder_by_key[key].sort()
@@ -237,6 +289,7 @@ def run_audit(repo_root: Path, android_root: Path) -> Audit:
         english_placeholder_by_key=english_placeholder_by_key,
         ios_gap_by_key=ios_gap_by_key,
         tree_mismatches=tree_mismatches,
+        android_source=android_source,
     )
 
 
@@ -252,23 +305,33 @@ def write_baseline(path: Path, audit: Audit) -> None:
 
 
 def main() -> int:
+    repo_root_default = default_repo_root()
+    android_root_default = default_android_root()
+    android_snapshot_default = default_android_snapshot()
+
     parser = argparse.ArgumentParser(description="Settings localization parity guardrails (SETPAR-603)")
     parser.add_argument(
         "--repo-root",
         type=Path,
-        default=Path(__file__).resolve().parents[1],
+        default=repo_root_default,
         help="Path to and-bible-ios repository root",
     )
     parser.add_argument(
         "--android-root",
         type=Path,
-        default=Path(__file__).resolve().parents[2] / "and-bible" / "app" / "src" / "main" / "res",
+        default=android_root_default,
         help="Path to Android app res directory",
+    )
+    parser.add_argument(
+        "--android-snapshot",
+        type=Path,
+        default=android_snapshot_default,
+        help="Path to committed Android non-English parity snapshot JSON",
     )
     parser.add_argument(
         "--baseline",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "docs" / "settings-localization-guardrail-baseline.json",
+        default=repo_root_default / "docs" / "settings-localization-guardrail-baseline.json",
         help="Baseline JSON path",
     )
     parser.add_argument(
@@ -282,9 +345,38 @@ def main() -> int:
         action="store_true",
         help="Write baseline file from current state and exit 0",
     )
+    parser.add_argument(
+        "--write-android-snapshot",
+        action="store_true",
+        help="Write Android non-English parity snapshot from --android-root and exit 0",
+    )
     args = parser.parse_args()
 
-    audit = run_audit(args.repo_root, args.android_root)
+    if args.write_android_snapshot:
+        if not args.android_root.exists():
+            print(f"Android root not found: {args.android_root}", file=sys.stderr)
+            return 2
+        non_english_by_key = build_android_non_english_by_key(args.android_root)
+        write_android_non_english_snapshot(args.android_snapshot, args.android_root, non_english_by_key)
+        print(f"Wrote Android snapshot: {args.android_snapshot}")
+        return 0
+
+    if args.android_root.exists():
+        non_english_by_key = build_android_non_english_by_key(args.android_root)
+        android_source = f"live:{args.android_root}"
+    elif args.android_snapshot.exists():
+        non_english_by_key = load_android_non_english_snapshot(args.android_snapshot)
+        android_source = f"snapshot:{args.android_snapshot}"
+    else:
+        print(
+            "Neither Android res directory nor snapshot file is available.\n"
+            f"  android_root: {args.android_root}\n"
+            f"  android_snapshot: {args.android_snapshot}",
+            file=sys.stderr,
+        )
+        return 2
+
+    audit = run_audit(args.repo_root, non_english_by_key, android_source)
 
     if args.write_baseline:
         write_baseline(args.baseline, audit)
@@ -329,6 +421,7 @@ def main() -> int:
     print("SETPAR-603 guardrail summary")
     print(f"- tree mismatches: {len(audit.tree_mismatches)}")
     print(f"- ios_gap count: {ios_gap_count}")
+    print(f"- android source: {audit.android_source}")
     print(f"- keys checked: {len(PARITY_KEYS)}")
     print(f"- locales checked: {len(audit.locales)}")
 
@@ -344,4 +437,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

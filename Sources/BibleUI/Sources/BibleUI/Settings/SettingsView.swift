@@ -12,6 +12,7 @@ import UIKit
 public struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openURL) private var openURL
     @Binding var displaySettings: TextDisplaySettings
     @Binding var nightMode: Bool
     @Binding var nightModeMode: String
@@ -589,6 +590,31 @@ public struct SettingsView: View {
                 ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                #if os(iOS)
+                Button {
+                    openBibleLinkSystemSettings()
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(String(
+                                localized: "open_bible_links_title",
+                                defaultValue: "Open Bible links in AndBible"
+                            ))
+                                .foregroundStyle(.primary)
+                            Text(String(
+                                localized: "open_bible_links_summary",
+                                defaultValue: "When clicking links that refer to AndBible supported Bible URL, open them in AndBible"
+                            ))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "arrow.up.right.square")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                #endif
             }
 
             Section(String(localized: "settings_data")) {
@@ -1063,6 +1089,13 @@ public struct SettingsView: View {
     private func applyScreenKeepOn(_ enabled: Bool) {
         #if os(iOS)
         UIApplication.shared.isIdleTimerDisabled = enabled
+        #endif
+    }
+
+    private func openBibleLinkSystemSettings() {
+        #if os(iOS)
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        openURL(url)
         #endif
     }
 

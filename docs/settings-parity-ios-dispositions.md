@@ -56,3 +56,16 @@ This file records explicit iOS disposition decisions for Android parity tickets 
   - iOS has no SD-card permission model equivalent to Android storage permissions.
   - This preference is intentionally not surfaced in iOS settings UI.
   - No iOS runtime consumer is added.
+
+## SETPAR-505 — `open_links`
+
+- Android contract:
+  - Key: `open_links`
+  - Source: `and-bible/app/src/main/res/xml/settings.xml:241-246`
+  - Runtime behavior: opens Android App "Open by default" settings (`SettingsActivity.kt:334-349`).
+- iOS adaptation (implemented):
+  - Added Advanced settings action row using `open_bible_links_title` / `open_bible_links_summary`.
+  - Action opens iOS app system settings via `UIApplication.openSettingsURLString`.
+  - iOS does not expose a public deep link to per-app "Open by default links" equivalent; app settings is the supported fallback.
+- iOS references:
+  - UI + action: `Sources/BibleUI/Sources/BibleUI/Settings/SettingsView.swift`

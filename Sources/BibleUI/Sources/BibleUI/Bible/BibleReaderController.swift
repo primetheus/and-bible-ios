@@ -3685,8 +3685,10 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
 
+        let offsetRangeJSON = jsonOffsetRange(startOffset: bookmark.startOffset, endOffset: bookmark.endOffset)
+
         return """
-        {"id":"\(id)","type":"bookmark","hashCode":\(hashCode),"ordinalRange":[\(bookmark.ordinalStart),\(bookmark.ordinalEnd)],"originalOrdinalRange":[\(bookmark.kjvOrdinalStart),\(bookmark.kjvOrdinalEnd)],"offsetRange":null,"bookInitials":"\(activeModuleName)","bookName":"\(activeModuleName)","bookAbbreviation":"\(osisBookId)","createdAt":\(createdAt),"lastUpdatedOn":\(lastUpdated),"notes":\(hasNote ? "\"\(escapedNote)\"" : "null"),"hasNote":\(hasNote),"verseRange":"\(verseRange)","verseRangeOnlyNumber":"\(verseRangeOnlyNumber)","verseRangeAbbreviated":"\(verseRangeAbbreviated)","text":"\(escapedFullText)","fullText":"\(escapedFullText)","osisRef":"\(osisRef)","v11n":"\(bookmark.v11n)","labels":\(labelsJSON),"bookmarkToLabels":\(btlJSON),"osisFragment":null,"primaryLabelId":\(primaryLabelId),"wholeVerse":\(bookmark.wholeVerse),"customIcon":\(customIcon),"editAction":{"mode":null,"content":null}}
+        {"id":"\(id)","type":"bookmark","hashCode":\(hashCode),"ordinalRange":[\(bookmark.ordinalStart),\(bookmark.ordinalEnd)],"originalOrdinalRange":[\(bookmark.kjvOrdinalStart),\(bookmark.kjvOrdinalEnd)],"offsetRange":\(offsetRangeJSON),"bookInitials":"\(activeModuleName)","bookName":"\(activeModuleName)","bookAbbreviation":"\(osisBookId)","createdAt":\(createdAt),"lastUpdatedOn":\(lastUpdated),"notes":\(hasNote ? "\"\(escapedNote)\"" : "null"),"hasNote":\(hasNote),"verseRange":"\(verseRange)","verseRangeOnlyNumber":"\(verseRangeOnlyNumber)","verseRangeAbbreviated":"\(verseRangeAbbreviated)","text":"\(escapedFullText)","fullText":"\(escapedFullText)","osisRef":"\(osisRef)","v11n":"\(bookmark.v11n)","labels":\(labelsJSON),"bookmarkToLabels":\(btlJSON),"osisFragment":null,"primaryLabelId":\(primaryLabelId),"wholeVerse":\(bookmark.wholeVerse),"customIcon":\(customIcon),"editAction":{"mode":null,"content":null}}
         """
     }
 
@@ -3751,8 +3753,10 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
 
+        let offsetRangeJSON = jsonOffsetRange(startOffset: bookmark.startOffset, endOffset: bookmark.endOffset)
+
         return """
-        {"id":"\(id)","type":"bookmark","hashCode":\(hashCode),"ordinalRange":[\(bookmark.ordinalStart),\(bookmark.ordinalEnd)],"originalOrdinalRange":[\(bookmark.kjvOrdinalStart),\(bookmark.kjvOrdinalEnd)],"offsetRange":null,"bookInitials":"\(activeModuleName)","bookName":"\(activeModuleName)","bookAbbreviation":"\(osisBookId)","createdAt":\(createdAt),"lastUpdatedOn":\(lastUpdated),"notes":\(hasNote ? "\"\(escapedNote)\"" : "null"),"hasNote":\(hasNote),"verseRange":"\(verseRange)","verseRangeOnlyNumber":"\(verseRangeOnlyNumber)","verseRangeAbbreviated":"\(verseRangeAbbreviated)","text":"\(escapedFullText)","fullText":"\(escapedFullText)","osisRef":"\(osisRef)","v11n":"\(bookmark.v11n)","labels":\(labelsJSON),"bookmarkToLabels":\(btlJSON),"osisFragment":null,"primaryLabelId":\(primaryLabelId),"wholeVerse":\(bookmark.wholeVerse),"customIcon":\(customIcon),"editAction":{"mode":null,"content":null}}
+        {"id":"\(id)","type":"bookmark","hashCode":\(hashCode),"ordinalRange":[\(bookmark.ordinalStart),\(bookmark.ordinalEnd)],"originalOrdinalRange":[\(bookmark.kjvOrdinalStart),\(bookmark.kjvOrdinalEnd)],"offsetRange":\(offsetRangeJSON),"bookInitials":"\(activeModuleName)","bookName":"\(activeModuleName)","bookAbbreviation":"\(osisBookId)","createdAt":\(createdAt),"lastUpdatedOn":\(lastUpdated),"notes":\(hasNote ? "\"\(escapedNote)\"" : "null"),"hasNote":\(hasNote),"verseRange":"\(verseRange)","verseRangeOnlyNumber":"\(verseRangeOnlyNumber)","verseRangeAbbreviated":"\(verseRangeAbbreviated)","text":"\(escapedFullText)","fullText":"\(escapedFullText)","osisRef":"\(osisRef)","v11n":"\(bookmark.v11n)","labels":\(labelsJSON),"bookmarkToLabels":\(btlJSON),"osisFragment":null,"primaryLabelId":\(primaryLabelId),"wholeVerse":\(bookmark.wholeVerse),"customIcon":\(customIcon),"editAction":{"mode":null,"content":null}}
         """
     }
 
@@ -3896,8 +3900,10 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
             editActionJSON = "{\"mode\":null,\"content\":null}"
         }
 
+        let offsetRangeJSON = jsonOffsetRange(startOffset: bookmark.startOffset, endOffset: bookmark.endOffset)
+
         return """
-        {"id":"\(id)","type":"bookmark","hashCode":\(hashCode),"ordinalRange":[\(bookmark.ordinalStart),\(bookmark.ordinalEnd)],"originalOrdinalRange":[\(bookmark.kjvOrdinalStart),\(bookmark.kjvOrdinalEnd)],"offsetRange":null,"bookInitials":"\(activeModuleName)","bookName":"\(activeModuleName)","bookAbbreviation":"\(bookOsisId)","createdAt":\(createdAt),"lastUpdatedOn":\(lastUpdated),"notes":\(hasNote ? "\"\(escapedNote)\"" : "null"),"hasNote":\(hasNote),"verseRange":"\(verseRange)","verseRangeOnlyNumber":"\(verseRangeOnlyNumber)","verseRangeAbbreviated":"\(verseRangeAbbreviated)","text":"\(escapedFullText)","fullText":"\(escapedFullText)","osisRef":"\(osisRef)","v11n":"\(bookmark.v11n)","labels":\(labelsJSON),"bookmarkToLabels":\(btlJSON),"osisFragment":null,"primaryLabelId":\(primaryLabelId),"wholeVerse":\(bookmark.wholeVerse),"customIcon":\(customIcon),"editAction":\(editActionJSON)}
+        {"id":"\(id)","type":"bookmark","hashCode":\(hashCode),"ordinalRange":[\(bookmark.ordinalStart),\(bookmark.ordinalEnd)],"originalOrdinalRange":[\(bookmark.kjvOrdinalStart),\(bookmark.kjvOrdinalEnd)],"offsetRange":\(offsetRangeJSON),"bookInitials":"\(activeModuleName)","bookName":"\(activeModuleName)","bookAbbreviation":"\(bookOsisId)","createdAt":\(createdAt),"lastUpdatedOn":\(lastUpdated),"notes":\(hasNote ? "\"\(escapedNote)\"" : "null"),"hasNote":\(hasNote),"verseRange":"\(verseRange)","verseRangeOnlyNumber":"\(verseRangeOnlyNumber)","verseRangeAbbreviated":"\(verseRangeAbbreviated)","text":"\(escapedFullText)","fullText":"\(escapedFullText)","osisRef":"\(osisRef)","v11n":"\(bookmark.v11n)","labels":\(labelsJSON),"bookmarkToLabels":\(btlJSON),"osisFragment":null,"primaryLabelId":\(primaryLabelId),"wholeVerse":\(bookmark.wholeVerse),"customIcon":\(customIcon),"editAction":\(editActionJSON)}
         """
     }
 
@@ -3947,9 +3953,17 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
             editActionJSON = "{\"mode\":null,\"content\":null}"
         }
 
+        let offsetRangeJSON = jsonOffsetRange(startOffset: bookmark.startOffset, endOffset: bookmark.endOffset)
+
         return """
-        {"id":"\(id)","type":"generic-bookmark","hashCode":\(hashCode),"ordinalRange":[\(bookmark.ordinalStart),\(bookmark.ordinalEnd)],"offsetRange":null,"bookInitials":"\(bookmark.bookInitials)","bookName":"\(bookmark.bookInitials)","bookAbbreviation":"","createdAt":\(createdAt),"lastUpdatedOn":\(lastUpdated),"notes":\(hasNote ? "\"\(escapedNote)\"" : "null"),"hasNote":\(hasNote),"text":"","fullText":"","key":"\(escapedKey)","keyName":"\(escapedKey)","highlightedText":"","labels":\(labelsJSON),"bookmarkToLabels":\(btlJSON),"primaryLabelId":\(primaryLabelId),"wholeVerse":\(bookmark.wholeVerse),"customIcon":\(customIcon),"editAction":\(editActionJSON)}
+        {"id":"\(id)","type":"generic-bookmark","hashCode":\(hashCode),"ordinalRange":[\(bookmark.ordinalStart),\(bookmark.ordinalEnd)],"offsetRange":\(offsetRangeJSON),"bookInitials":"\(bookmark.bookInitials)","bookName":"\(bookmark.bookInitials)","bookAbbreviation":"","createdAt":\(createdAt),"lastUpdatedOn":\(lastUpdated),"notes":\(hasNote ? "\"\(escapedNote)\"" : "null"),"hasNote":\(hasNote),"text":"","fullText":"","key":"\(escapedKey)","keyName":"\(escapedKey)","highlightedText":"","labels":\(labelsJSON),"bookmarkToLabels":\(btlJSON),"primaryLabelId":\(primaryLabelId),"wholeVerse":\(bookmark.wholeVerse),"customIcon":\(customIcon),"editAction":\(editActionJSON)}
         """
+    }
+
+    private func jsonOffsetRange(startOffset: Int?, endOffset: Int?) -> String {
+        guard let startOffset else { return "null" }
+        let endValue = endOffset.map(String.init) ?? "null"
+        return "[\(startOffset),\(endValue)]"
     }
 
     // MARK: - StudyPad Event Helpers

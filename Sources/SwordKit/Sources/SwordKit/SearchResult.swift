@@ -5,10 +5,10 @@ import Foundation
 /// Type of search to perform.
 public enum SearchType: Int, Sendable, CaseIterable {
     case regex = 0
-    case phrase = 1
-    case multiWord = -1
-    case entryAttribute = -2
-    case lucene = -3
+    case phrase = -1
+    case multiWord = -2
+    case entryAttribute = -3
+    case lucene = -4
 }
 
 /// User-facing search word matching mode (maps to SearchType + query decoration).

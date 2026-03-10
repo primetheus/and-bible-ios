@@ -235,6 +235,8 @@ public struct SearchView: View {
             List {
                 if isSearching {
                     ProgressView(String(localized: "search_searching"))
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .listRowSeparator(.hidden)
                 } else if let multi = multiResults, selectedModules.count > 1 {
                     multiResultsSection(multi)
                 } else if !results.isEmpty {
@@ -573,20 +575,25 @@ public struct SearchView: View {
             // Android parity: find-all occurrences uses "strong:<key>" query syntax and
             // a Strong's-capable Bible module, not plain-text FTS.
             if let strongsQueryOptions {
-                let strongsModule = Self.resolveStrongsSearchModule(
+                let strongsModules = Self.resolveStrongsSearchModules(
                     currentModule: swordModule,
                     installedModules: installedBibleModules,
                     swordManager: swordManager
                 )
-                if let strongsModule {
-                    let hits = Self.searchStrongsInModule(
-                        strongsModule,
-                        queryOptions: strongsQueryOptions,
-                        scope: swordScope
-                    )
+                if !strongsModules.isEmpty {
+                    var hits: [SearchHit] = []
+                    for strongsModule in strongsModules {
+                        hits = Self.searchStrongsInModule(
+                            strongsModule,
+                            queryOptions: strongsQueryOptions,
+                            scope: swordScope
+                        )
+                        if !hits.isEmpty { break }
+                    }
+                    let resolvedHits = hits
                     await MainActor.run {
-                        results = hits
-                        resultSummary = String(localized: "\(hits.count) verses in 1 translation")
+                        results = resolvedHits
+                        resultSummary = String(localized: "\(resolvedHits.count) verses in 1 translation")
                         isSearching = false
                     }
                     return
@@ -720,6 +727,17 @@ public struct SearchView: View {
     }
 
     private static func parseVerseKey(_ key: String) -> (book: String, chapter: Int, verse: Int)? {
+        if let parsed = parseHumanVerseKey(key) {
+            return parsed
+        }
+        if let parsed = parseOsisVerseKey(key) {
+            return parsed
+        }
+        return nil
+    }
+
+    /// Parse SWORD human-readable keys like "Genesis 1:1" or "I Samuel 2:3".
+    private static func parseHumanVerseKey(_ key: String) -> (book: String, chapter: Int, verse: Int)? {
         guard let colonIdx = key.lastIndex(of: ":") else { return nil }
         let verseStr = String(key[key.index(after: colonIdx)...])
         let beforeColon = String(key[..<colonIdx])
@@ -730,8 +748,23 @@ public struct SearchView: View {
         return (bookPart, chapter, verse)
     }
 
+    /// Parse OSIS keys like "Gen.1.1" (with optional suffixes like "!crossReference.a").
+    private static func parseOsisVerseKey(_ key: String) -> (book: String, chapter: Int, verse: Int)? {
+        let base = key.split(separator: "!", maxSplits: 1, omittingEmptySubsequences: true).first.map(String.init) ?? key
+        let parts = base.split(separator: ".")
+        guard parts.count >= 3 else { return nil }
+
+        guard let chapter = Int(parts[parts.count - 2]),
+              let verse = Int(parts[parts.count - 1]) else {
+            return nil
+        }
+
+        let osisId = String(parts[parts.count - 3])
+        let bookName = BibleReaderController.bookName(forOsisId: osisId) ?? osisId
+        return (bookName, chapter, verse)
+    }
+
     private struct StrongsQueryOptions {
-        let androidStyleQueries: [String]
         let entryAttributeQueries: [String]
     }
 
@@ -755,22 +788,15 @@ public struct SearchView: View {
         let stripped = String(digitsRaw.drop(while: { $0 == "0" }))
         let normalizedDigits = stripped.isEmpty ? "0" : stripped
 
-        let prefixLower = String(prefix).lowercased()
-
-        var androidStyleQueries: [String] = []
-        androidStyleQueries.append("strong:\(prefixLower)\(digitsRaw)")
-        androidStyleQueries.append("strong:\(prefixLower)0*\(normalizedDigits)")
-        if normalizedDigits != digitsRaw {
-            androidStyleQueries.append("strong:\(prefixLower)\(normalizedDigits)")
-        }
-
+        // SWORD ENTRYATTR query format: "Word//Lemma./value"
+        // Value is substring-matched (case-insensitive) by SWORD, so
+        // "H08414" matches "strong:H08414" stored in the Lemma attribute.
         var entryAttributeQueries: [String] = []
-        entryAttributeQueries.append("lemma:strong:\(prefix)\(digitsRaw)")
+        entryAttributeQueries.append("Word//Lemma./\(prefix)\(digitsRaw)")
         if normalizedDigits != digitsRaw {
-            entryAttributeQueries.append("lemma:strong:\(prefix)\(normalizedDigits)")
+            entryAttributeQueries.append("Word//Lemma./\(prefix)\(normalizedDigits)")
         }
         return StrongsQueryOptions(
-            androidStyleQueries: Self.orderedUnique(androidStyleQueries),
             entryAttributeQueries: Self.orderedUnique(entryAttributeQueries)
         )
     }
@@ -784,28 +810,40 @@ public struct SearchView: View {
         return result
     }
 
-    private static func resolveStrongsSearchModule(
+    private static func resolveStrongsSearchModules(
         currentModule: SwordModule?,
         installedModules: [ModuleInfo],
         swordManager: SwordManager?
-    ) -> SwordModule? {
-        guard let swordManager else { return currentModule }
+    ) -> [SwordModule] {
+        var modules: [SwordModule] = []
+        var seenNames = Set<String>()
 
-        if let currentModule, currentModule.info.features.contains(.strongsNumbers) {
-            return currentModule
-        }
-
-        let strongsBibleNames = installedModules
-            .filter { $0.features.contains(.strongsNumbers) }
-            .map(\.name)
-            .sorted()
-
-        for moduleName in strongsBibleNames {
-            if let module = swordManager.module(named: moduleName) {
-                return module
+        func appendUnique(_ module: SwordModule?) {
+            guard let module else { return }
+            if seenNames.insert(module.info.name).inserted {
+                modules.append(module)
             }
         }
-        return currentModule
+
+        // Prefer the currently-open module when it already has Strong's data.
+        if let currentModule, currentModule.info.features.contains(.strongsNumbers) {
+            appendUnique(currentModule)
+        }
+
+        // Then try every installed Strong's-capable Bible module.
+        if let swordManager {
+            let strongsBibleNames = installedModules
+                .filter { $0.features.contains(.strongsNumbers) }
+                .map(\.name)
+                .sorted()
+            for moduleName in strongsBibleNames {
+                appendUnique(swordManager.module(named: moduleName))
+            }
+        }
+
+        // Final fallback to current module even if feature metadata is missing/stale.
+        appendUnique(currentModule)
+        return modules
     }
 
     private static func searchStrongsInModule(
@@ -813,15 +851,12 @@ public struct SearchView: View {
         queryOptions: StrongsQueryOptions,
         scope: String?
     ) -> [SearchHit] {
-        let searchAttempts: [(query: String, type: SearchType)] =
-            queryOptions.androidStyleQueries.map { ($0, .lucene) } +
-            queryOptions.androidStyleQueries.map { ($0, .multiWord) } +
-            queryOptions.entryAttributeQueries.map { ($0, .entryAttribute) }
-
-        for attempt in searchAttempts {
+        // Use SWORD's entry attribute search with the correct path format.
+        for query in queryOptions.entryAttributeQueries {
             let options = SearchOptions(
-                query: attempt.query,
-                searchType: attempt.type,
+                query: query,
+                searchType: .entryAttribute,
+                caseInsensitive: true,
                 scope: scope
             )
             let swordResults = module.search(options)

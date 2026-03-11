@@ -3,23 +3,49 @@
 import SwiftUI
 import SwordKit
 
-/// Grid-based book chooser for navigating to a Bible book.
-///
-/// Displays books from the active module's versification, grouped by testament.
-/// Modules with apocrypha/deuterocanonical books will show additional sections.
+/**
+ Grid-based chooser for selecting a book and then drilling down to chapter or verse.
+
+ The chooser uses the active module's `BookInfo` list instead of a static canon, so modules with
+ expanded canons surface their additional books automatically. Depending on `navigateToVerse`, the
+ flow ends after chapter selection or adds a verse-selection step.
+
+ Data dependencies:
+ - `books` is the module-specific canon and chapter metadata provided by the caller
+ - `dismiss` closes the chooser when the user cancels the flow
+
+ Side effects:
+ - tapping a book mutates local selection state to advance to the chapter step
+ - tapping a chapter may either complete the flow or advance to the verse step
+ - tapping toolbar back actions resets the local step state without dismissing the sheet
+ */
 public struct BookChooserView: View {
+    /// Dynamic book list derived from the active module's versification.
     let books: [BookInfo]
+
+    /// Whether the flow should include a verse chooser after chapter selection.
     let navigateToVerse: Bool
+
+    /// Callback invoked when the user has completed the selection flow.
     let onSelect: (String, Int, Int?) -> Void
+
+    /// Currently selected book, or `nil` while the grid step is visible.
     @State private var selectedBook: BookInfo?
+
+    /// Currently selected chapter when the verse step is active.
     @State private var selectedChapter: Int?
+
+    /// Dismiss action for canceling the chooser flow.
     @Environment(\.dismiss) private var dismiss
 
-    /// Create a book chooser with a specific book list.
-    /// - Parameters:
-    ///   - books: The book list from the active module's versification.
-    ///   - navigateToVerse: Whether selecting a passage should include a verse step.
-    ///   - onSelect: Callback with (bookName, chapter, verse?) when selection is complete.
+    /**
+     Creates a book chooser for a specific module canon.
+
+     - Parameters:
+       - books: Book list from the active module's versification.
+       - navigateToVerse: Whether the flow should include verse selection.
+       - onSelect: Callback receiving `(bookName, chapter, verse?)` when selection completes.
+     */
     public init(
         books: [BookInfo],
         navigateToVerse: Bool = false,
@@ -30,16 +56,19 @@ public struct BookChooserView: View {
         self.onSelect = onSelect
     }
 
-    /// Old Testament books from the provided list.
+    /// Books tagged as Old Testament in the module-provided canon.
     private var oldTestamentBooks: [BookInfo] {
         books.filter { $0.testament == 1 }
     }
 
-    /// New Testament books from the provided list.
+    /// Books tagged as New Testament in the module-provided canon.
     private var newTestamentBooks: [BookInfo] {
         books.filter { $0.testament == 2 }
     }
 
+    /**
+     Builds the current chooser step: book grid, chapter grid, or verse grid.
+     */
     public var body: some View {
         Group {
             if let book = selectedBook {
@@ -89,6 +118,7 @@ public struct BookChooserView: View {
         }
     }
 
+    /// Navigation title reflecting the current chooser step.
     private var navigationTitle: String {
         if let book = selectedBook, let chapter = selectedChapter {
             return "\(book.name) \(chapter)"
@@ -96,6 +126,7 @@ public struct BookChooserView: View {
         return selectedBook?.name ?? String(localized: "choose_book")
     }
 
+    /// Scrollable container for the testament-grouped book grid.
     private var bookGrid: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
@@ -114,6 +145,11 @@ public struct BookChooserView: View {
         }
     }
 
+    /**
+     Builds one adaptive grid section for the provided books.
+
+     - Parameter books: Books to render in this testament section.
+     */
     private func bookGridSection(books: [BookInfo]) -> some View {
         let columns = [GridItem(.adaptive(minimum: 100), spacing: 8)]
         return LazyVGrid(columns: columns, spacing: 8) {

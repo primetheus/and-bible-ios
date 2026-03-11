@@ -2,26 +2,37 @@
 
 import SwiftUI
 
-/// Grid-based chapter chooser for selecting a chapter within a book.
-///
-/// The chapter count comes from the active module's versification data,
-/// passed in by the parent BookChooserView.
+/**
+ Grid-based chooser for selecting a chapter within a book.
+
+ The chapter count is supplied by the parent chooser from the active module's versification data,
+ so chapter availability matches the selected module rather than a static canon table.
+ */
 public struct ChapterChooserView: View {
+    /// User-visible book name shown in the navigation title.
     let bookName: String
+
+    /// Number of chapters available for this book in the active module.
     let chapterCount: Int
+
+    /// Callback invoked with the chosen one-based chapter number.
     let onSelect: (Int) -> Void
 
-    /// Create a chapter chooser.
-    /// - Parameters:
-    ///   - bookName: The book name (for the navigation title).
-    ///   - chapterCount: Number of chapters in this book (from module versification).
-    ///   - onSelect: Callback with the selected chapter number (1-based).
+    /**
+     Creates a chapter chooser for one book.
+
+     - Parameters:
+       - bookName: Book name displayed in the navigation title.
+       - chapterCount: Number of chapters available in the active module.
+       - onSelect: Callback receiving the selected one-based chapter number.
+     */
     public init(bookName: String, chapterCount: Int, onSelect: @escaping (Int) -> Void) {
         self.bookName = bookName
         self.chapterCount = chapterCount
         self.onSelect = onSelect
     }
 
+    /// Builds the adaptive chapter grid.
     public var body: some View {
         ScrollView {
             let columns = [GridItem(.adaptive(minimum: 50), spacing: 8)]

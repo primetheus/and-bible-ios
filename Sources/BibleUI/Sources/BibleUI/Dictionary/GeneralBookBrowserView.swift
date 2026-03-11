@@ -3,17 +3,43 @@
 import SwiftUI
 import SwordKit
 
-/// Flat key list browser for general book and map modules.
-/// Reused for both `.generalBook` and `.map` categories.
+/**
+ Flat key browser for general-book and map modules.
+
+ Unlike `DictionaryBrowserView`, this view presents the full key list without local search and is
+ reused for both `.generalBook` and `.map` SWORD categories.
+
+ Data dependencies:
+ - `module` is the selected module whose keys should be listed
+ - `title` is the user-visible navigation title supplied by the caller
+ - `onSelectKey` notifies the parent when the user chooses an entry key
+
+ Side effects:
+ - loads the module key list asynchronously when the view appears
+ - dismisses the sheet when the user taps the toolbar Done action
+ */
 struct GeneralBookBrowserView: View {
+    /// Module whose flat key list is being browsed.
     let module: SwordModule
+
+    /// Navigation title shown while browsing the module.
     let title: String
+
+    /// Callback invoked when the user chooses an entry key.
     let onSelectKey: (String) -> Void
 
+    /// Complete key list loaded from the module.
     @State private var allKeys: [String] = []
+
+    /// Whether the module key list is still loading.
     @State private var isLoading = true
+
+    /// Dismiss action for closing the browser.
     @Environment(\.dismiss) private var dismiss
 
+    /**
+     Builds the loading state, empty state, or flat key list.
+     */
     var body: some View {
         NavigationStack {
             Group {

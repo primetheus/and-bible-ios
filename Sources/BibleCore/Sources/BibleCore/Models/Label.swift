@@ -1,58 +1,83 @@
-// Label.swift — Label and bookmark style models
+// Label.swift -- Label and bookmark style models
 
 import Foundation
 import SwiftData
 
-/// Type of label for special categorization.
+/**
+ Enumerates persisted label type identifiers mirrored from the Android data model.
+
+ The raw values are stored in SwiftData and passed through to other layers without
+ translation, so callers should treat them as persistence contract values.
+ */
 public enum LabelType: String, Codable, Sendable {
     case highlight = "HIGHLIGHT"
     case example = "EXAMPLE"
 }
 
-/// A label (tag) that can be applied to bookmarks for organization.
-/// Also serves as the container for StudyPad entries.
+/**
+ Stores a bookmark label and its visual styling metadata.
+
+ Labels are used for user-visible tagging, highlighting rules, quick actions, and as the
+ container entity for StudyPad notes. Deleting a label cascades to its StudyPad entries,
+ while bookmark junction rows are managed by their owning bookmark relationships.
+ */
 @Model
 public final class Label {
-    /// UUID primary key.
+    /// Unique identifier used for persistence, bookmark linking, and CloudKit deduplication.
     @Attribute(.unique) public var id: UUID
 
-    /// Label display name. Special system labels use reserved names.
+    /// User-visible label name or one of the reserved system label identifiers.
     public var name: String
 
-    /// ARGB color integer for the label.
+    /// Signed ARGB color integer consumed by native and web rendering layers.
     public var color: Int
 
-    /// Whether to show a marker/star icon style.
+    /// Enables marker-style rendering instead of the default highlight treatment.
     public var markerStyle: Bool
 
-    /// Whether marker style applies to the whole verse.
+    /// Applies the marker style to the whole verse instead of only the selected text span.
     public var markerStyleWholeVerse: Bool
 
-    /// Whether to show underline style.
+    /// Enables underline-style rendering for bookmarks using this label.
     public var underlineStyle: Bool
 
-    /// Whether underline style applies to the whole verse.
+    /// Applies underline styling to the whole verse instead of only the selected text span.
     public var underlineStyleWholeVerse: Bool
 
-    /// Whether to hide the highlight (invisible label).
+    /// Hides the visible highlight while keeping the label and bookmark metadata intact.
     public var hideStyle: Bool
 
-    /// Whether hide style applies to the whole verse.
+    /// Applies the hidden style to the whole verse instead of only the selected text span.
     public var hideStyleWholeVerse: Bool
 
-    /// Whether this label is marked as favourite for quick access.
+    /// Flags the label for quick-access surfaces such as bookmark and label pickers.
     public var favourite: Bool
 
-    /// Label type for categorization.
+    /// Optional raw label type string mirrored from Android parity state.
     public var type: String?
 
-    /// Custom icon identifier.
+    /// Optional Android canonical icon name or previously stored SF Symbol identifier.
     public var customIcon: String?
 
-    /// StudyPad text entries associated with this label.
+    /// StudyPad text rows owned by this label and cascade-deleted with it.
     @Relationship(deleteRule: .cascade, inverse: \StudyPadTextEntry.label)
     public var studyPadEntries: [StudyPadTextEntry]?
 
+    /**
+     Creates a label with styling metadata.
+
+     - Parameters:
+       - id: Stable identifier for persistence and sync.
+       - name: User-visible or reserved system label name.
+       - color: Signed ARGB integer shared with the web renderer.
+       - markerStyle: Whether marker-style rendering is enabled.
+       - markerStyleWholeVerse: Whether marker-style rendering applies to an entire verse.
+       - underlineStyle: Whether underline rendering is enabled.
+       - underlineStyleWholeVerse: Whether underlines apply to an entire verse.
+       - hideStyle: Whether the visual highlight is suppressed.
+       - hideStyleWholeVerse: Whether the hidden style applies to an entire verse.
+       - favourite: Whether the label is surfaced in quick-access UI.
+     */
     public init(
         id: UUID = UUID(),
         name: String = "",
@@ -79,34 +104,47 @@ public final class Label {
 
     // MARK: - Constants
 
-    /// Default highlight color (blue): 0xFF91A7FF
+    /// Default highlight color encoded as a signed ARGB integer (`0xFF91A7FF`).
     public static let defaultColor: Int = 0xFF91A7FF
 
-    /// System label names (reserved, not user-visible).
+    /// Reserved system label name used by speak/highlight playback features.
     public static let speakLabelName = "__SPEAK_LABEL__"
+
+    /// Reserved system label name for unlabeled bookmark grouping.
     public static let unlabeledName = "__UNLABELED__"
+
+    /// Reserved system label name used to mark paragraph breaks.
     public static let paragraphBreakLabelName = "__PARAGRAPH_BREAK_LABEL__"
 
-    /// Deterministic UUIDs for system labels — ensures cross-device dedup on CloudKit sync.
+    /// Deterministic identifier for the speak system label used during CloudKit sync.
     public static let speakLabelId = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+
+    /// Deterministic identifier for the unlabeled system label used during CloudKit sync.
     public static let unlabeledId = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+
+    /// Deterministic identifier for the paragraph-break system label used during sync.
     public static let paragraphBreakLabelId = UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
 
-    /// Whether this is a system-reserved label.
+    /// Returns true when this label matches one of the reserved system label names.
     public var isSystemLabel: Bool {
         name == Label.speakLabelName ||
         name == Label.unlabeledName ||
         name == Label.paragraphBreakLabelName
     }
 
-    /// Whether this is a real user-created label (not a system label).
+    /// Returns true when the label is user-created and safe to expose in normal label UI.
     public var isRealLabel: Bool {
         !isSystemLabel
     }
 
-    // MARK: - Icon Mapping (Android canonical name ↔ SF Symbol)
+    // MARK: - Icon Mapping (Android canonical name <-> SF Symbol)
 
-    /// Maps Android canonical icon names (used by Vue.js `customIconMap`) to SF Symbols.
+    /**
+     Maps Android canonical bookmark icon names to SF Symbols used by iOS surfaces.
+
+     The mapping keeps persisted Android-compatible names stable while allowing iOS to render
+     native symbols. Unknown keys fall back to the raw string in `sfSymbol(for:)`.
+     */
     public static let iconToSFSymbol: [String: String] = [
         "book": "book.fill",
         "book-bible": "book.closed.fill",
@@ -141,15 +179,26 @@ public final class Label {
         "heart-crack": "heart.slash.fill",
     ]
 
-    /// Returns the SF Symbol name for a given icon name (Android canonical or SF Symbol).
-    /// Falls back to the raw value if no mapping exists (backward compat with existing SF Symbol names).
+    /**
+     Resolves a persisted custom icon name into an SF Symbol usable on iOS.
+
+     - Parameter iconName: Android canonical icon name or an older persisted SF Symbol name.
+     - Returns: The SF Symbol to render, or `nil` when the caller has no custom icon.
+     - Note: Unknown names are returned unchanged for backward compatibility with older iOS
+       builds that persisted SF Symbol names directly.
+     */
     public static func sfSymbol(for iconName: String?) -> String? {
         guard let name = iconName, !name.isEmpty else { return nil }
         return iconToSFSymbol[name] ?? name
     }
 }
 
-/// Predefined bookmark highlight styles matching Android's BookmarkStyle enum.
+/**
+ Enumerates the predefined bookmark styles surfaced by the UI.
+
+ The raw values match Android's `BookmarkStyle` enum so preset selections can round-trip
+ through shared data and localization tables.
+ */
 public enum BookmarkStylePreset: String, CaseIterable, Sendable {
     case yellowStar = "YELLOW_STAR"
     case redHighlight = "RED_HIGHLIGHT"
@@ -160,7 +209,7 @@ public enum BookmarkStylePreset: String, CaseIterable, Sendable {
     case purpleHighlight = "PURPLE_HIGHLIGHT"
     case underline = "UNDERLINE"
 
-    /// The ARGB color for this preset.
+    /// Returns the signed ARGB color integer paired with this preset.
     public var color: Int {
         switch self {
         case .yellowStar: return 0xFFFFFF00

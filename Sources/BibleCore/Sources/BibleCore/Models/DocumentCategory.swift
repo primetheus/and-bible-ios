@@ -1,8 +1,13 @@
-// DocumentCategory.swift — Document type categories
+// DocumentCategory.swift -- Document type categories
 
 import Foundation
 
-/// Category of a Bible study document.
+/**
+ Describes the high-level module categories that PageManager persists for each window.
+
+ The raw values mirror Android/SWORD naming used throughout the app, so callers should
+ treat them as persistence and bridge contract values rather than presentation strings.
+ */
 public enum DocumentCategory: String, Codable, Sendable {
     case bible = "BIBLE"
     case commentary = "COMMENTARY"
@@ -12,7 +17,7 @@ public enum DocumentCategory: String, Codable, Sendable {
     case epub = "EPUB"
     case dailyDevotion = "DAILY_DEVOTION"
 
-    /// The page manager key used for persistence.
+    /// Returns the PageManager field prefix used to persist state for this category.
     public var pageManagerKey: String {
         switch self {
         case .bible: return "bible"
@@ -26,13 +31,23 @@ public enum DocumentCategory: String, Codable, Sendable {
     }
 }
 
-/// Text direction for document rendering.
+/**
+ Declares the reading direction expected by rendered document content.
+
+ The enum is serialized into view-model state and does not itself mutate shared state.
+ */
 public enum TextDirection: String, Codable, Sendable {
     case ltr
     case rtl
 }
 
-/// Versification system used by a Bible module.
+/**
+ Enumerates the versification systems the app recognizes when converting ordinals,
+ resolving references, and persisting module-specific Bible positions.
+
+ Unknown raw values are coerced to `.kjva` by `init(string:)` so callers always receive
+ a valid enum for downstream persistence and navigation logic.
+ */
 public enum Versification: String, Codable, Sendable {
     case kjv = "KJV"
     case kjva = "KJVA"
@@ -54,6 +69,14 @@ public enum Versification: String, Codable, Sendable {
     case segond = "Segond"
     case custom = "Custom"
 
+    /**
+     Creates a versification from persisted or bridged raw text.
+
+     - Parameter string: Raw versification name stored by SWORD, Android parity code, or
+       serialized page state.
+     - Note: Falls back to `.kjva` when the input is unknown so callers do not need to
+       handle optional parsing failures.
+     */
     public init(string: String) {
         self = Versification(rawValue: string) ?? .kjva
     }

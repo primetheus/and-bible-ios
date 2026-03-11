@@ -1,46 +1,60 @@
-// Workspace.swift — Workspace domain model
+// Workspace.swift -- Workspace domain model
 
 import Foundation
 import SwiftData
 
-/// A workspace contains a set of windows displaying different Bible documents.
-/// Users can switch between workspaces to maintain different study contexts.
+/**
+ Persists one named study workspace and the windows it contains.
+
+ A workspace groups multiple `Window` panes, carries workspace-wide display/settings
+ defaults, and stores layout-level metadata such as the maximized pane and target links
+ window. Deleting a workspace cascades to its windows and their owned state.
+ */
 @Model
 public final class Workspace {
-    /// UUID primary key matching Android's IdType.
+    /// Unique identifier mirrored from Android's workspace IdType contract.
     @Attribute(.unique) public var id: UUID
 
-    /// User-visible workspace name.
+    /// User-visible workspace name shown in workspace pickers and headers.
     public var name: String
 
-    /// Descriptive text for the workspace contents.
+    /// Optional summary text describing the workspace contents for list UI.
     public var contentsText: String?
 
-    /// Display order among workspaces.
+    /// Zero-based display order among all persisted workspaces.
     public var orderNumber: Int
 
-    /// Text display settings for this workspace (inherited by windows).
+    /// Workspace-scoped text display overrides inherited by windows that do not override them.
     public var textDisplaySettings: TextDisplaySettings?
 
-    /// Workspace-level settings.
+    /// Workspace-scoped behavioral settings shared by the windows in this workspace.
     public var workspaceSettings: WorkspaceSettings?
 
-    /// Weight for unpinned windows layout.
+    /// Cached layout weight reserved for unpinned windows when split layouts are recomputed.
     public var unPinnedWeight: Float?
 
-    /// ID of the currently maximized window, if any.
+    /// Identifier of the currently maximized window, if one pane is expanded.
     public var maximizedWindowId: UUID?
 
-    /// ID of the primary target links window.
+    /// Identifier of the primary links target window for cross-reference routing.
     public var primaryTargetLinksWindowId: UUID?
 
-    /// Workspace accent color as ARGB integer.
+    /// Optional signed ARGB accent color associated with the workspace.
     public var workspaceColor: Int?
 
-    /// Windows belonging to this workspace.
+    /// Child windows owned by this workspace and cascade-deleted with it.
     @Relationship(deleteRule: .cascade, inverse: \Window.workspace)
     public var windows: [Window]?
 
+    /**
+     Creates a workspace shell.
+
+     - Parameters:
+       - id: Stable identifier for persistence and cross-entity references.
+       - name: User-visible workspace name.
+       - orderNumber: Zero-based workspace order in the workspace list.
+     - Note: Related windows and optional settings are attached after insertion.
+     */
     public init(
         id: UUID = UUID(),
         name: String = "",
@@ -52,18 +66,55 @@ public final class Workspace {
     }
 }
 
-/// Workspace-level settings that apply to all windows unless overridden.
+/**
+ Stores workspace-scoped behavioral settings that are not tied to a single window.
+
+ These values are serialized inside `Workspace` and read by workspace management, StudyPad,
+ and compare-mode UI. The struct has no side effects on its own; persistence occurs when the
+ owning `Workspace` is saved.
+ */
 public struct WorkspaceSettings: Codable, Sendable {
+    /// Enables tilt-to-scroll behavior for windows in this workspace when supported.
     public var enableTiltToScroll: Bool
+
+    /// Reverses split ordering semantics for workspace layouts.
     public var enableReverseSplitMode: Bool
+
+    /// Automatically pins new or updated windows according to workspace behavior rules.
     public var autoPin: Bool
+
+    /// Most recently used labels, ordered by access time for quick-pick UI.
     public var recentLabels: [RecentLabel]
+
+    /// Labels that should be auto-assigned to newly created bookmarks in this workspace.
     public var autoAssignLabels: Set<UUID>
+
+    /// Optional label that should become the primary label on new bookmarks.
     public var autoAssignPrimaryLabel: UUID?
+
+    /// StudyPad cursor positions keyed by label identifier.
     public var studyPadCursors: [UUID: Int]
+
+    /// Module initials hidden from compare-document pickers in this workspace.
     public var hideCompareDocuments: Set<String>
+
+    /// Reduces modal size for ambiguous compare/document chooser flows.
     public var limitAmbiguousModalSize: Bool
 
+    /**
+     Creates workspace-scoped settings.
+
+     - Parameters:
+       - enableTiltToScroll: Whether tilt-to-scroll is enabled for the workspace.
+       - enableReverseSplitMode: Whether split ordering is reversed.
+       - autoPin: Whether windows should auto-pin by default.
+       - recentLabels: Recently used labels for quick selection UI.
+       - autoAssignLabels: Labels automatically assigned to new bookmarks.
+       - autoAssignPrimaryLabel: Primary label automatically assigned to new bookmarks.
+       - studyPadCursors: Stored StudyPad cursor positions keyed by label id.
+       - hideCompareDocuments: Module initials hidden from compare pickers.
+       - limitAmbiguousModalSize: Whether ambiguous chooser modals should be size-limited.
+     */
     public init(
         enableTiltToScroll: Bool = false,
         enableReverseSplitMode: Bool = false,
@@ -87,64 +138,161 @@ public struct WorkspaceSettings: Codable, Sendable {
     }
 }
 
-/// A recently-used label with timestamp for sorting.
+/**
+ Records one recent-label access event for workspace quick-pick ordering.
+
+ The value type is embedded inside `WorkspaceSettings`, so changes are persisted only when the
+ owning workspace is saved.
+ */
 public struct RecentLabel: Codable, Sendable {
+    /// Identifier of the label that was recently used.
     public var labelId: UUID
+
+    /// Timestamp of the last observed use for ordering recent-label lists.
     public var lastAccess: Date
 
+    /**
+     Creates a recent-label record.
+
+     - Parameters:
+       - labelId: Identifier of the label that was used.
+       - lastAccess: Timestamp of the use event.
+     */
     public init(labelId: UUID, lastAccess: Date = Date()) {
         self.labelId = labelId
         self.lastAccess = lastAccess
     }
 }
 
-/// Text display settings with optional values for inheritance chain.
-/// When a value is nil, it inherits from the parent level:
-/// Window → Workspace → App defaults.
+/**
+ Stores optional text-display overrides used by the app's inheritance chain.
+
+ Each property is optional by design. `nil` means "inherit from the next level up" using the
+ chain `window -> workspace -> app defaults`. The struct itself performs no persistence or UI
+ updates; those side effects occur when a containing `Workspace` or `PageManager` is saved and
+ the resolved values are pushed into native/web readers.
+ */
 public struct TextDisplaySettings: Codable, Sendable, Equatable {
+    /// Font size in points for the rendered document text.
     public var fontSize: Int?
+
+    /// Font family identifier understood by the renderer.
     public var fontFamily: String?
+
+    /// Additional line spacing applied by the renderer.
     public var lineSpacing: Int?
+
+    /// Left margin in renderer-specific units.
     public var marginLeft: Int?
+
+    /// Right margin in renderer-specific units.
     public var marginRight: Int?
+
+    /// Maximum readable content width for centered layouts.
     public var maxWidth: Int?
+
+    /// Extra top margin applied above the document body.
     public var topMargin: Int?
+
+    /// Strong's display mode integer consumed by the Vue/native reading layer.
     public var strongsMode: Int?
+
+    /// Whether morphology data is shown when available.
     public var showMorphology: Bool?
+
+    /// Whether footnotes are rendered at all.
     public var showFootNotes: Bool?
+
+    /// Whether footnotes are expanded inline instead of using modal presentation.
     public var showFootNotesInline: Bool?
+
+    /// Whether cross-references are expanded inline.
     public var expandXrefs: Bool?
+
+    /// Whether cross-reference markers are shown.
     public var showXrefs: Bool?
+
+    /// Whether words of Christ are styled using red-letter treatment.
     public var showRedLetters: Bool?
+
+    /// Whether section titles are rendered.
     public var showSectionTitles: Bool?
+
+    /// Whether verse numbers are rendered in the reading view.
     public var showVerseNumbers: Bool?
+
+    /// Whether each verse begins on a new line.
     public var showVersePerLine: Bool?
+
+    /// Whether bookmark highlights and indicators are rendered.
     public var showBookmarks: Bool?
+
+    /// Whether the user's own notes are rendered inline.
     public var showMyNotes: Bool?
+
+    /// Whether paragraph text is justified.
     public var justifyText: Bool?
+
+    /// Whether hyphenation is enabled when supported by the renderer.
     public var hyphenation: Bool?
+
+    /// Whether page numbers are shown in paged reading modes.
     public var showPageNumber: Bool?
+
+    /// Signed ARGB text color used in day mode.
     public var dayTextColor: Int?
+
+    /// Signed ARGB background color used in day mode.
     public var dayBackground: Int?
+
+    /// Day-mode noise/texture intensity value consumed by the renderer.
     public var dayNoise: Int?
+
+    /// Signed ARGB text color used in night mode.
     public var nightTextColor: Int?
+
+    /// Signed ARGB background color used in night mode.
     public var nightBackground: Int?
+
+    /// Night-mode noise/texture intensity value consumed by the renderer.
     public var nightNoise: Int?
+
+    /// Label identifiers whose bookmark visuals should be hidden in the renderer.
     public var bookmarksHideLabels: [UUID]?
+
+    /// Whether verse-selection gestures and menus are enabled.
     public var enableVerseSelection: Bool?
 
+    /// Creates an empty override set where every value inherits from a parent/default source.
     public init() {}
 
-    /// Resolve the actual value by checking this level, then fallback.
-    /// Used for the Window → Workspace → App defaults inheritance chain.
-    public static func resolved<T>(_ keyPath: KeyPath<TextDisplaySettings, T?>,
-                                   window: TextDisplaySettings?,
-                                   workspace: TextDisplaySettings?,
-                                   defaults: TextDisplaySettings) -> T? {
+    /**
+     Resolves one optional setting through the inheritance chain.
+
+     - Parameters:
+       - keyPath: Property to resolve.
+       - window: Window-level overrides, checked first.
+       - workspace: Workspace-level overrides, checked second.
+       - defaults: Fully populated app defaults, checked last.
+     - Returns: The first non-nil value in the chain, or `nil` when the default is also nil.
+     - Note: This helper is pure and has no persistence or rendering side effects.
+     */
+    public static func resolved<T>(
+        _ keyPath: KeyPath<TextDisplaySettings, T?>,
+        window: TextDisplaySettings?,
+        workspace: TextDisplaySettings?,
+        defaults: TextDisplaySettings
+    ) -> T? {
         window?[keyPath: keyPath] ?? workspace?[keyPath: keyPath] ?? defaults[keyPath: keyPath]
     }
 
-    /// App-level default settings (used when window/workspace values are nil).
+    /**
+     Provides the fully populated application-level fallback settings.
+
+     The values are encoded using the same conventions expected by the Vue reader and the
+     Android-compatible settings model. Accessing this constant does not read or write user
+     defaults; it is an in-memory baseline used by resolution helpers.
+     */
     public static let appDefaults: TextDisplaySettings = {
         var s = TextDisplaySettings()
         s.fontSize = 18
@@ -169,20 +317,29 @@ public struct TextDisplaySettings: Codable, Sendable, Equatable {
         s.justifyText = false
         s.hyphenation = true
         s.showPageNumber = false
-        // Colors: ARGB signed Int32 format (Vue.js convention)
-        // -1 = 0xFFFFFFFF (white), -16777216 = 0xFF000000 (black)
-        s.dayTextColor = -16777216     // black
-        s.dayBackground = -1           // white
+        // Colors use signed ARGB Int32 values shared with the Vue.js renderer.
+        s.dayTextColor = -16777216
+        s.dayBackground = -1
         s.dayNoise = 0
-        s.nightTextColor = -1          // white
-        s.nightBackground = -16777216  // black
+        s.nightTextColor = -1
+        s.nightBackground = -16777216
         s.nightNoise = 0
         s.bookmarksHideLabels = []
         s.enableVerseSelection = true
         return s
     }()
 
-    /// Resolve all fields against the inheritance chain, returning a fully populated settings.
+    /**
+     Resolves every display property into a fully populated settings struct.
+
+     - Parameters:
+       - window: Window-level overrides, checked before workspace values.
+       - workspace: Workspace-level overrides, checked before `appDefaults`.
+     - Returns: A new `TextDisplaySettings` containing no inherited gaps for the supported
+       fields.
+     - Note: The method is deterministic and side-effect free. Callers remain responsible for
+       persisting any changes or pushing the resolved values into the renderer.
+     */
     public static func fullyResolved(
         window: TextDisplaySettings?,
         workspace: TextDisplaySettings?

@@ -1,50 +1,67 @@
-// Window.swift — Window and PageManager domain models
+// Window.swift -- Window and PageManager domain models
 
 import Foundation
 import SwiftData
 
-/// A window displays a single document (Bible, commentary, dictionary, etc.)
-/// within a workspace. Multiple windows can be shown side-by-side.
+/**
+ Persists one visible study pane within a workspace.
+
+ A `Window` owns a `PageManager` for its current document state and a list of `HistoryItem`
+ records for back/forward navigation. Deleting the window cascades to both relationships.
+ */
 @Model
 public final class Window {
-    /// UUID primary key.
+    /// Unique identifier used for persistence and cross-entity references.
     @Attribute(.unique) public var id: UUID
 
-    /// The workspace this window belongs to.
+    /// Parent workspace that owns this window.
     public var workspace: Workspace?
 
-    /// Whether this window synchronizes scrolling with other windows.
+    /// Enables synchronized navigation and scroll behavior with peer windows in the same group.
     public var isSynchronized: Bool
 
-    /// Whether this window is in pin mode (stays visible when switching).
+    /// Keeps the window fixed in the layout when the user switches other panes or documents.
     public var isPinMode: Bool
 
-    /// Whether this is a links/cross-reference window.
+    /// Marks this window as the dedicated links/cross-reference destination.
     public var isLinksWindow: Bool
 
-    /// Display order within the workspace.
+    /// Zero-based display order within the parent workspace.
     public var orderNumber: Int
 
-    /// Target window ID for links navigation.
+    /// Optional explicit target window for link routing inside the workspace.
     public var targetLinksWindowId: UUID?
 
-    /// Sync group number (windows in the same group scroll together).
+    /// Integer sync group identifier used by synchronized scrolling/navigation features.
     public var syncGroup: Int
 
-    /// Layout weight for proportional sizing.
+    /// Relative split-view weight used to size the pane compared with sibling windows.
     public var layoutWeight: Float
 
-    /// Layout state string.
+    /// Serialized layout mode string consumed by the workspace layout engine.
     public var layoutState: String
 
-    /// The page manager tracking this window's current document/position.
+    /// 1:1 page-state record for the current document/category selections in this window.
     @Relationship(deleteRule: .cascade, inverse: \PageManager.window)
     public var pageManager: PageManager?
 
-    /// Navigation history for this window.
+    /// Back/forward navigation history owned by this window.
     @Relationship(deleteRule: .cascade, inverse: \HistoryItem.window)
     public var historyItems: [HistoryItem]?
 
+    /**
+     Creates a persisted window record.
+
+     - Parameters:
+       - id: Stable identifier for persistence and related `PageManager` creation.
+       - isSynchronized: Whether the pane participates in sync-group behavior.
+       - isPinMode: Whether the pane remains fixed while other panes change.
+       - isLinksWindow: Whether the pane is reserved for link navigation targets.
+       - orderNumber: Zero-based order within the workspace.
+       - syncGroup: Sync-group identifier shared with peer windows.
+       - layoutWeight: Relative split ratio used by the layout engine.
+       - layoutState: Serialized layout mode string.
+     */
     public init(
         id: UUID = UUID(),
         isSynchronized: Bool = true,
@@ -66,51 +83,83 @@ public final class Window {
     }
 }
 
-/// Tracks the current document and position for each document type in a window.
+/**
+ Persists category-specific navigation state for a window.
+
+ The page manager stores a parallel set of document and location fields for each
+ `DocumentCategory` so the app can switch categories without losing the last position in each
+ one. The record intentionally shares the same identifier as its owning `Window`.
+ */
 @Model
 public final class PageManager {
-    /// The window this page manager belongs to (same ID, 1:1 relationship).
+    /// Unique identifier that mirrors the owning window's identifier for the intended 1:1 link.
     @Attribute(.unique) public var id: UUID
 
-    /// Parent window.
+    /// Back-reference to the owning window.
     public var window: Window?
 
-    /// Current Bible page state.
+    /// Selected Bible module initials for the Bible category.
     public var bibleDocument: String?
+
+    /// Persisted versification name for the Bible position.
     public var bibleVersification: String?
+
+    /// Book index for the persisted Bible position.
     public var bibleBibleBook: Int?
+
+    /// Chapter number for the persisted Bible position.
     public var bibleChapterNo: Int?
+
+    /// Verse number for the persisted Bible position.
     public var bibleVerseNo: Int?
 
-    /// Current commentary page state.
+    /// Selected commentary module initials for the commentary category.
     public var commentaryDocument: String?
+
+    /// Commentary anchor ordinal used to reopen commentary near the prior verse.
     public var commentaryAnchorOrdinal: Int?
 
-    /// Current dictionary page state.
+    /// Selected dictionary module initials for the dictionary category.
     public var dictionaryDocument: String?
+
+    /// Dictionary key or headword for the persisted dictionary position.
     public var dictionaryKey: String?
 
-    /// Current general book page state.
+    /// Selected general-book module initials for the general-book category.
     public var generalBookDocument: String?
+
+    /// General-book key used to reopen the prior location.
     public var generalBookKey: String?
 
-    /// Current map page state.
+    /// Selected map module initials for the map category.
     public var mapDocument: String?
+
+    /// Map entry key used to restore the prior position.
     public var mapKey: String?
 
-    /// Current EPUB page state.
+    /// EPUB identifier used to reopen the selected book file.
     public var epubIdentifier: String?
+
+    /// EPUB chapter/resource href used to restore the current section.
     public var epubHref: String?
 
-    /// The currently active document category.
+    /// Raw category name that identifies which of the persisted category states is active.
     public var currentCategoryName: String
 
-    /// Window-specific text display settings.
+    /// Window-scoped text display overrides applied before workspace/app defaults.
     public var textDisplaySettings: TextDisplaySettings?
 
-    /// Saved JavaScript state for restoring WebView scroll position.
+    /// Serialized JavaScript/UI state used to restore in-webview scroll and expansion state.
     public var jsState: String?
 
+    /**
+     Creates a page manager for a window.
+
+     - Parameters:
+       - id: Identifier that should match the owning `Window`.
+       - currentCategoryName: Raw category name that should be active when the window opens.
+     - Note: Category-specific fields are left nil until the user first visits that category.
+     */
     public init(
         id: UUID = UUID(),
         currentCategoryName: String = "bible"
@@ -120,27 +169,41 @@ public final class PageManager {
     }
 }
 
-/// A navigation history entry for back/forward support.
+/**
+ Persists one back/forward navigation checkpoint for a window.
+
+ History rows are append-only snapshots of the document and key the user visited. They are
+ owned by a `Window` and cascade-delete with it.
+ */
 @Model
 public final class HistoryItem {
-    /// Auto-generated primary key.
+    /// Unique identifier for the navigation snapshot.
     public var id: UUID
 
-    /// The window this history entry belongs to.
+    /// Owning window that uses this row for back/forward navigation.
     public var window: Window?
 
-    /// When this history entry was created.
+    /// Timestamp captured when the history row was recorded.
     public var createdAt: Date
 
-    /// The document initials at this history point.
+    /// Module initials that were active at this history checkpoint.
     public var document: String
 
-    /// The document key (verse reference, etc.).
+    /// Persisted document key or reference for the checkpoint.
     public var key: String
 
-    /// Scroll position ordinal.
+    /// Optional anchor ordinal used to restore scroll position more precisely.
     public var anchorOrdinal: Int?
 
+    /**
+     Creates a window history snapshot.
+
+     - Parameters:
+       - id: Stable identifier for the history row.
+       - createdAt: Timestamp for insertion ordering.
+       - document: Module initials active at the checkpoint.
+       - key: Persisted document key or reference.
+     */
     public init(
         id: UUID = UUID(),
         createdAt: Date = Date(),

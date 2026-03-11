@@ -1,19 +1,38 @@
-// WindowTabBar.swift — Bottom tab bar showing open document windows
+// WindowTabBar.swift -- Bottom tab bar showing open document windows
 
 import SwiftUI
 import BibleCore
 
-/// Horizontal scrollable tab bar at the bottom of BibleReaderView showing all windows.
-/// Active window has accent highlight, visible windows have normal styling,
-/// minimized windows appear dimmed with dashed borders. Tap minimized tabs to restore.
+/**
+ Shows all workspace windows in a horizontal tab strip below the reader.
+
+ The tab bar reflects three window states:
+ - active visible window: accent-highlighted border and green status dot
+ - inactive visible window: neutral border and gray status dot
+ - minimized window: dimmed pill with dashed border and restore-on-tap behavior
+
+ It also hosts typed-reference navigation and the add-window affordance.
+ */
 struct WindowTabBar: View {
+    /// Shared workspace/window coordinator used to read and mutate tab state.
     @Environment(WindowManager.self) private var windowManager
+
+    /// Presents transient toast feedback in the parent reader.
     var onShowToast: ((String) -> Void)?
+
+    /// Opens the native book chooser when the user selects the browse fallback.
     var onShowBookChooser: (() -> Void)?
-    /// Callback to navigate a window to a typed reference. Returns true on success.
+
+    /// Attempts typed-reference navigation for a specific window and reports success/failure.
     var onGoToTypedRef: ((Window, String) -> Bool)?
+
+    /// Controls presentation of the typed-reference alert from the tab context menu.
     @State private var showGoToRefAlert = false
+
+    /// Draft typed-reference text bound to the alert text field.
     @State private var goToRefText = ""
+
+    /// Window targeted by the currently presented typed-reference alert.
     @State private var goToRefWindow: Window?
 
     var body: some View {
@@ -59,6 +78,7 @@ struct WindowTabBar: View {
 
     // MARK: - Window Tab
 
+    /// Builds the tab pill for one window, including context menu actions and state styling.
     private func windowTab(for window: Window) -> some View {
         let isMinimized = window.layoutState == "minimized"
         let isActive = !isMinimized && window.id == windowManager.activeWindow?.id
@@ -220,6 +240,7 @@ struct WindowTabBar: View {
         }
     }
 
+    /// Returns a compact OSIS-style reference summary for display inside the tab pill.
     private func shortReference(for window: Window) -> String {
         // Use controller's dynamic book list if available, otherwise fallback to static
         if let ctrl = windowManager.controllers[window.id] as? BibleReaderController {
@@ -234,6 +255,7 @@ struct WindowTabBar: View {
         return "\(book.osisId) \(chapter)"
     }
 
+    /// Copies the current reference for the given window and triggers toast feedback.
     private func copyReference(for window: Window) {
         let ref = fullReference(for: window)
         guard !ref.isEmpty else { return }
@@ -246,6 +268,7 @@ struct WindowTabBar: View {
         onShowToast?(String(localized: "reference_copied"))
     }
 
+    /// Returns the full human-readable reference string for copy-to-clipboard actions.
     private func fullReference(for window: Window) -> String {
         // Try to get reference from controller if available
         if let ctrl = windowManager.controllers[window.id] as? BibleReaderController {

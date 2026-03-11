@@ -1,29 +1,44 @@
-// WindowSeparator.swift — Draggable separator between Bible windows
-//
-// Replicates Android's Separator.kt weight calculation:
-// aveScreenSize = parentSize / totalPaneCount
-// variationPercent = dragTranslation / aveScreenSize
-// newWeight = max(0.1, startWeight ± variationPercent)
+// WindowSeparator.swift -- Draggable separator between Bible windows
 
 import SwiftUI
 import BibleCore
 
-/// A draggable separator between two Bible window panes.
-/// Adjusts `layoutWeight` of adjacent windows on drag.
+/**
+ Renders the draggable divider between two visible Bible panes.
+
+ The separator mutates `layoutWeight` on the two adjacent `Window` models using the same
+ proportional drag logic as Android's `Separator.kt`: the drag distance is normalized by the
+ average pane size, then applied as a weight delta with a hard minimum clamp.
+ */
 struct WindowSeparator: View {
+    /// Leading or upper window whose layout weight grows when dragged toward it.
     let window1: Window
+
+    /// Trailing or lower window whose layout weight shrinks when dragged toward `window1`.
     let window2: Window
-    /// true = horizontal bar between vertically-stacked panes
+
+    /// `true` for a horizontal separator between vertically stacked panes.
     let isVertical: Bool
+
+    /// Number of currently visible panes used to compute the average pane size.
     let totalPaneCount: Int
-    /// total available height (vertical) or width (horizontal) of parent
+
+    /// Total available width or height of the parent container, depending on orientation.
     let parentSize: CGFloat
 
+    /// Tracks whether the current drag gesture is actively resizing panes.
     @State private var isDragging = false
+
+    /// Snapshot of `window1.layoutWeight` captured at the start of a drag.
     @State private var startWeight1: Float = 1.0
+
+    /// Snapshot of `window2.layoutWeight` captured at the start of a drag.
     @State private var startWeight2: Float = 1.0
 
+    /// Visual thickness of the separator bar itself.
     private let separatorThickness: CGFloat = 4
+
+    /// Minimum allowed layout weight for either pane during resizing.
     private let minWeight: Float = 0.1
 
     var body: some View {

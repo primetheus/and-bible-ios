@@ -1,7 +1,4 @@
-// BibleWindowPane.swift — Per-window Bible rendering pane
-//
-// Each pane has its own BibleBridge, BibleReaderController, and BibleWebView,
-// enabling true multi-window split-screen viewing with independent content.
+// BibleWindowPane.swift -- Per-window Bible rendering pane
 
 import SwiftUI
 import SwiftData
@@ -12,48 +9,118 @@ import os.log
 
 private let logger = Logger(subsystem: "org.andbible", category: "BibleWindowPane")
 
-/// A self-contained Bible rendering pane for a single window.
-/// Contains its own bridge, controller, and WebView — multiple panes show independent content.
+/**
+ Hosts one fully independent reading pane inside the multi-window reader.
+
+ Each pane owns its own `BibleBridge`, `BibleReaderController`, and `BibleWebView`, while
+ delegating sheet/alert/toast presentation back to `BibleReaderView` through callback closures.
+ This separation lets multiple panes render different modules and references simultaneously
+ while still sharing workspace-level state from `WindowManager`.
+ */
 struct BibleWindowPane: View {
+    /// Window model that owns this pane's persisted position, layout, and history state.
     let window: Window
+
+    /// Whether this pane is currently the active/focused pane in the workspace.
     let isFocused: Bool
+
+    /// Fully resolved text-display settings pushed into the pane's controller and web view.
     let displaySettings: TextDisplaySettings
+
+    /// Whether the pane should render using night-mode colors and styling.
     let nightMode: Bool
+
+    /// Android-parity bookmarking mode toggle for the selection action bar.
     let disableTwoStepBookmarking: Bool
+
+    /// Whether the per-pane hamburger button should be hidden.
     let hideWindowButtons: Bool
+
+    /// Shared TTS service used by controllers when speaking selections or chapters.
     let speakService: SpeakService
 
+    /// Native/web bridge for this pane's WKWebView instance.
     @State private var bridge = BibleBridge()
+
+    /// Controller that owns module state, navigation, and bridge callbacks for this pane.
     @State private var controller: BibleReaderController?
+
+    /// Bookmark awaiting label-assignment sheet presentation.
     @State private var pendingLabelBookmarkId: UUID?
+
+    /// Controls presentation of the typed-reference alert from the pane menu.
     @State private var showGoToRefAlert = false
+
+    /// Draft typed-reference text bound to the pane alert text field.
     @State private var goToRefText = ""
+
+    /// Shared workspace/window coordinator used for controller registration and layout actions.
     @Environment(WindowManager.self) private var windowManager
+
+    /// SwiftData context used to build stores and persist pane-driven mutations.
     @Environment(\.modelContext) private var modelContext
 
-    // Callbacks to parent BibleReaderView for sheet presentations
+    /// Requests the parent reader to present the book chooser.
     var onShowBookChooser: (() -> Void)?
+
+    /// Requests the parent reader to present search UI.
     var onShowSearch: (() -> Void)?
+
+    /// Requests the parent reader to present bookmark UI.
     var onShowBookmarks: (() -> Void)?
+
+    /// Requests the parent reader to present settings UI.
     var onShowSettings: (() -> Void)?
+
+    /// Requests the parent reader to present download/module-management UI.
     var onShowDownloads: (() -> Void)?
+
+    /// Requests the parent reader to present navigation history UI.
     var onShowHistory: (() -> Void)?
+
+    /// Requests the parent reader to present compare UI.
     var onShowCompare: (() -> Void)?
+
+    /// Requests the parent reader to present reading-plan UI.
     var onShowReadingPlans: (() -> Void)?
+
+    /// Requests the parent reader to present speak controls.
     var onShowSpeakControls: (() -> Void)?
+
+    /// Forwards shareable plain-text content to the parent share presenter.
     var onShareText: ((String) -> Void)?
+
+    /// Forwards cross-reference payloads for parent-managed presentation.
     var onShowCrossReferences: (([CrossReference]) -> Void)?
+
+    /// Requests the parent reader to open the module picker for a document category.
     var onShowModulePicker: ((DocumentCategory) -> Void)?
+
+    /// Emits transient toast text through the parent reader.
     var onShowToast: ((String) -> Void)?
+
+    /// Requests the parent reader to show workspace-selection UI.
     var onShowWorkspaces: (() -> Void)?
+
+    /// Toggles fullscreen mode in the parent reader.
     var onToggleFullScreen: (() -> Void)?
+
+    /// Starts a Strong's-number search in the parent search UI.
     var onSearchForStrongs: ((String) -> Void)?
+
+    /// Presents the Strong's definition sheet with raw JSON/config payloads.
     var onShowStrongsSheet: ((String, String) -> Void)?
+
+    /// Requests the parent reader to open the reference chooser dialog and return a result.
     var onRefChooserDialog: ((@escaping (String?) -> Void) -> Void)?
+
+    /// Reports user-driven vertical scroll deltas to the parent reader.
     var onUserScrollDeltaY: ((Double) -> Void)?
+
+    /// Reports native horizontal swipe gestures to the parent reader.
     var onUserHorizontalSwipe: ((NativeHorizontalSwipeDirection) -> Void)?
 
-    /// The active background color as an ARGB integer.
+    /// Active reading-background color encoded as the signed ARGB integer expected by BibleWebView.
     private var activeBackgroundColorInt: Int {
         let d = TextDisplaySettings.appDefaults
         if nightMode {
@@ -138,7 +205,7 @@ struct BibleWindowPane: View {
         }
     }
 
-    /// Hamburger menu button overlay for per-window actions (matching Android's BibleFrame).
+    /// Hamburger menu overlay providing pane-scoped content, layout, and sync actions.
     private var windowMenuButton: some View {
         Menu {
             // Content actions
@@ -237,7 +304,7 @@ struct BibleWindowPane: View {
         }
     }
 
-    /// Copy the current reference (e.g. "Genesis 1 (KJV)") to clipboard.
+    /// Copies the pane's current reference string and triggers toast feedback.
     private func copyReference() {
         guard let ctrl = controller else { return }
         let ref = "\(ctrl.currentBook) \(ctrl.currentChapter) (\(ctrl.activeModuleName))"
@@ -250,6 +317,16 @@ struct BibleWindowPane: View {
         onShowToast?(String(localized: "reference_copied"))
     }
 
+    /**
+     Creates and wires the controller/bridge stack for this pane.
+
+     The setup flow:
+     1. build pane-scoped stores/services from `modelContext`
+     2. create `BibleReaderController` and inject display, speak, and workspace dependencies
+     3. optionally copy shared module state from an existing controller to avoid duplicate SWORD setup
+     4. restore the persisted position
+     5. wire pane-to-parent callbacks and register the controller with `WindowManager`
+     */
     private func initializeController() {
         guard controller == nil else { return }
 
@@ -392,6 +469,7 @@ struct BibleWindowPane: View {
         }
     }
 
+    /// Floating action bar shown while the pane has an active text selection.
     private var selectionActionBar: some View {
         HStack(spacing: 20) {
             if controller?.currentCategory == .bible {

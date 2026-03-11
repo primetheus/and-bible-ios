@@ -2,16 +2,35 @@
 
 import SwiftUI
 
-/// A progress view for module downloads showing percentage and module name.
-public struct DownloadProgressView: View {
-    let moduleName: String
-    let progress: Double // 0.0 to 1.0
+/**
+ Displays module-download progress with both the module name and a percentage label.
 
+ Data dependencies:
+ - `moduleName` identifies the module currently being downloaded
+ - `progress` is the normalized completion ratio shown in both text and the native progress view
+ */
+public struct DownloadProgressView: View {
+    /// Name of the module currently being downloaded.
+    let moduleName: String
+
+    /// Normalized download progress from `0.0` to `1.0`.
+    let progress: Double
+
+    /**
+     Creates a module-download progress view.
+
+     - Parameters:
+       - moduleName: Name of the module being downloaded.
+       - progress: Normalized completion ratio from `0.0` to `1.0`.
+     */
     public init(moduleName: String, progress: Double) {
         self.moduleName = moduleName
         self.progress = progress
     }
 
+    /**
+     Builds the progress label and native progress indicator.
+     */
     public var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {

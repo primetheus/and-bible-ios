@@ -489,6 +489,119 @@ final class AndBibleTests: XCTestCase {
         }
     }
 
+    func testRemoteSyncInitialBackupRestoreDispatchesReadingPlanBackups() throws {
+        let container = try makeReadingPlanRestoreModelContainer()
+        let modelContext = ModelContext(container)
+        let settingsStore = SettingsStore(modelContext: modelContext)
+        let service = RemoteSyncInitialBackupRestoreService()
+
+        let databaseURL = try makeAndroidReadingPlansDatabase(
+            plans: [
+                .init(
+                    id: UUID(uuidString: "a1000000-0000-0000-0000-000000000001")!,
+                    planCode: "y1ot1nt1_OTthenNT",
+                    startDate: Date(timeIntervalSince1970: 1_735_689_600),
+                    currentDay: 2
+                )
+            ],
+            statuses: [
+                .init(
+                    id: UUID(uuidString: "a1000000-0000-0000-0000-000000000011")!,
+                    planCode: "y1ot1nt1_OTthenNT",
+                    dayNumber: 2,
+                    readingStatusJSON: #"{"chapterReadArray":[{"readingNumber":1,"isRead":true}]}"#
+                )
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: databaseURL) }
+
+        let stagedBackup = RemoteSyncStagedInitialBackup(
+            remoteFile: RemoteSyncFile(
+                id: "/org.andbible.ios-sync-readingplans/initial.sqlite3.gz",
+                name: "initial.sqlite3.gz",
+                size: 1_024,
+                timestamp: 1_735_689_600_000,
+                parentID: "/org.andbible.ios-sync-readingplans",
+                mimeType: "application/gzip"
+            ),
+            databaseFileURL: databaseURL,
+            schemaVersion: 1
+        )
+
+        let report = try service.restoreInitialBackup(
+            stagedBackup,
+            category: .readingPlans,
+            modelContext: modelContext,
+            settingsStore: settingsStore
+        )
+
+        XCTAssertEqual(
+            report,
+            .readingPlans(
+                RemoteSyncReadingPlanRestoreReport(
+                    restoredPlanCodes: ["y1ot1nt1_OTthenNT"],
+                    restoredDayCount: ReadingPlanService.availablePlans.first(where: { $0.code == "y1ot1nt1_OTthenNT" })!.totalDays,
+                    preservedStatusCount: 1
+                )
+            )
+        )
+
+        let plans = try modelContext.fetch(FetchDescriptor<ReadingPlan>())
+        XCTAssertEqual(plans.map(\.planCode), ["y1ot1nt1_OTthenNT"])
+
+        let preservedStatuses = RemoteSyncReadingPlanStatusStore(settingsStore: settingsStore).allStatuses()
+        XCTAssertEqual(
+            preservedStatuses,
+            [
+                .init(
+                    planCode: "y1ot1nt1_OTthenNT",
+                    dayNumber: 2,
+                    readingStatusJSON: #"{"chapterReadArray":[{"readingNumber":1,"isRead":true}]}"#
+                )
+            ]
+        )
+    }
+
+    func testRemoteSyncInitialBackupRestoreRejectsUnsupportedCategoriesWithoutMutation() throws {
+        let container = try makeReadingPlanRestoreModelContainer()
+        let modelContext = ModelContext(container)
+        let settingsStore = SettingsStore(modelContext: modelContext)
+        let service = RemoteSyncInitialBackupRestoreService()
+
+        let databaseURL = try makeAndroidReadingPlansDatabase(plans: [], statuses: [])
+        defer { try? FileManager.default.removeItem(at: databaseURL) }
+
+        let stagedBackup = RemoteSyncStagedInitialBackup(
+            remoteFile: RemoteSyncFile(
+                id: "/org.andbible.ios-sync-bookmarks/initial.sqlite3.gz",
+                name: "initial.sqlite3.gz",
+                size: 512,
+                timestamp: 1_735_689_600_000,
+                parentID: "/org.andbible.ios-sync-bookmarks",
+                mimeType: "application/gzip"
+            ),
+            databaseFileURL: databaseURL,
+            schemaVersion: 1
+        )
+
+        XCTAssertThrowsError(
+            try service.restoreInitialBackup(
+                stagedBackup,
+                category: .bookmarks,
+                modelContext: modelContext,
+                settingsStore: settingsStore
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? RemoteSyncInitialBackupRestoreError,
+                .unsupportedCategory(.bookmarks)
+            )
+        }
+
+        XCTAssertTrue(try modelContext.fetch(FetchDescriptor<ReadingPlan>()).isEmpty)
+        XCTAssertTrue(RemoteSyncReadingPlanStatusStore(settingsStore: settingsStore).allStatuses().isEmpty)
+    }
+
     func testWebDAVSearchBuildsSearchRequestBody() async throws {
         let modifiedAfter = Date(timeIntervalSince1970: 1_730_000_000)
 

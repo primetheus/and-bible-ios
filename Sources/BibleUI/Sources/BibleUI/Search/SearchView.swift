@@ -711,7 +711,18 @@ public struct SearchView: View {
 
     // MARK: - Index Management
 
-    /// Checks whether the active module already has an index and updates `viewState` accordingly.
+    /**
+     Checks whether the active module already has an index and updates `viewState` accordingly.
+
+     Side effects:
+     - mutates `viewState` to `.ready` or `.needsIndex`
+     - may trigger `autoSearchIfNeeded()` when the search UI becomes ready
+     - reads index availability from `SearchIndexService`
+
+     Failure modes:
+     - if either `searchIndexService` or `swordModule` is unavailable, the method intentionally
+       skips index inspection, marks the view ready, and continues without indexed search setup
+     */
     private func checkIndex() {
         guard let service = searchIndexService, let mod = swordModule else {
             // No service or module — skip index check, go directly to ready
@@ -742,6 +753,18 @@ public struct SearchView: View {
      Starts asynchronous index creation for the primary and any selected unindexed modules.
 
      Once all requested indexes are built, the view transitions back to `.ready`.
+
+     Side effects:
+     - mutates `viewState` to `.creatingIndex` and later back to `.ready`
+     - queries `SearchIndexService` and `SwordManager` to collect modules requiring indexes
+     - launches asynchronous index creation work for each queued module
+
+     Failure modes:
+     - if `searchIndexService` is unavailable, the method skips index creation and immediately
+       transitions the view back to `.ready`
+     - if a selected module cannot be resolved from `SwordManager`, it is silently skipped
+     - `SearchIndexService.createIndex` does not surface thrown errors here; any internal failure is
+       treated as a best-effort attempt and the view still returns to `.ready`
      */
     private func startIndexCreation() {
         guard let service = searchIndexService else {
@@ -786,6 +809,17 @@ public struct SearchView: View {
 
      The method snapshots current view state, then performs the potentially expensive work in a
      detached task so UI updates remain responsive. Results are marshalled back to the main actor.
+
+     Side effects:
+     - clears current results and marks the view as actively searching
+     - snapshots search configuration and dispatches background work in a detached task
+     - publishes result hits, summaries, and final loading state back on the main actor
+
+     Failure modes:
+     - if the trimmed query is empty, the method returns without starting a search
+     - if the current module, search index service, or SWORD manager are unavailable, the detached
+       search logic falls back to whichever strategies remain possible and may legitimately yield no results
+     - zero-hit searches are treated as a valid outcome and update the UI with empty results rather than an error
      */
     private func performSearch() {
         guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return }

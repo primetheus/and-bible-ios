@@ -28,6 +28,8 @@ import StoreKit
    - osisBookId: Optional OSIS book identifier when the caller already resolved it.
  - Important: This function walks UIKit presentation state and presents a page sheet from the
    top-most view controller. It should only be called on iOS.
+ - Failure modes: If no active `UIWindowScene` or root view controller is available, the function
+   returns without presenting anything.
  */
 func presentCompareView(book: String, chapter: Int, currentModuleName: String, startVerse: Int? = nil, endVerse: Int? = nil, osisBookId: String? = nil) {
     guard let windowScene = UIApplication.shared.connectedScenes
@@ -1636,6 +1638,10 @@ public struct BibleReaderView: View {
      Mutates workspace settings and persists the updated value to SwiftData.
 
      - Parameter transform: Mutation closure applied to the current workspace settings value.
+     - Side effects: Reads the active workspace, mutates its persisted `workspaceSettings`, and
+       attempts to save the updated value through `modelContext`.
+     - Failure modes: If no active workspace exists, the function returns without mutating state.
+       SwiftData save failures are intentionally swallowed via `try?`.
      */
     private func updateWorkspaceSettings(_ transform: (inout WorkspaceSettings) -> Void) {
         guard let workspace = windowManager.activeWorkspace else { return }
@@ -1649,6 +1655,12 @@ public struct BibleReaderView: View {
      Applies a Strong's display mode, persists it, and refreshes visible pane controllers.
 
      - Parameter mode: Raw Vue.js/config mode value (`0...3`) matching `StrongsMode`.
+     - Side effects: Mutates the shared `displaySettings` value, persists it to the active
+       workspace when available, and pushes updated display settings into every visible
+       `BibleReaderController`.
+     - Failure modes: If there is no active workspace, persistence is skipped and only in-memory
+       state plus controller refreshes occur. SwiftData save failures are intentionally swallowed
+       via `try?`.
      */
     private func applyStrongsMode(_ mode: Int) {
         displaySettings.strongsMode = mode
@@ -1866,7 +1878,15 @@ public struct BibleReaderView: View {
         }
     }
 
-    /// Reloads behavior-related preferences after the settings sheet changes persisted values.
+    /**
+     Reloads behavior-related preferences after the settings sheet changes persisted values.
+
+     Side effects:
+     - reads multiple persisted values from `SettingsStore`
+     - mutates reader-coordinator state for navigation, fullscreen, toolbar, and language/night-mode behavior
+     - recalculates effective `nightMode` from persisted settings plus the current system color scheme
+     - forwards the updated behavior configuration to `speakService`
+     */
     private func reloadBehaviorPreferences() {
         let store = SettingsStore(modelContext: modelContext)
         navigateToVersePref = store.getBool(.navigateToVersePref)
@@ -1899,6 +1919,11 @@ public struct BibleReaderView: View {
      - Parameters:
        - window: Pane whose native scroll delta triggered the callback.
        - deltaY: Signed vertical scroll delta reported by the embedded web view.
+     - Side effects: Mutates auto-fullscreen tracking state, may reset accumulated scroll distance,
+       and may animate `isFullScreen` on or off.
+     - Failure modes: Returns without changing fullscreen when the event did not originate from the
+       active window, auto-fullscreen is disabled, the delta is zero, or fullscreen is currently
+       locked by a prior double-tap action.
      */
     private func handleAutoFullscreenScroll(from window: Window, deltaY: Double) {
         guard windowManager.activeWindow?.id == window.id else { return }
@@ -1935,6 +1960,11 @@ public struct BibleReaderView: View {
      - Parameters:
        - window: Pane whose native swipe gesture triggered the callback.
        - direction: Swipe direction detected by the native web-view wrapper.
+     - Side effects: May trigger chapter navigation through the focused `BibleReaderController` or
+       emit page-scroll commands into the active web view.
+     - Failure modes: Returns without action when the gesture did not originate from the active
+       window, no focused controller is registered, an in-page text selection is active, or the
+       configured swipe mode is `.none`.
      */
     private func handleHorizontalSwipe(from window: Window, direction: NativeHorizontalSwipeDirection) {
         guard windowManager.activeWindow?.id == window.id else { return }

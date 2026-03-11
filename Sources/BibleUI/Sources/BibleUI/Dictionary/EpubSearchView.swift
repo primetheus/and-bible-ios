@@ -3,17 +3,45 @@
 import SwiftUI
 import BibleCore
 
-/// Search within the active EPUB using FTS5.
+/**
+ Full-text search screen for one EPUB book.
+
+ The view delegates searches to `EpubReader` and presents matching href/title/snippet tuples for
+ in-book navigation.
+
+ Data dependencies:
+ - `reader` provides the book metadata and executes the EPUB search query
+ - `onSelectHref` notifies the parent when the user chooses a matching href
+
+ Side effects:
+ - submitting the search field mutates search state and runs an EPUB search
+ - dismisses the search screen when the toolbar Done action is used
+ */
 struct EpubSearchView: View {
+    /// Reader for the EPUB currently being searched.
     let reader: EpubReader
+
+    /// Callback invoked when the user chooses a matching href.
     let onSelectHref: (String) -> Void
 
+    /// Current query text bound to the searchable field.
     @State private var searchText = ""
+
+    /// Current search results as href/title/snippet tuples.
     @State private var results: [(href: String, title: String, snippet: String)] = []
+
+    /// Whether an EPUB search is currently in progress.
     @State private var isSearching = false
+
+    /// Whether the user has executed at least one search in this session.
     @State private var hasSearched = false
+
+    /// Dismiss action for closing the EPUB search screen.
     @Environment(\.dismiss) private var dismiss
 
+    /**
+     Builds the pre-search prompt, loading state, empty-result state, or result list.
+     */
     var body: some View {
         NavigationStack {
             Group {
@@ -66,6 +94,13 @@ struct EpubSearchView: View {
         }
     }
 
+    /**
+     Executes the trimmed EPUB query and updates view state with the resulting hits.
+
+     Failure modes:
+     - returns without searching when the trimmed query is empty
+     - zero-hit searches are treated as a valid outcome and leave `results` empty
+     */
     private func performSearch() {
         let query = searchText.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return }
@@ -76,6 +111,12 @@ struct EpubSearchView: View {
         isSearching = false
     }
 
+    /**
+     Removes HTML markup from an EPUB search-result snippet for plain-text display.
+
+     - Parameter snippet: HTML snippet returned by the EPUB search index.
+     - Returns: Plain-text snippet with markup stripped via a regular-expression replacement.
+     */
     private func stripHTMLFromSnippet(_ snippet: String) -> String {
         snippet.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
     }

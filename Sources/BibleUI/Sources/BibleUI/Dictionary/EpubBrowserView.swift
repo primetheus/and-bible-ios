@@ -3,16 +3,39 @@
 import SwiftUI
 import BibleCore
 
-/// Displays the table of contents for an EPUB file.
-/// Tap an entry to navigate to that section.
+/**
+ Table-of-contents browser for one installed EPUB.
+
+ The view loads TOC entries from the selected `EpubReader` and lets the caller navigate to the
+ chosen section by href.
+
+ Data dependencies:
+ - `reader` provides EPUB metadata and TOC entries
+ - `onSelectHref` notifies the parent when the user chooses one TOC target
+
+ Side effects:
+ - loads the TOC when the view appears
+ - dismisses the browser when the toolbar Done action is used
+ */
 struct EpubBrowserView: View {
+    /// Reader for the EPUB whose TOC is being browsed.
     let reader: EpubReader
+
+    /// Callback invoked when the user chooses a TOC href.
     let onSelectHref: (String) -> Void
 
+    /// Loaded table-of-contents entries for the EPUB.
     @State private var tocEntries: [EpubReader.TOCEntry] = []
+
+    /// Whether the TOC is still loading.
     @State private var isLoading = true
+
+    /// Dismiss action for closing the TOC browser.
     @Environment(\.dismiss) private var dismiss
 
+    /**
+     Builds the loading state, empty state, or TOC list for the EPUB.
+     */
     var body: some View {
         NavigationStack {
             Group {

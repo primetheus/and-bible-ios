@@ -693,6 +693,130 @@ final class AndBibleTests: XCTestCase {
         XCTAssertNil(try store.makeWebDAVClient(session: makeMockedURLSession()))
     }
 
+    func testRemoteSyncCategoryBuildsAndroidStyleFolderNames() {
+        XCTAssertEqual(
+            RemoteSyncCategory.bookmarks.syncFolderName(bundleIdentifier: "org.andbible.ios"),
+            "org.andbible.ios-sync-bookmarks"
+        )
+        XCTAssertEqual(
+            RemoteSyncCategory.workspaces.syncFolderName(bundleIdentifier: "org.andbible.ios"),
+            "org.andbible.ios-sync-workspaces"
+        )
+        XCTAssertEqual(
+            RemoteSyncCategory.readingPlans.syncFolderName(bundleIdentifier: "org.andbible.ios"),
+            "org.andbible.ios-sync-readingplans"
+        )
+    }
+
+    func testRemoteSyncStateStorePersistsBootstrapStateUsingAndroidRawKeys() throws {
+        let settingsStore = try makeInMemorySettingsStore()
+        let store = RemoteSyncStateStore(settingsStore: settingsStore)
+
+        store.setBootstrapState(
+            RemoteSyncBootstrapState(
+                syncFolderID: "/org.andbible.ios-sync-bookmarks",
+                deviceFolderID: "/org.andbible.ios-sync-bookmarks/ios-device",
+                secretFileName: "device-known-ios-device-secret"
+            ),
+            for: .bookmarks
+        )
+
+        XCTAssertEqual(
+            settingsStore.getString("remote_sync.bookmarks.syncId"),
+            "/org.andbible.ios-sync-bookmarks"
+        )
+        XCTAssertEqual(
+            settingsStore.getString("remote_sync.bookmarks.deviceFolderId"),
+            "/org.andbible.ios-sync-bookmarks/ios-device"
+        )
+        XCTAssertEqual(
+            settingsStore.getString("remote_sync.bookmarks.nextCloudSecretFile"),
+            "device-known-ios-device-secret"
+        )
+        XCTAssertEqual(
+            store.bootstrapState(for: .bookmarks),
+            RemoteSyncBootstrapState(
+                syncFolderID: "/org.andbible.ios-sync-bookmarks",
+                deviceFolderID: "/org.andbible.ios-sync-bookmarks/ios-device",
+                secretFileName: "device-known-ios-device-secret"
+            )
+        )
+    }
+
+    func testRemoteSyncStateStorePersistsProgressStatePerCategory() throws {
+        let settingsStore = try makeInMemorySettingsStore()
+        let store = RemoteSyncStateStore(settingsStore: settingsStore)
+
+        store.setProgressState(
+            RemoteSyncProgressState(
+                lastPatchWritten: 111,
+                lastSynchronized: 222,
+                disabledForVersion: 7
+            ),
+            for: .workspaces
+        )
+        store.setProgressState(
+            RemoteSyncProgressState(
+                lastPatchWritten: 333,
+                lastSynchronized: nil,
+                disabledForVersion: nil
+            ),
+            for: .bookmarks
+        )
+
+        XCTAssertEqual(
+            store.progressState(for: .workspaces),
+            RemoteSyncProgressState(
+                lastPatchWritten: 111,
+                lastSynchronized: 222,
+                disabledForVersion: 7
+            )
+        )
+        XCTAssertEqual(
+            store.progressState(for: .bookmarks),
+            RemoteSyncProgressState(
+                lastPatchWritten: 333,
+                lastSynchronized: nil,
+                disabledForVersion: nil
+            )
+        )
+    }
+
+    func testRemoteSyncStateStoreClearCategoryDoesNotTouchOtherCategories() throws {
+        let settingsStore = try makeInMemorySettingsStore()
+        let store = RemoteSyncStateStore(settingsStore: settingsStore)
+
+        store.setBootstrapState(
+            RemoteSyncBootstrapState(
+                syncFolderID: "/bookmark-sync",
+                deviceFolderID: "/bookmark-sync/ios-device",
+                secretFileName: "bookmark-secret"
+            ),
+            for: .bookmarks
+        )
+        store.setProgressState(
+            RemoteSyncProgressState(
+                lastPatchWritten: 444,
+                lastSynchronized: 555,
+                disabledForVersion: 8
+            ),
+            for: .bookmarks
+        )
+        store.setBootstrapState(
+            RemoteSyncBootstrapState(syncFolderID: "/workspace-sync"),
+            for: .workspaces
+        )
+
+        store.clearCategory(.bookmarks)
+
+        XCTAssertEqual(store.bootstrapState(for: .bookmarks), RemoteSyncBootstrapState())
+        XCTAssertEqual(store.progressState(for: .bookmarks), RemoteSyncProgressState())
+        XCTAssertEqual(
+            store.bootstrapState(for: .workspaces),
+            RemoteSyncBootstrapState(syncFolderID: "/workspace-sync")
+        )
+    }
+
     func testWebDAVSyncConfigurationRejectsLoginPageURLs() {
         let configuration = WebDAVSyncConfiguration(
             serverURL: "https://nextcloud.example.com/login",

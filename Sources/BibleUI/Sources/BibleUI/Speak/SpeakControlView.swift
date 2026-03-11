@@ -4,11 +4,28 @@ import SwiftUI
 import BibleCore
 import AVFoundation
 
-/// TTS playback controls with speed presets, sleep timer, and Now Playing metadata.
+/**
+ Playback control surface for text-to-speech reading.
+
+ The view reflects the current `SpeakService` state, exposes transport controls, lets the user adjust
+ speaking speed, and manages sleep-timer presets.
+
+ Data dependencies:
+ - `speakService` is the observable playback service that owns speaking state and control methods
+
+ Side effects:
+ - transport buttons call playback control methods on `SpeakService`
+ - speed slider and preset buttons persist a new `userSpeed` value on the service
+ - sleep timer buttons set or clear the service's countdown timer
+ */
 public struct SpeakControlView: View {
+    /// Observable speaking service backing all control state and actions.
     @ObservedObject var speakService: SpeakService
+
+    /// Local speed slider value kept in sync with `SpeakService.userSpeed`.
     @State private var speed: Double
 
+    /// Preset speaking-speed buttons shown under the slider.
     private let speedPresets: [(label: String, value: Double)] = [
         ("0.75x", 0.75),
         ("1.0x", 1.0),
@@ -16,13 +33,22 @@ public struct SpeakControlView: View {
         ("1.5x", 1.5),
     ]
 
+    /// Preset sleep-timer durations, in minutes.
     private let sleepPresets: [Int] = [5, 10, 15, 30, 60]
 
+    /**
+     Creates the speak-control surface for one `SpeakService`.
+
+     - Parameter speakService: Observable service that owns playback state and control methods.
+     */
     public init(speakService: SpeakService) {
         self.speakService = speakService
         self._speed = State(initialValue: speakService.userSpeed)
     }
 
+    /**
+     Builds the speak header, transport controls, speed controls, and sleep-timer controls.
+     */
     public var body: some View {
         VStack(spacing: 20) {
             // Header: title + state
@@ -148,12 +174,16 @@ public struct SpeakControlView: View {
         .padding()
     }
 
+    /// User-visible playback state label derived from the current speak-service state.
     private var stateLabel: String {
         if !speakService.isSpeaking { return String(localized: "speak_stopped") }
         if speakService.isPaused { return String(localized: "speak_paused") }
         return String(localized: "speak_playing")
     }
 
+    /**
+     Returns whether the current sleep timer is within the range associated with one preset button.
+     */
     private func isTimerActiveFor(_ minutes: Int) -> Bool {
         guard let remaining = speakService.sleepTimerRemaining else { return false }
         let target = TimeInterval(minutes * 60)

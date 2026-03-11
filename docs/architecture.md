@@ -136,5 +136,6 @@ AndBible iOS keeps Android's multi-window reading model.
 ## Where To Read Next
 
 - Bridge details: [bridge-guide.md](bridge-guide.md)
+- Persistence/entity reference: [data-model.md](data-model.md)
 - Build and simulator workflow: [howto/building-and-testing.md](howto/building-and-testing.md)
 - Module-by-module reading order: [module-structure.md](module-structure.md)

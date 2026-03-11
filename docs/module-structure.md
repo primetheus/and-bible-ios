@@ -69,6 +69,9 @@ Read first:
 Use when:
 - The feature touches persistence, bookmarks, workspaces, reading plans, repositories, settings, or app-level business rules.
 
+Reference:
+- Persistence/entity details: [data-model.md](data-model.md)
+
 Tests:
 - `Sources/BibleCore/Tests/BibleCoreTests`
 

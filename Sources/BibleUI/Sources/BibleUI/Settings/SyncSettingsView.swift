@@ -3,15 +3,42 @@
 import SwiftUI
 import BibleCore
 
-/// Settings view for iCloud CloudKit sync configuration.
+/**
+ Configures CloudKit-backed iCloud sync and surfaces current sync status.
+
+ The view binds directly to `SyncService` state to expose the persisted enablement toggle, account
+ health, restart-required state, and the last known sync timestamp. It intentionally routes
+ destructive disable operations through a confirmation dialog before persisting the new preference.
+
+ Data dependencies:
+ - `SyncService` provides the effective sync mode, account description, runtime state, and last
+   sync timestamp
+ - localized strings provide all toggle labels, warnings, and status text
+
+ Side effects:
+ - toggling sync calls back into `SyncService` and can persist a new restart-required sync mode
+ - disabling sync first presents a confirmation dialog before mutating the service state
+ - the restart-required alert is presented after the user changes sync mode so the UI can explain
+   that the app must restart
+ */
 public struct SyncSettingsView: View {
+    /// Shared sync service injected from the app environment.
     @Environment(SyncService.self) private var syncService
 
+    /// Whether the destructive disable-sync confirmation dialog is presented.
     @State private var showDisableConfirmation = false
+
+    /// Whether the restart-required informational alert is presented.
     @State private var showRestartAlert = false
 
+    /**
+     Creates the sync settings screen with environment-provided sync state.
+     */
     public init() {}
 
+    /**
+     Builds the sync toggle, status summary rows, and sync-scope explanation sections.
+     */
     public var body: some View {
         Form {
             Section {
@@ -95,6 +122,9 @@ public struct SyncSettingsView: View {
 
     // MARK: - Status Display
 
+    /**
+     Builds the trailing status label for the current `SyncService` runtime state.
+     */
     @ViewBuilder
     private var statusView: some View {
         switch syncService.state {
@@ -119,6 +149,9 @@ public struct SyncSettingsView: View {
         }
     }
 
+    /**
+     Human-readable iCloud account description shown in the status section.
+     */
     private var accountText: String {
         switch syncService.state {
         case .noAccount:
@@ -128,6 +161,12 @@ public struct SyncSettingsView: View {
         }
     }
 
+    /**
+     Relative last-sync timestamp shown in the status section.
+
+     Failure modes:
+     - returns an em dash placeholder when no sync timestamp has been recorded yet
+     */
     private var lastSyncText: String {
         guard let date = syncService.lastSyncDate else {
             return "—"

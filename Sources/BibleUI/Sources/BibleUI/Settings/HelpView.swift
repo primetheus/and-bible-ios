@@ -2,8 +2,20 @@
 
 import SwiftUI
 
-/// Displays help sections matching Android's CommonUtils.showHelp().
+/**
+ Displays the built-in help and tips content mirrored from Android's quick-start guidance.
+
+ The screen is a read-only collection of localized help sections covering navigation, selection,
+ bookmarks, StudyPads, search, workspaces, and discrete-mode affordances.
+
+ Data dependencies:
+ - localized string resources provide the section titles and body copy
+ - `Bundle.main` provides the footer version string when available
+ */
 struct HelpView: View {
+    /**
+     Builds the stacked help sections and optional version footer.
+     */
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -57,6 +69,14 @@ struct HelpView: View {
         #endif
     }
 
+    /**
+     Builds one help section with a localized title and explanatory body text.
+
+     - Parameters:
+       - title: Section heading displayed in headline styling.
+       - body: Localized explanatory copy shown beneath the heading.
+     - Returns: A vertical stack containing the formatted help section.
+     */
     private func helpSection(title: String, body: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)

@@ -2,20 +2,44 @@
 
 import SwiftUI
 
-/// Shows app version, credits, and links to project resources.
+/**
+ Shows application identity, credits, and external project-resource links.
+
+ The screen is a lightweight informational destination from settings. It resolves version metadata
+ from the main bundle, renders the platform-specific app icon, and exposes project links such as
+ the website, source repository, privacy policy, and license.
+
+ Data dependencies:
+ - `Bundle.main` provides app-version and build metadata
+ - platform APIs provide the current app icon and browser handoff for external links
+
+ Side effects:
+ - tapping a link row opens the corresponding external URL through the host platform
+ */
 public struct AboutView: View {
+    /// Dismiss action inherited from the surrounding navigation presentation.
     @Environment(\.dismiss) private var dismiss
 
+    /// Human-readable marketing version shown beneath the app title.
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
     }
 
+    /// Internal build number shown alongside the marketing version.
     private var buildNumber: String {
         Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
     }
 
+    /**
+     Creates the about screen with bundle-backed metadata lookup.
+
+     - Note: The view reads its version data lazily from `Bundle.main`.
+     */
     public init() {}
 
+    /**
+     Builds the about screen content, including version metadata, credits, and external links.
+     */
     public var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -83,6 +107,9 @@ public struct AboutView: View {
         #endif
     }
 
+    /**
+     Builds the current platform app-icon view used at the top of the about screen.
+     */
     @ViewBuilder
     private var appIcon: some View {
         #if os(iOS)
@@ -104,6 +131,21 @@ public struct AboutView: View {
         #endif
     }
 
+    /**
+     Builds one tappable resource row that opens an external URL.
+
+     - Parameters:
+       - title: Localized row title shown to the user.
+       - icon: SF Symbol name used for the row icon.
+       - url: Absolute URL string to open when the row is tapped.
+     - Returns: A plain button row that opens the resolved external URL when valid.
+
+     Side effects:
+     - opens the provided URL through `UIApplication` on iOS or `NSWorkspace` on macOS
+
+     Failure modes:
+     - returns without side effects if `url` cannot be parsed into a valid `URL`
+     */
     private func linkRow(title: String, icon: String, url: String) -> some View {
         Button {
             guard let link = URL(string: url) else { return }

@@ -4,23 +4,69 @@ import SwiftUI
 import SwiftData
 import BibleCore
 
-/// Allows switching between workspaces and managing them.
+/**
+ Lets the user switch workspaces and manage workspace lifecycle actions from one list.
+
+ The view shows all persisted workspaces in display order, supports switching the active workspace,
+ and exposes create, rename, clone, delete, and reorder actions.
+
+ Data dependencies:
+ - `windowManager` provides the active workspace and performs active-workspace switching
+ - `modelContext` is used by `WorkspaceStore` for create/update/delete/reorder operations
+ - `workspaces` is a live SwiftData query ordered by persisted workspace order
+
+ Side effects:
+ - selecting a row switches the active workspace and dismisses the sheet
+ - alerts create, rename, or clone workspaces through `WorkspaceStore`
+ - swipe deletion, context-menu deletion, and move actions mutate persisted workspace state
+ */
 public struct WorkspaceSelectorView: View {
+    /// Shared window manager used to switch the active workspace.
     @Environment(WindowManager.self) private var windowManager
+
+    /// SwiftData context used by `WorkspaceStore` mutations.
     @Environment(\.modelContext) private var modelContext
+
+    /// Controls presentation of the create-workspace alert.
     @State private var showNewWorkspace = false
+
+    /// Draft name for the create-workspace alert.
     @State private var newWorkspaceName = ""
+
+    /// Controls presentation of the rename-workspace alert.
     @State private var showRenameWorkspace = false
+
+    /// Draft name for the rename-workspace alert.
     @State private var renameWorkspaceName = ""
+
+    /// Workspace currently targeted by the rename flow.
     @State private var workspaceToRename: Workspace?
+
+    /// Controls presentation of the clone-workspace alert.
     @State private var showCloneWorkspace = false
+
+    /// Draft name for the clone-workspace alert.
     @State private var cloneWorkspaceName = ""
+
+    /// Workspace currently targeted by the clone flow.
     @State private var workspaceToClone: Workspace?
+
+    /// Dismiss action for closing the selector screen.
     @Environment(\.dismiss) private var dismiss
+
+    /// Persisted workspaces ordered by `orderNumber`.
     @Query(sort: \Workspace.orderNumber) private var workspaces: [Workspace]
 
+    /**
+     Creates the workspace selector screen.
+
+     - Note: This initializer has no inputs and performs no side effects.
+     */
     public init() {}
 
+    /**
+     Builds the workspace list, management alerts, and toolbar actions.
+     */
     public var body: some View {
         List {
             if workspaces.isEmpty {
@@ -127,6 +173,9 @@ public struct WorkspaceSelectorView: View {
         }
     }
 
+    /**
+     Builds one workspace row with color indicator, summary text, and active-workspace marker.
+     */
     private func workspaceRow(_ workspace: Workspace) -> some View {
         HStack {
             if let color = workspace.workspaceColor {
@@ -156,6 +205,9 @@ public struct WorkspaceSelectorView: View {
         }
     }
 
+    /**
+     Deletes the selected workspaces, skipping the currently active workspace.
+     */
     private func deleteWorkspaces(at offsets: IndexSet) {
         let store = WorkspaceStore(modelContext: modelContext)
         for index in offsets {
@@ -167,6 +219,9 @@ public struct WorkspaceSelectorView: View {
         }
     }
 
+    /**
+     Persists a reordered workspace list after drag-and-drop movement.
+     */
     private func moveWorkspaces(from source: IndexSet, to destination: Int) {
         var reordered = Array(workspaces)
         reordered.move(fromOffsets: source, toOffset: destination)

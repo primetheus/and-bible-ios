@@ -1,32 +1,53 @@
-// MySwordReader.swift — MySword SQLite database reader
+// MySwordReader.swift -- MySword SQLite database reader
 
 import Foundation
 import SQLite3
 
-/// Reads MySword format Bible databases (.bbl, .cmt, .dct files).
-/// MySword files are SQLite databases with specific table structures.
+/**
+ Reads MySword SQLite modules used by the Android ecosystem.
+
+ The reader supports the three MySword file types:
+ - `.bbl`: Bible text in a `Bible` table with `Scripture` rows keyed by book/chapter/verse
+ - `.cmt`: commentary text in a `Commentary` table with the same positional keys
+ - `.dct`: dictionary entries in a `Dictionary` table keyed by topic
+
+ Shared module metadata is read from the `Details` table. The reader is intentionally
+ read-only and does not mutate the source database.
+ */
 public final class MySwordReader: @unchecked Sendable {
+    /// Open SQLite handle for the source MySword database.
     private var db: OpaquePointer?
+
+    /// Filesystem path to the opened MySword database file.
     private let filePath: String
 
-    /// The type of MySword file.
+    /**
+     Describes the supported MySword module families.
+
+     The raw values mirror the expected filename extensions used to detect the backing schema.
+     */
     public enum FileType: String {
         case bible = "bbl"
         case commentary = "cmt"
         case dictionary = "dct"
     }
 
-    /// Detected file type.
+    /// Detected module type derived from the MySword filename extension.
     public let fileType: FileType
 
-    /// Module description from the database.
+    /// User-visible module description loaded from the `Details` table.
     public private(set) var moduleDescription: String = ""
 
-    /// Module language.
+    /// Module language code loaded from the `Details` table.
     public private(set) var language: String = "en"
 
-    /// Initialize with a MySword database file.
-    /// - Parameter filePath: Path to the .bbl/.cmt/.dct file.
+    /**
+     Opens a MySword module in read-only mode.
+
+     - Parameter filePath: Filesystem path to a `.bbl`, `.cmt`, or `.dct` file.
+     - Note: Initialization fails when the extension does not match a supported MySword type or
+       when SQLite cannot open the database read-only.
+     */
     public init?(filePath: String) {
         self.filePath = filePath
 
@@ -51,12 +72,15 @@ public final class MySwordReader: @unchecked Sendable {
         sqlite3_close(db)
     }
 
-    /// Get verse text for a Bible file.
-    /// - Parameters:
-    ///   - book: Book number (1-based, Genesis=1).
-    ///   - chapter: Chapter number (1-based).
-    ///   - verse: Verse number (1-based).
-    /// - Returns: The verse text as HTML/OSIS, or nil if not found.
+    /**
+     Returns one verse from a MySword Bible module.
+
+     - Parameters:
+       - book: One-based book number as stored by the MySword `Bible` table.
+       - chapter: One-based chapter number.
+       - verse: One-based verse number.
+     - Returns: Verse content as stored in the `Scripture` column, or `nil` when absent.
+     */
     public func getVerse(book: Int, chapter: Int, verse: Int) -> String? {
         guard fileType == .bible else { return nil }
 
@@ -64,11 +88,14 @@ public final class MySwordReader: @unchecked Sendable {
         return executeTextQuery(query, params: [book, chapter, verse])
     }
 
-    /// Get a full chapter of text.
-    /// - Parameters:
-    ///   - book: Book number (1-based).
-    ///   - chapter: Chapter number (1-based).
-    /// - Returns: Array of (verse number, text) tuples.
+    /**
+     Returns a full chapter from a MySword Bible module.
+
+     - Parameters:
+       - book: One-based book number as stored by the MySword `Bible` table.
+       - chapter: One-based chapter number.
+     - Returns: Verse-number/text tuples ordered by verse.
+     */
     public func getChapter(book: Int, chapter: Int) -> [(verse: Int, text: String)] {
         guard fileType == .bible else { return [] }
 
@@ -91,14 +118,27 @@ public final class MySwordReader: @unchecked Sendable {
         return results
     }
 
-    /// Get commentary text.
+    /**
+     Returns commentary text for one verse-position key.
+
+     - Parameters:
+       - book: One-based book number as stored by the `Commentary` table.
+       - chapter: One-based chapter number.
+       - verse: One-based verse number.
+     - Returns: Commentary HTML/text, or `nil` when no row exists.
+     */
     public func getCommentary(book: Int, chapter: Int, verse: Int) -> String? {
         guard fileType == .commentary else { return nil }
         let query = "SELECT Commentary FROM Commentary WHERE Book = ? AND Chapter = ? AND Verse = ?"
         return executeTextQuery(query, params: [book, chapter, verse])
     }
 
-    /// Get dictionary entry by key.
+    /**
+     Returns a dictionary entry by topic key from a MySword dictionary module.
+
+     - Parameter key: Topic string stored in the `Dictionary.Topic` column.
+     - Returns: Definition text, or `nil` when the topic is not present.
+     */
     public func getDictionaryEntry(key: String) -> String? {
         guard fileType == .dictionary else { return nil }
         let query = "SELECT Definition FROM Dictionary WHERE Topic = ?"
@@ -113,7 +153,11 @@ public final class MySwordReader: @unchecked Sendable {
         return String(cString: sqlite3_column_text(stmt, 0))
     }
 
-    /// List all dictionary keys.
+    /**
+     Lists all topic keys from a MySword dictionary module.
+
+     - Returns: Topic strings ordered alphabetically by the SQLite query.
+     */
     public func dictionaryKeys() -> [String] {
         guard fileType == .dictionary else { return [] }
         let query = "SELECT Topic FROM Dictionary ORDER BY Topic"
@@ -132,6 +176,7 @@ public final class MySwordReader: @unchecked Sendable {
 
     // MARK: - Private
 
+    /// Loads common module metadata from the MySword `Details` table.
     private func loadMetadata() {
         if let desc = getDetailValue("Description") {
             moduleDescription = desc
@@ -141,6 +186,7 @@ public final class MySwordReader: @unchecked Sendable {
         }
     }
 
+    /// Reads one key from the MySword `Details` table.
     private func getDetailValue(_ key: String) -> String? {
         let query = "SELECT Value FROM Details WHERE Name = ?"
         var stmt: OpaquePointer?
@@ -152,6 +198,7 @@ public final class MySwordReader: @unchecked Sendable {
         return String(cString: sqlite3_column_text(stmt, 0))
     }
 
+    /// Executes a positional text query against the open MySword database.
     private func executeTextQuery(_ query: String, params: [Int]) -> String? {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else { return nil }

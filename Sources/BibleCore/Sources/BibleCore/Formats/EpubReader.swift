@@ -1,50 +1,105 @@
-// EpubReader.swift — EPUB file reader with ZIP extraction, XML parsing, and FTS5 indexing
+// EpubReader.swift -- EPUB file reader with ZIP extraction, XML parsing, and FTS5 indexing
 
 import Foundation
 import SQLite3
 import CLibSword
 
-/// SQLITE_TRANSIENT tells SQLite to make its own copy of bound text/blob data.
-/// Required because Swift's auto-bridged C string buffers are temporary and may
-/// be deallocated before sqlite3_step executes.
+/**
+ SQLite destructor marker that forces SQLite to copy bound strings and blobs.
+
+ Swift's bridged UTF-8 buffers are temporary, so bindings used across `sqlite3_step` must
+ request a SQLite-owned copy to avoid reading freed memory.
+ */
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-/// Metadata for an installed EPUB.
+/**
+ Describes one installed EPUB package discovered in the app's extracted-EPUB directory.
+
+ The identifier is a sanitized directory name used for storage and reopening. The remaining
+ fields are read from the EPUB's generated SQLite metadata table.
+ */
 public struct EpubInfo: Sendable {
-    public let identifier: String  // Sanitized directory name
+    /// Sanitized directory name and stable lookup key for the installed EPUB.
+    public let identifier: String
+
+    /// User-visible title read from the generated SQLite metadata table.
     public let title: String
+
+    /// User-visible author/creator value read from the EPUB metadata.
     public let author: String
+
+    /// Language code stored in EPUB metadata, defaulting to `en` when absent.
     public let language: String
 }
 
-/// Reads EPUB files for Bible study content.
-/// Uses a SQLite index for efficient content access.
+/**
+ Reads EPUB content by extracting the package into app storage and indexing it into SQLite.
+
+ The reader has two phases:
+ 1. installation: unzip into `Documents/epub/<identifier>` and build a companion
+    `<identifier>.index.sqlite3` database
+ 2. runtime access: open the generated index, load metadata/TOC, and serve rewritten XHTML plus
+    FTS5-backed search results
+
+ The indexed `content` table stores rewritten HTML for rendering, while `content_fts` stores
+ plain text for full-text search. The HTML rewrite stage converts EPUB-internal links into
+ `<epubRef>` tags and image paths into `file://` URLs that WKWebView can load directly.
+ */
 public final class EpubReader: @unchecked Sendable {
+    /// Filesystem directory containing the extracted EPUB package contents.
     private let epubDir: String
+
+    /// Read-only SQLite handle for the generated companion index database.
     private var indexDb: OpaquePointer?
 
-    /// EPUB metadata.
+    /// User-visible EPUB title loaded from the generated metadata table.
     public private(set) var title: String = ""
+
+    /// User-visible EPUB author/creator loaded from the generated metadata table.
     public private(set) var author: String = ""
+
+    /// EPUB language code loaded from the generated metadata table.
     public private(set) var language: String = "en"
+
+    /// Stable identifier used for storage, reopening, and list presentation.
     public let identifier: String
 
-    /// Table of contents entries.
+    /**
+     Represents one flattened table-of-contents row from the indexed EPUB navigation tree.
+
+     The ordinal is the insertion order used for list presentation and for reconstructing the
+     original reading sequence.
+     */
     public struct TOCEntry: Sendable {
+        /// User-visible title from the NCX or fallback spine-generated table of contents.
         public let title: String
+
+        /// Relative EPUB href used to fetch the corresponding indexed content row.
         public let href: String
+
+        /// Zero-based TOC ordering stored in the companion SQLite index.
         public let ordinal: Int
     }
 
     // MARK: - Static Install/Manage API
 
-    /// Base directory for all installed EPUBs.
+    /// Root directory containing all extracted EPUB packages managed by the app.
     private static var epubBaseDir: String {
         let docs = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first!
         return (docs as NSString).appendingPathComponent("epub")
     }
 
-    /// Install an EPUB file. Returns the identifier on success.
+    /**
+     Installs an EPUB into the app-managed library and builds its companion search index.
+
+     - Parameter epubURL: Security-scoped URL chosen by the user.
+     - Returns: Sanitized identifier used as the extracted directory name and reopen key.
+     - Throws: `EpubError.invalidEpub` when the archive cannot be parsed, `EpubError.indexingFailed`
+       when the extracted package cannot be indexed, or any file-I/O errors thrown by
+       `FileManager` and `Data`.
+     - Important: This method mutates on-disk app storage by deleting any prior install for the
+       same identifier, writing extracted package files, and creating a new SQLite index.
+     */
     public static func install(epubURL: URL) throws -> String {
         let fm = FileManager.default
         let baseName = epubURL.deletingPathExtension().lastPathComponent
@@ -92,7 +147,13 @@ public final class EpubReader: @unchecked Sendable {
         return ident
     }
 
-    /// List all installed EPUBs.
+    /**
+     Lists all extracted EPUBs that have a valid companion SQLite index.
+
+     - Returns: Installed EPUB metadata sorted by title using localized case-insensitive order.
+     - Note: Directories without an `.index.sqlite3` file are ignored so partially extracted or
+       damaged installs do not surface in the library UI.
+     */
     public static func installedEpubs() -> [EpubInfo] {
         let fm = FileManager.default
         let base = epubBaseDir
@@ -124,7 +185,12 @@ public final class EpubReader: @unchecked Sendable {
         return results.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
-    /// Delete an installed EPUB and its index.
+    /**
+     Deletes an installed EPUB package directory and its companion SQLite index.
+
+     - Parameter identifier: Sanitized EPUB identifier previously returned by `install(epubURL:)`.
+     - Note: Missing files are ignored. The method has filesystem side effects but does not throw.
+     */
     public static func delete(identifier: String) {
         let fm = FileManager.default
         let dir = (epubBaseDir as NSString).appendingPathComponent(identifier)
@@ -135,7 +201,13 @@ public final class EpubReader: @unchecked Sendable {
 
     // MARK: - Instance API
 
-    /// Open an installed EPUB by identifier.
+    /**
+     Opens a previously installed EPUB by identifier.
+
+     - Parameter identifier: Sanitized identifier returned by `install(epubURL:)`.
+     - Note: Initialization fails when either the extracted directory or companion SQLite index
+       is missing, or when the index cannot be opened read-only.
+     */
     public init?(identifier: String) {
         self.identifier = identifier
         let dir = Self.epubBaseDir
@@ -157,10 +229,14 @@ public final class EpubReader: @unchecked Sendable {
         sqlite3_close(indexDb)
     }
 
-    /// The filesystem path to the extracted EPUB directory.
+    /// Filesystem path to the extracted EPUB directory used for image loading and debugging.
     public var extractedPath: String { epubDir }
 
-    /// Get the table of contents.
+    /**
+     Loads the flattened table of contents from the generated SQLite index.
+
+     - Returns: TOC entries ordered by their stored ordinal.
+     */
     public func tableOfContents() -> [TOCEntry] {
         let query = "SELECT title, href, ordinal FROM toc ORDER BY ordinal"
         var entries: [TOCEntry] = []
@@ -179,7 +255,13 @@ public final class EpubReader: @unchecked Sendable {
         return entries
     }
 
-    /// Get HTML content for a section by href.
+    /**
+     Returns rewritten HTML for one EPUB content section.
+
+     - Parameter href: Relative EPUB href, optionally including a fragment identifier.
+     - Returns: Rewritten body HTML suitable for the web renderer, or `nil` when the section is
+       not present in the generated index.
+     */
     public func getContent(href: String) -> String? {
         // Try exact match first
         if let content = queryContent(href: href) { return content }
@@ -189,8 +271,12 @@ public final class EpubReader: @unchecked Sendable {
         return nil
     }
 
-    /// Get the title for a section by href.
-    /// Checks the content table first (exact match), then the TOC table (base href match).
+    /**
+     Resolves the best available display title for a content href.
+
+     The lookup checks the indexed `content` row first and falls back to the TOC table because
+     NCX hrefs may include fragments while the content table stores base hrefs.
+     */
     public func getTitle(href: String) -> String? {
         let base = href.components(separatedBy: "#").first ?? href
 
@@ -225,7 +311,12 @@ public final class EpubReader: @unchecked Sendable {
         return nil
     }
 
-    /// Search the EPUB content.
+    /**
+     Executes an FTS5 phrase search across the indexed plain-text content.
+
+     - Parameter query: User-entered search text. Double quotes are escaped before binding.
+     - Returns: Matching href/title/snippet tuples ordered by SQLite's FTS5 default ranking.
+     */
     public func search(query: String) -> [(href: String, title: String, snippet: String)] {
         // Sanitize query for FTS5
         let sanitized = query.replacingOccurrences(of: "\"", with: "\"\"")
@@ -252,16 +343,19 @@ public final class EpubReader: @unchecked Sendable {
 
     // MARK: - Private Instance
 
+    /// Loads the cached title, author, and language values from the generated metadata table.
     private func loadMetadata() {
         if let t = getMetaValue("title") { title = t }
         if let a = getMetaValue("author") { author = a }
         if let l = getMetaValue("language") { language = l }
     }
 
+    /// Reads one metadata value from the open SQLite index for this EPUB instance.
     private func getMetaValue(_ key: String) -> String? {
         Self.getMetaValueStatic(db: indexDb, key: key)
     }
 
+    /// Reads one metadata value from an arbitrary EPUB index database handle.
     private static func getMetaValueStatic(db: OpaquePointer?, key: String) -> String? {
         let query = "SELECT value FROM metadata WHERE key = ?"
         var stmt: OpaquePointer?
@@ -274,6 +368,7 @@ public final class EpubReader: @unchecked Sendable {
         return String(cString: textPtr)
     }
 
+    /// Returns the stored rewritten HTML for one exact href from the `content` table.
     private func queryContent(href: String) -> String? {
         let query = "SELECT content FROM content WHERE href = ?"
         var stmt: OpaquePointer?
@@ -288,6 +383,22 @@ public final class EpubReader: @unchecked Sendable {
 
     // MARK: - Index Building (Static)
 
+    /**
+     Builds the companion SQLite index for an extracted EPUB package.
+
+     Pipeline:
+     1. read `META-INF/container.xml` to locate `content.opf`
+     2. parse the OPF metadata, manifest, and spine
+     3. parse NCX navigation when present, otherwise synthesize a TOC from the spine
+     4. create SQLite tables `metadata`, `toc`, `content`, and `content_fts`
+     5. rewrite each spine XHTML body for WKWebView and index its plain text for FTS5
+
+     - Parameters:
+       - epubDir: Filesystem path to the extracted EPUB root directory.
+       - indexPath: Filesystem path for the generated SQLite index.
+     - Returns: `true` on success, otherwise `false`.
+     - Important: This method performs file I/O, XML parsing, SQLite writes, and FTS5 indexing.
+     */
     private static func buildIndex(epubDir: String, indexPath: String) -> Bool {
         // 1. Parse container.xml → find rootfile path
         let containerPath = (epubDir as NSString).appendingPathComponent("META-INF/container.xml")
@@ -373,7 +484,7 @@ public final class EpubReader: @unchecked Sendable {
 
             // Rewrite links and images
             let imageBase = "file://" + (contentFullPath as NSString).deletingLastPathComponent
-            let rewrittenHTML = rewriteContent(bodyHTML, imageBase: imageBase, spineHrefs: Set(opf.spine.compactMap { opf.manifest[$0]?.href }))
+            let rewrittenHTML = rewriteContent(bodyHTML, imageBase: imageBase)
 
             // Strip HTML tags for plain text (FTS indexing)
             let plainText = stripHTMLTags(rewrittenHTML)
@@ -389,7 +500,7 @@ public final class EpubReader: @unchecked Sendable {
 
     // MARK: - XML Parsing
 
-    /// Parse META-INF/container.xml → rootfile path
+    /// Parses `META-INF/container.xml` and returns the relative path to the package OPF file.
     private static func parseContainerXML(_ data: Data) -> String? {
         let parser = ContainerXMLParser()
         let xmlParser = XMLParser(data: data)
@@ -398,7 +509,7 @@ public final class EpubReader: @unchecked Sendable {
         return parser.rootfilePath
     }
 
-    /// Parse content.opf → metadata + manifest + spine
+    /// Parses `content.opf` into metadata, manifest, and spine structures used for indexing.
     private static func parseOPF(_ data: Data) -> OPFResult? {
         let parser = OPFXMLParser()
         let xmlParser = XMLParser(data: data)
@@ -415,7 +526,7 @@ public final class EpubReader: @unchecked Sendable {
         )
     }
 
-    /// Parse NCX file → flat list of TOC entries
+    /// Parses an NCX navigation document into a flat TOC sequence.
     private static func parseNCX(_ data: Data) -> [(title: String, href: String)] {
         let parser = NCXXMLParser()
         let xmlParser = XMLParser(data: data)
@@ -426,7 +537,7 @@ public final class EpubReader: @unchecked Sendable {
 
     // MARK: - Content Processing
 
-    /// Extract the inner content of <body> from XHTML.
+    /// Extracts the inner `<body>` HTML from an XHTML document for storage and later rendering.
     private static func extractBody(_ xhtml: String) -> String {
         // Find <body...> opening tag
         guard let bodyStart = xhtml.range(of: "<body", options: .caseInsensitive) else {
@@ -443,19 +554,25 @@ public final class EpubReader: @unchecked Sendable {
         return String(xhtml[bodyTagEnd.upperBound..<bodyClose.lowerBound])
     }
 
-    /// Rewrite internal links to <epubRef> and images to file:// URLs.
-    private static func rewriteContent(_ html: String, imageBase: String, spineHrefs: Set<String>) -> String {
+    /**
+     Rewrites raw EPUB body HTML into the renderer-specific form used by the app.
+
+     Image sources are rewritten to absolute `file://` URLs, and links are rewritten into
+     `<epubRef>` for internal navigation or `<epubA>` for external links.
+     */
+    private static func rewriteContent(_ html: String, imageBase: String) -> String {
         var result = html
 
         // Rewrite <img src="..."> to absolute file:// paths
         result = rewriteImageSources(result, imageBase: imageBase)
 
         // Rewrite <a href="..."> to <epubRef> or <epubA>
-        result = rewriteLinks(result, spineHrefs: spineHrefs)
+        result = rewriteLinks(result)
 
         return result
     }
 
+    /// Rewrites relative `<img src>` paths into absolute `file://` URLs for WKWebView loading.
     private static func rewriteImageSources(_ html: String, imageBase: String) -> String {
         // Match <img ... src="..." ...> and rewrite src to absolute file:// URL
         var result = html
@@ -475,7 +592,13 @@ public final class EpubReader: @unchecked Sendable {
         return result
     }
 
-    private static func rewriteLinks(_ html: String, spineHrefs: Set<String>) -> String {
+    /**
+     Rewrites EPUB anchor tags into the app's internal navigation tags.
+
+     Internal links become `<epubRef>` with split key/fragment attributes. External links remain
+     clickable via `<epubA>`.
+     */
+    private static func rewriteLinks(_ html: String) -> String {
         var result = html
         // Match <a href="...">...</a> — rewrite to epubRef for internal, epubA for external
         let linkPattern = try! NSRegularExpression(
@@ -511,7 +634,7 @@ public final class EpubReader: @unchecked Sendable {
         return result
     }
 
-    /// Strip HTML tags to get plain text for FTS indexing.
+    /// Removes tags and decodes common entities to produce FTS5-searchable plain text.
     private static func stripHTMLTags(_ html: String) -> String {
         var text = html
         // Remove tags
@@ -529,7 +652,7 @@ public final class EpubReader: @unchecked Sendable {
         return text
     }
 
-    /// Check if a TOC href matches a content href (may differ by fragment).
+    /// Compares a TOC href and a content href while ignoring any fragment identifier.
     private static func tocHrefMatches(_ tocHref: String, _ contentHref: String) -> Bool {
         let tocBase = tocHref.components(separatedBy: "#").first ?? tocHref
         return tocBase == contentHref
@@ -537,6 +660,7 @@ public final class EpubReader: @unchecked Sendable {
 
     // MARK: - SQLite Helpers
 
+    /// Inserts or replaces one metadata row in the generated EPUB index.
     private static func insertMeta(db: OpaquePointer?, key: String, value: String) {
         let sql = "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)"
         var stmt: OpaquePointer?
@@ -547,6 +671,7 @@ public final class EpubReader: @unchecked Sendable {
         sqlite3_step(stmt)
     }
 
+    /// Inserts or replaces one table-of-contents row in the generated EPUB index.
     private static func insertTOC(db: OpaquePointer?, ordinal: Int, title: String, href: String) {
         let sql = "INSERT OR REPLACE INTO toc (ordinal, title, href) VALUES (?, ?, ?)"
         var stmt: OpaquePointer?
@@ -558,6 +683,12 @@ public final class EpubReader: @unchecked Sendable {
         sqlite3_step(stmt)
     }
 
+    /**
+     Inserts one content row and its paired FTS5 row into the generated EPUB index.
+
+     The `content` table stores rewritten HTML plus plain text, while `content_fts` stores the
+     searchable projection used by FTS5.
+     */
     private static func insertContent(db: OpaquePointer?, href: String, title: String, content: String, plainText: String) {
         // Insert into content table
         let sql1 = "INSERT OR REPLACE INTO content (href, title, content, plain_text) VALUES (?, ?, ?, ?)"
@@ -583,12 +714,20 @@ public final class EpubReader: @unchecked Sendable {
 
     // MARK: - ZIP Parsing
 
+    /// One local file entry extracted from the EPUB ZIP archive.
     private struct ZipEntry {
         let name: String
         let data: Data
     }
 
-    /// Parse ZIP file data and extract all entries.
+    /**
+     Parses local-file ZIP entries from the EPUB archive and inflates supported payloads.
+
+     - Parameter data: Raw EPUB archive bytes.
+     - Returns: Extracted file entries excluding directory records.
+     - Throws: `EpubError.decompressionFailed` when a deflated member cannot be inflated.
+     - Note: Only stored (`0`) and deflated (`8`) compression methods are supported.
+     */
     private static func parseZip(_ data: Data) throws -> [ZipEntry] {
         var entries: [ZipEntry] = []
         var offset = 0
@@ -632,19 +771,28 @@ public final class EpubReader: @unchecked Sendable {
         return entries
     }
 
+    /// Reads a little-endian `UInt16` from the ZIP byte stream.
     private static func readUInt16(_ data: Data, at offset: Int) -> UInt16 {
         return data.withUnsafeBytes { ptr in
             ptr.load(fromByteOffset: offset, as: UInt16.self).littleEndian
         }
     }
 
+    /// Reads a little-endian `UInt32` from the ZIP byte stream.
     private static func readUInt32(_ data: Data, at offset: Int) -> UInt32 {
         return data.withUnsafeBytes { ptr in
             ptr.load(fromByteOffset: offset, as: UInt32.self).littleEndian
         }
     }
 
-    /// Inflate deflated data using the C adapter's inflate_raw_data().
+    /**
+     Inflates a deflated ZIP member using the C adapter provided by `CLibSword`.
+
+     - Parameters:
+       - compressed: Deflated payload bytes.
+       - uncompressedSize: Expected uncompressed size from the ZIP header.
+     - Throws: `EpubError.decompressionFailed` when the adapter cannot inflate the payload.
+     */
     private static func inflateData(_ compressed: Data, uncompressedSize: Int) throws -> Data {
         return try compressed.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> Data in
             guard let baseAddress = ptr.baseAddress else {
@@ -668,6 +816,7 @@ public final class EpubReader: @unchecked Sendable {
 
     // MARK: - Helpers
 
+    /// Replaces unsupported filesystem characters so EPUB titles become stable directory names.
     private static func sanitizeIdentifier(_ name: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
         return String(name.unicodeScalars.map { allowed.contains($0) ? Character($0) : Character("_") })
@@ -676,11 +825,18 @@ public final class EpubReader: @unchecked Sendable {
 
 // MARK: - Errors
 
+/**
+ Enumerates install and indexing failures for EPUB ingestion.
+
+ These errors are surfaced during user-driven import and describe invalid archives,
+ decompression failures, and index-construction failures.
+ */
 public enum EpubError: LocalizedError {
     case invalidEpub(String)
     case decompressionFailed
     case indexingFailed
 
+    /// User-visible error description presented by import flows.
     public var errorDescription: String? {
         switch self {
         case .invalidEpub(let msg): return "Invalid EPUB: \(msg)"
@@ -692,25 +848,46 @@ public enum EpubError: LocalizedError {
 
 // MARK: - OPF Data Structures
 
+/// One manifest item parsed from `content.opf`.
 private struct ManifestItem {
+    /// Relative resource href as declared in the OPF manifest.
     let href: String
+
+    /// Declared MIME/media type for the resource.
     let mediaType: String
 }
 
+/// Aggregate result produced by OPF parsing before SQLite indexing begins.
 private struct OPFResult {
+    /// Resolved package title, defaulting to `Untitled` when absent.
     let title: String
+
+    /// Resolved package author/creator string.
     let author: String
+
+    /// Resolved package language code, defaulting to `en` when absent.
     let language: String
+
+    /// Manifest items keyed by OPF manifest identifier.
     let manifest: [String: ManifestItem]  // id → ManifestItem
+
+    /// Ordered list of manifest identifiers representing the reading spine.
     let spine: [String]  // ordered list of manifest IDs
 }
 
 // MARK: - XML Parser Delegates
 
-/// Parses META-INF/container.xml to find the rootfile path.
+/**
+ XML parser delegate for `META-INF/container.xml`.
+
+ The delegate extracts the `full-path` attribute from the first `rootfile` element so the
+ indexer can locate `content.opf`.
+ */
 private class ContainerXMLParser: NSObject, XMLParserDelegate {
+    /// Relative path to the package OPF file discovered in `container.xml`.
     var rootfilePath: String?
 
+    /// Captures the `full-path` attribute from the `<rootfile>` element.
     func parser(_ parser: XMLParser, didStartElement elementName: String,
                 namespaceURI: String?, qualifiedName qName: String?,
                 attributes attributeDict: [String: String] = [:]) {
@@ -720,18 +897,38 @@ private class ContainerXMLParser: NSObject, XMLParserDelegate {
     }
 }
 
-/// Parses content.opf to extract metadata, manifest, and spine.
+/**
+ XML parser delegate for `content.opf`.
+
+ The delegate collects Dublin Core metadata plus the manifest and spine ordering needed to
+ rewrite and index reading content.
+ */
 private class OPFXMLParser: NSObject, XMLParserDelegate {
+    /// First non-empty title found in the OPF metadata section.
     var title = ""
+
+    /// First non-empty creator value found in the OPF metadata section.
     var author = ""
+
+    /// First non-empty language value found in the OPF metadata section.
     var language = ""
+
+    /// Manifest items keyed by OPF manifest identifier.
     var manifest: [String: ManifestItem] = [:]
+
+    /// Ordered spine manifest identifiers used to determine reading order.
     var spine: [String] = []
 
+    /// Current local XML element name used while parsing metadata text.
     private var currentElement = ""
+
+    /// Character buffer for the current metadata text node.
     private var currentText = ""
+
+    /// Whether the parser is currently inside the OPF metadata block.
     private var inMetadata = false
 
+    /// Collects manifest items, spine order, and metadata text as the OPF stream is parsed.
     func parser(_ parser: XMLParser, didStartElement elementName: String,
                 namespaceURI: String?, qualifiedName qName: String?,
                 attributes attributeDict: [String: String] = [:]) {
@@ -757,10 +954,12 @@ private class OPFXMLParser: NSObject, XMLParserDelegate {
         }
     }
 
+    /// Appends character data while the parser is inside the OPF metadata block.
     func parser(_ parser: XMLParser, foundCharacters string: String) {
         if inMetadata { currentText += string }
     }
 
+    /// Commits buffered metadata text when an OPF metadata element closes.
     func parser(_ parser: XMLParser, didEndElement elementName: String,
                 namespaceURI: String?, qualifiedName qName: String?) {
         let localName = elementName.components(separatedBy: ":").last ?? elementName
@@ -786,18 +985,38 @@ private class OPFXMLParser: NSObject, XMLParserDelegate {
     }
 }
 
-/// Parses NCX (Navigation Control for XML) to extract table of contents.
+/**
+ XML parser delegate for NCX navigation documents.
+
+ The parser flattens the NCX navigation hierarchy into a linear TOC sequence used by the app's
+ library and reader navigation UI.
+ */
 private class NCXXMLParser: NSObject, XMLParserDelegate {
+    /// Flattened NCX entries captured in parse order.
     var entries: [(title: String, href: String)] = []
 
+    /// Whether the parser is currently inside a `navPoint`.
     private var inNavPoint = false
+
+    /// Whether the parser is currently inside a `navLabel`.
     private var inNavLabel = false
+
+    /// Whether the parser is currently buffering `<text>` node content.
     private var inText = false
+
+    /// Title for the current top-level navigation point.
     private var currentTitle = ""
+
+    /// Href for the current top-level navigation point.
     private var currentHref = ""
+
+    /// Character buffer for the current NCX text node.
     private var currentText = ""
+
+    /// Nested `navPoint` depth used to flatten the hierarchy safely.
     private var depth = 0
 
+    /// Tracks NCX hierarchy and captures titles/hrefs for navigation points.
     func parser(_ parser: XMLParser, didStartElement elementName: String,
                 namespaceURI: String?, qualifiedName qName: String?,
                 attributes attributeDict: [String: String] = [:]) {
@@ -827,10 +1046,12 @@ private class NCXXMLParser: NSObject, XMLParserDelegate {
         }
     }
 
+    /// Buffers character data for the current NCX `<text>` node.
     func parser(_ parser: XMLParser, foundCharacters string: String) {
         if inText { currentText += string }
     }
 
+    /// Finalizes NCX titles and appends completed navigation entries.
     func parser(_ parser: XMLParser, didEndElement elementName: String,
                 namespaceURI: String?, qualifiedName qName: String?) {
         let localName = elementName.components(separatedBy: ":").last ?? elementName

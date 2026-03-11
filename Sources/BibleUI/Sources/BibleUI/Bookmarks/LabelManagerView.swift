@@ -4,24 +4,62 @@ import SwiftUI
 import SwiftData
 import BibleCore
 
-/// View for creating, editing, and deleting bookmark labels.
-/// Supports rename, color change, favourite toggle, and display style.
+/**
+ Manages user-created bookmark labels and launches label-specific editing flows.
+
+ The screen lists all real user labels, supports creating new labels inline, presents a dedicated
+ edit sheet for label styling changes, and optionally forwards the selected label into the
+ StudyPad flow.
+
+ Data dependencies:
+ - `modelContext` persists label creation, deletion, and edit changes
+ - `allLabels` streams the current label set from SwiftData and is filtered down to user-visible
+   labels
+ - `onOpenStudyPad` is supplied by the parent when StudyPad navigation should be exposed
+
+ Side effects:
+ - creating or deleting a label mutates SwiftData and attempts to save the updated label set
+ - selecting a label presents `LabelEditView`, which edits the bound label in place and persists
+   changes on interaction and dismissal
+ - swipe and context-menu actions can route into the StudyPad flow for a specific label
+ */
 public struct LabelManagerView: View {
+    /// SwiftData context used for label creation, deletion, and persistence.
     @Environment(\.modelContext) private var modelContext
+
+    /// All labels ordered by name, including system labels that are filtered from the visible list.
     @Query(sort: \BibleCore.Label.name) private var allLabels: [BibleCore.Label]
+
+    /// Whether the inline create-label alert is presented.
     @State private var showNewLabel = false
+
+    /// Pending name for the new label being created from the alert.
     @State private var newLabelName = ""
+
+    /// Label currently being edited in the modal edit sheet.
     @State private var editingLabel: BibleCore.Label?
+
+    /// Optional callback used to open the selected label in StudyPad.
     var onOpenStudyPad: ((UUID) -> Void)?
 
+    /**
+     Creates the label manager and optionally enables StudyPad handoff actions.
+
+     - Parameter onOpenStudyPad: Callback invoked with a label identifier when the user chooses to
+       open that label in StudyPad.
+     */
     public init(onOpenStudyPad: ((UUID) -> Void)? = nil) {
         self.onOpenStudyPad = onOpenStudyPad
     }
 
+    /// Visible label list after filtering out non-user/system labels.
     private var userLabels: [BibleCore.Label] {
         allLabels.filter { $0.isRealLabel }
     }
 
+    /**
+     Builds the label list, create-label alert, and edit-label sheet presentation flow.
+     */
     public var body: some View {
         Group {
             if userLabels.isEmpty {
@@ -57,6 +95,9 @@ public struct LabelManagerView: View {
         }
     }
 
+    /**
+     Builds the list of visible user labels with edit, delete, and optional StudyPad actions.
+     */
     private var labelList: some View {
         List {
             ForEach(userLabels) { label in
@@ -136,6 +177,18 @@ public struct LabelManagerView: View {
         }
     }
 
+    /**
+     Creates one new label from the pending alert input and persists it.
+
+     Side effects:
+     - inserts a new `Label` into SwiftData and attempts to save the context
+     - clears the pending label-name field after a successful insert path
+
+     Failure modes:
+     - returns without mutating state when the pending name is empty
+     - context-save failures are swallowed by `try?`, leaving the in-memory change subject to
+       SwiftData's own reconciliation behavior
+     */
     private func createLabel() {
         guard !newLabelName.isEmpty else { return }
         let label = BibleCore.Label(name: newLabelName)
@@ -144,6 +197,18 @@ public struct LabelManagerView: View {
         newLabelName = ""
     }
 
+    /**
+     Deletes one label and attempts to persist the removal.
+
+     - Parameter label: Label to delete from SwiftData.
+
+     Side effects:
+     - removes the label from the model context and attempts to save the deletion
+
+     Failure modes:
+     - save failures are swallowed by `try?`, so a failed persistence write will not surface an
+       error to the user from this view
+     */
     private func deleteLabel(_ label: BibleCore.Label) {
         modelContext.delete(label)
         try? modelContext.save()
@@ -152,14 +217,37 @@ public struct LabelManagerView: View {
 
 // MARK: - Label Edit View
 
-/// Edit screen for a single label: name, color, favourite, display style.
+/**
+ Edits the visual style and metadata for one label.
+
+ The editor binds directly to a live `Label` model, so changes apply immediately to the underlying
+ SwiftData object and are persisted on each interaction as well as again on dismissal.
+
+ Data dependencies:
+ - `label` is a bindable SwiftData model whose fields are mutated directly by the form controls
+ - `modelContext` persists those mutations to storage
+ - `dismiss` closes the modal presentation after explicit completion
+
+ Side effects:
+ - color, icon, and toggle interactions mutate the bound label and immediately attempt to save
+ - dismissing the editor triggers one final save attempt through `onDisappear`
+ */
 private struct LabelEditView: View {
+    /// Bindable label being edited in place.
     @Bindable var label: BibleCore.Label
+
+    /// SwiftData context used to persist edits to the bound label.
     @Environment(\.modelContext) private var modelContext
+
+    /// Dismiss action for the modal edit presentation.
     @Environment(\.dismiss) private var dismiss
 
-    // Android canonical icon names — stored in Label.customIcon for Vue.js compatibility.
-    // Displayed via Label.sfSymbol(for:) which maps to SF Symbols for native rendering.
+    /**
+     Canonical Android icon names offered for `Label.customIcon`.
+
+     These names are persisted for compatibility with the Vue.js renderer, while the native UI maps
+     them through `Label.sfSymbol(for:)` for SF Symbol display.
+     */
     private static let iconNames: [String] = [
         "book", "book-bible", "cross",
         "church", "star-of-david", "person-praying",
@@ -173,7 +261,7 @@ private struct LabelEditView: View {
         "key", "crown", "heart", "heart-crack",
     ]
 
-    // Preset colors matching Android's highlight palette
+    /// Preset highlight colors aligned with Android's label-style palette.
     private static let presetColors: [(name: String, argb: Int)] = [
         ("Red", Int(Int32(bitPattern: 0xFFFF0000))),
         ("Green", Int(Int32(bitPattern: 0xFF00FF00))),
@@ -189,6 +277,9 @@ private struct LabelEditView: View {
         ("Brown", Int(Int32(bitPattern: 0xFF8B4513))),
     ]
 
+    /**
+     Builds the label-edit form, including name, color, icon, and display-style controls.
+     */
     var body: some View {
         Form {
             Section(String(localized: "label_edit_name")) {
@@ -281,6 +372,13 @@ private struct LabelEditView: View {
         .onDisappear { save() }
     }
 
+    /**
+     Attempts to persist the current label edits to SwiftData.
+
+     Failure modes:
+     - save failures are swallowed by `try?`, so the editor does not surface persistence errors
+       directly
+     */
     private func save() {
         try? modelContext.save()
     }

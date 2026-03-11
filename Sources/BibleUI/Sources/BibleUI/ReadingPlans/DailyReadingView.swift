@@ -4,28 +4,61 @@ import SwiftUI
 import SwiftData
 import BibleCore
 
-/// Shows the daily reading for a reading plan with progress tracking.
+/**
+ Shows one reading plan's current day, progress, and recent-day navigation.
+
+ The view loads the selected plan from SwiftData, derives the expected current day, and lets the
+ user mark days complete or incomplete while keeping the parent plan's active/completed state in sync.
+
+ Data dependencies:
+ - `planId` identifies the persisted reading plan to display
+ - `modelContext` is used to load and persist plan/day progress changes
+
+ Side effects:
+ - `onAppear` loads the plan and derives the initial selected day index
+ - marking or unmarking a day mutates SwiftData and may advance the selected day or reactivate the plan
+ - plan completion status is recalculated after each completion change
+ */
 public struct DailyReadingView: View {
+    /// Identifier of the reading plan to load and display.
     let planId: UUID
+
+    /// SwiftData context used to load and persist plan progress.
     @Environment(\.modelContext) private var modelContext
+
+    /// Loaded reading plan, or `nil` while the view is still hydrating.
     @State private var plan: ReadingPlan?
+
+    /// Zero-based index of the currently selected day in `sortedDays`.
     @State private var currentDayIndex: Int = 0
+
+    /// Reading plan days sorted by ascending day number.
     @State private var sortedDays: [ReadingPlanDay] = []
 
+    /**
+     Creates the daily reading screen for one persisted plan.
+
+     - Parameter planId: Identifier of the plan whose day-by-day progress should be shown.
+     */
     public init(planId: UUID) {
         self.planId = planId
     }
 
+    /// Currently selected day, or `nil` when the plan has not loaded yet.
     private var currentDay: ReadingPlanDay? {
         guard currentDayIndex >= 0, currentDayIndex < sortedDays.count else { return nil }
         return sortedDays[currentDayIndex]
     }
 
+    /// Completion percentage for the loaded plan in the range `0...1`.
     private var progress: Double {
         guard let plan else { return 0 }
         return ReadingPlanService.completionPercentage(for: plan)
     }
 
+    /**
+     Builds the loading state or the daily reading experience with progress and recent-day navigation.
+     */
     public var body: some View {
         Group {
             if let plan, !sortedDays.isEmpty {
@@ -53,8 +86,9 @@ public struct DailyReadingView: View {
         }
     }
 
-    // MARK: - Plan Header
-
+    /**
+     Builds the plan summary header with start date and aggregate completion progress.
+     */
     private func planHeader(_ plan: ReadingPlan) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -84,8 +118,7 @@ public struct DailyReadingView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    // MARK: - Day Navigator
-
+    /// Previous/next day navigator for moving through the reading plan.
     private var dayNavigator: some View {
         HStack {
             Button {
@@ -118,8 +151,9 @@ public struct DailyReadingView: View {
         .padding(.horizontal)
     }
 
-    // MARK: - Reading Card
-
+    /**
+     Builds the reading card for the currently selected day, including completion actions.
+     */
     private func readingCard(_ day: ReadingPlanDay) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -185,8 +219,7 @@ public struct DailyReadingView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    // MARK: - Recent Days
-
+    /// Compact list of nearby days for quick navigation around the current selection.
     private var recentDays: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(String(localized: "daily_reading_recent_days"))
@@ -231,8 +264,13 @@ public struct DailyReadingView: View {
         }
     }
 
-    // MARK: - Actions
+    /**
+     Loads the selected plan from storage and derives the initial current-day selection.
 
+     Side effects:
+     - populates `plan` and `sortedDays`
+     - derives the expected one-based current day from `ReadingPlanService` and converts it to a zero-based index
+     */
     private func loadPlan() {
         let store = ReadingPlanStore(modelContext: modelContext)
         plan = store.plan(id: planId)
@@ -245,6 +283,11 @@ public struct DailyReadingView: View {
         }
     }
 
+    /**
+     Marks one day complete, saves progress, auto-advances when possible, and refreshes plan completion.
+
+     - Parameter day: Day to mark completed.
+     */
     private func markDayComplete(_ day: ReadingPlanDay) {
         day.isCompleted = true
         day.completedDate = Date()
@@ -259,6 +302,11 @@ public struct DailyReadingView: View {
         checkPlanCompletion()
     }
 
+    /**
+     Marks one day incomplete and reactivates the plan if it had previously completed.
+
+     - Parameter day: Day to mark incomplete.
+     */
     private func unmarkDay(_ day: ReadingPlanDay) {
         day.isCompleted = false
         day.completedDate = nil
@@ -271,6 +319,9 @@ public struct DailyReadingView: View {
         }
     }
 
+    /**
+     Updates the parent plan's `isActive` flag when every day is now complete.
+     */
     private func checkPlanCompletion() {
         guard let plan else { return }
         let allDone = sortedDays.allSatisfy(\.isCompleted)

@@ -5,22 +5,51 @@ import SwiftData
 import BibleCore
 import UniformTypeIdentifiers
 
-/// Lists available and active reading plans.
+/**
+ Lists active and completed reading plans and starts new plans from built-in or imported templates.
+
+ The screen separates active plans from completed plans, presents the available-plan picker, and
+ creates new `ReadingPlan` rows through `ReadingPlanService`.
+
+ Data dependencies:
+ - `modelContext` persists started or deleted plans
+ - `plans` is a live SwiftData query ordered by most recent start date
+
+ Side effects:
+ - starting a template creates a new persisted reading plan
+ - deleting rows removes plans from SwiftData
+ - presenting the available-plan sheet can also import a custom plan file
+ */
 public struct ReadingPlanListView: View {
+    /// SwiftData context used to create and delete plans.
     @Environment(\.modelContext) private var modelContext
+
+    /// All persisted plans ordered by most recent start date.
     @Query(sort: \ReadingPlan.startDate, order: .reverse) private var plans: [ReadingPlan]
+
+    /// Whether the available-plan picker sheet is presented.
     @State private var showAvailablePlans = false
 
+    /**
+     Creates the reading-plan list screen.
+
+     - Note: This initializer has no inputs and performs no side effects.
+     */
     public init() {}
 
+    /// Active plans still in progress.
     private var activePlans: [ReadingPlan] {
         plans.filter { $0.isActive }
     }
 
+    /// Completed plans no longer marked active.
     private var completedPlans: [ReadingPlan] {
         plans.filter { !$0.isActive }
     }
 
+    /**
+     Builds the empty state or reading-plan list with the available-plan sheet.
+     */
     public var body: some View {
         Group {
             if plans.isEmpty {
@@ -58,6 +87,7 @@ public struct ReadingPlanListView: View {
         }
     }
 
+    /// List grouped into active and completed plan sections.
     private var planList: some View {
         List {
             if !activePlans.isEmpty {
@@ -97,21 +127,29 @@ public struct ReadingPlanListView: View {
 
 // MARK: - Active Plan Row
 
+/**
+ Row showing progress for one active reading plan.
+ */
 private struct ActivePlanRow: View {
+    /// Persisted reading plan summarized by the row.
     let plan: ReadingPlan
 
+    /// Completion percentage for the plan in the range `0...1`.
     private var progress: Double {
         ReadingPlanService.completionPercentage(for: plan)
     }
 
+    /// One-based day the user is expected to read today.
     private var expectedDay: Int {
         ReadingPlanService.expectedDay(for: plan)
     }
 
+    /// Number of completed days in the plan.
     private var daysCompleted: Int {
         plan.days?.filter(\.isCompleted).count ?? 0
     }
 
+    /// Builds the active-plan summary row with progress bar and completion metrics.
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -142,9 +180,14 @@ private struct ActivePlanRow: View {
 
 // MARK: - Completed Plan Row
 
+/**
+ Row summarizing one completed reading plan.
+ */
 private struct CompletedPlanRow: View {
+    /// Persisted completed plan summarized by the row.
     let plan: ReadingPlan
 
+    /// Builds the completed-plan summary row.
     var body: some View {
         HStack {
             Image(systemName: "checkmark.circle.fill")
@@ -162,12 +205,27 @@ private struct CompletedPlanRow: View {
 
 // MARK: - Available Plans View
 
+/**
+ Sheet listing built-in reading plan templates and the custom-plan file importer.
+
+ Side effects:
+ - selecting a template invokes `onSelect`, allowing the parent to create a persisted plan
+ - importing a custom plan reads a user-selected file through a security-scoped URL and parses it
+ */
 private struct AvailablePlansView: View {
+    /// Callback invoked when the user chooses a plan template to start.
     let onSelect: (ReadingPlanTemplate) -> Void
+
+    /// Dismiss action for the sheet.
     @Environment(\.dismiss) private var dismiss
+
+    /// Whether the custom-plan file importer is currently presented.
     @State private var showImportPicker = false
+
+    /// Latest user-visible custom-plan import error.
     @State private var importError: String?
 
+    /// Builds the built-in template list, custom import action, and error section.
     var body: some View {
         List {
             Section {
@@ -235,6 +293,14 @@ private struct AvailablePlansView: View {
         }
     }
 
+    /**
+     Handles custom reading-plan import results from the file importer.
+
+     Side effects:
+     - starts and stops security-scoped resource access for the selected file
+     - parses custom `.properties`-style plan text through `ReadingPlanService`
+     - updates `importError` or forwards the parsed template to `onSelect`
+     */
     private func handleCustomPlanImport(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):

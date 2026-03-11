@@ -817,6 +817,280 @@ final class AndBibleTests: XCTestCase {
         )
     }
 
+    func testRemoteSyncBootstrapCoordinatorReturnsReadyForKnownStoredFolder() async throws {
+        let settingsStore = try makeInMemorySettingsStore()
+        let stateStore = RemoteSyncStateStore(settingsStore: settingsStore)
+        stateStore.setBootstrapState(
+            RemoteSyncBootstrapState(
+                syncFolderID: "/org.andbible.ios-sync-bookmarks",
+                deviceFolderID: "/org.andbible.ios-sync-bookmarks/ios-device",
+                secretFileName: "device-known-ios-device-secret"
+            ),
+            for: .bookmarks
+        )
+
+        let adapter = MockRemoteSyncAdapter()
+        await adapter.setKnownResponse(
+            true,
+            forSyncFolderID: "/org.andbible.ios-sync-bookmarks",
+            secretFileName: "device-known-ios-device-secret"
+        )
+
+        let coordinator = RemoteSyncBootstrapCoordinator(
+            adapter: adapter,
+            stateStore: stateStore,
+            bundleIdentifier: "org.andbible.ios",
+            deviceIdentifier: "ios-device"
+        )
+
+        let status = try await coordinator.inspect(.bookmarks)
+
+        XCTAssertEqual(
+            status,
+            .ready(
+                RemoteSyncBootstrapState(
+                    syncFolderID: "/org.andbible.ios-sync-bookmarks",
+                    deviceFolderID: "/org.andbible.ios-sync-bookmarks/ios-device",
+                    secretFileName: "device-known-ios-device-secret"
+                )
+            )
+        )
+        let events = await adapter.eventsSnapshot()
+
+        XCTAssertEqual(events, [
+            .isSyncFolderKnown(
+                syncFolderID: "/org.andbible.ios-sync-bookmarks",
+                secretFileName: "device-known-ios-device-secret"
+            )
+        ])
+    }
+
+    func testRemoteSyncBootstrapCoordinatorRepairsMissingDeviceFolderForKnownStoredFolder() async throws {
+        let settingsStore = try makeInMemorySettingsStore()
+        let stateStore = RemoteSyncStateStore(settingsStore: settingsStore)
+        stateStore.setBootstrapState(
+            RemoteSyncBootstrapState(
+                syncFolderID: "/org.andbible.ios-sync-bookmarks",
+                deviceFolderID: nil,
+                secretFileName: "device-known-ios-device-secret"
+            ),
+            for: .bookmarks
+        )
+
+        let adapter = MockRemoteSyncAdapter()
+        await adapter.setKnownResponse(
+            true,
+            forSyncFolderID: "/org.andbible.ios-sync-bookmarks",
+            secretFileName: "device-known-ios-device-secret"
+        )
+        await adapter.enqueueCreateFolderResult(
+            RemoteSyncFile(
+                id: "/org.andbible.ios-sync-bookmarks/ios-device",
+                name: "ios-device",
+                size: 0,
+                timestamp: 0,
+                parentID: "/org.andbible.ios-sync-bookmarks",
+                mimeType: NextCloudSyncAdapter.folderMimeType
+            )
+        )
+
+        let coordinator = RemoteSyncBootstrapCoordinator(
+            adapter: adapter,
+            stateStore: stateStore,
+            bundleIdentifier: "org.andbible.ios",
+            deviceIdentifier: "ios-device"
+        )
+
+        let status = try await coordinator.inspect(.bookmarks)
+
+        XCTAssertEqual(
+            status,
+            .ready(
+                RemoteSyncBootstrapState(
+                    syncFolderID: "/org.andbible.ios-sync-bookmarks",
+                    deviceFolderID: "/org.andbible.ios-sync-bookmarks/ios-device",
+                    secretFileName: "device-known-ios-device-secret"
+                )
+            )
+        )
+        XCTAssertEqual(
+            stateStore.bootstrapState(for: .bookmarks),
+            RemoteSyncBootstrapState(
+                syncFolderID: "/org.andbible.ios-sync-bookmarks",
+                deviceFolderID: "/org.andbible.ios-sync-bookmarks/ios-device",
+                secretFileName: "device-known-ios-device-secret"
+            )
+        )
+    }
+
+    func testRemoteSyncBootstrapCoordinatorRequiresRemoteAdoptionWhenNamedFolderExists() async throws {
+        let settingsStore = try makeInMemorySettingsStore()
+        let stateStore = RemoteSyncStateStore(settingsStore: settingsStore)
+        let adapter = MockRemoteSyncAdapter()
+        await adapter.setListFilesResult([
+            RemoteSyncFile(
+                id: "/org.andbible.ios-sync-bookmarks",
+                name: "org.andbible.ios-sync-bookmarks",
+                size: 0,
+                timestamp: 123,
+                parentID: "/",
+                mimeType: NextCloudSyncAdapter.folderMimeType
+            )
+        ])
+
+        let coordinator = RemoteSyncBootstrapCoordinator(
+            adapter: adapter,
+            stateStore: stateStore,
+            bundleIdentifier: "org.andbible.ios",
+            deviceIdentifier: "ios-device"
+        )
+
+        let status = try await coordinator.inspect(.bookmarks)
+
+        XCTAssertEqual(
+            status,
+            .requiresRemoteAdoption(
+                RemoteSyncBootstrapCandidate(
+                    category: .bookmarks,
+                    syncFolderName: "org.andbible.ios-sync-bookmarks",
+                    remoteFolderID: "/org.andbible.ios-sync-bookmarks"
+                )
+            )
+        )
+    }
+
+    func testRemoteSyncBootstrapCoordinatorClearsStaleBootstrapAndRequestsCreationWhenMarkerMissing() async throws {
+        let settingsStore = try makeInMemorySettingsStore()
+        let stateStore = RemoteSyncStateStore(settingsStore: settingsStore)
+        stateStore.setBootstrapState(
+            RemoteSyncBootstrapState(
+                syncFolderID: "/stale-bookmarks",
+                deviceFolderID: "/stale-bookmarks/ios-device",
+                secretFileName: "stale-secret"
+            ),
+            for: .bookmarks
+        )
+
+        let adapter = MockRemoteSyncAdapter()
+        await adapter.setKnownResponse(false, forSyncFolderID: "/stale-bookmarks", secretFileName: "stale-secret")
+        await adapter.setListFilesResult([])
+
+        let coordinator = RemoteSyncBootstrapCoordinator(
+            adapter: adapter,
+            stateStore: stateStore,
+            bundleIdentifier: "org.andbible.ios",
+            deviceIdentifier: "ios-device"
+        )
+
+        let status = try await coordinator.inspect(.bookmarks)
+
+        XCTAssertEqual(
+            status,
+            .requiresRemoteCreation(
+                RemoteSyncBootstrapCreation(
+                    category: .bookmarks,
+                    syncFolderName: "org.andbible.ios-sync-bookmarks"
+                )
+            )
+        )
+        XCTAssertEqual(stateStore.bootstrapState(for: .bookmarks), RemoteSyncBootstrapState())
+    }
+
+    func testRemoteSyncBootstrapCoordinatorAdoptRemoteFolderPersistsMarkerAndDeviceFolder() async throws {
+        let settingsStore = try makeInMemorySettingsStore()
+        let stateStore = RemoteSyncStateStore(settingsStore: settingsStore)
+        let adapter = MockRemoteSyncAdapter()
+        await adapter.setMakeKnownResponse("device-known-ios-device-secret")
+        await adapter.enqueueCreateFolderResult(
+            RemoteSyncFile(
+                id: "/org.andbible.ios-sync-bookmarks/ios-device",
+                name: "ios-device",
+                size: 0,
+                timestamp: 0,
+                parentID: "/org.andbible.ios-sync-bookmarks",
+                mimeType: NextCloudSyncAdapter.folderMimeType
+            )
+        )
+
+        let coordinator = RemoteSyncBootstrapCoordinator(
+            adapter: adapter,
+            stateStore: stateStore,
+            bundleIdentifier: "org.andbible.ios",
+            deviceIdentifier: "ios-device"
+        )
+
+        let state = try await coordinator.adoptRemoteFolder(
+            for: .bookmarks,
+            remoteFolderID: "/org.andbible.ios-sync-bookmarks"
+        )
+
+        XCTAssertEqual(
+            state,
+            RemoteSyncBootstrapState(
+                syncFolderID: "/org.andbible.ios-sync-bookmarks",
+                deviceFolderID: "/org.andbible.ios-sync-bookmarks/ios-device",
+                secretFileName: "device-known-ios-device-secret"
+            )
+        )
+        XCTAssertEqual(stateStore.bootstrapState(for: .bookmarks), state)
+    }
+
+    func testRemoteSyncBootstrapCoordinatorCreateRemoteFolderCanReplaceExistingRemoteFolder() async throws {
+        let settingsStore = try makeInMemorySettingsStore()
+        let stateStore = RemoteSyncStateStore(settingsStore: settingsStore)
+        let adapter = MockRemoteSyncAdapter()
+        await adapter.setMakeKnownResponse("device-known-ios-device-secret")
+        await adapter.enqueueCreateFolderResult(
+            RemoteSyncFile(
+                id: "/org.andbible.ios-sync-bookmarks",
+                name: "org.andbible.ios-sync-bookmarks",
+                size: 0,
+                timestamp: 0,
+                parentID: "/",
+                mimeType: NextCloudSyncAdapter.folderMimeType
+            )
+        )
+        await adapter.enqueueCreateFolderResult(
+            RemoteSyncFile(
+                id: "/org.andbible.ios-sync-bookmarks/ios-device",
+                name: "ios-device",
+                size: 0,
+                timestamp: 0,
+                parentID: "/org.andbible.ios-sync-bookmarks",
+                mimeType: NextCloudSyncAdapter.folderMimeType
+            )
+        )
+
+        let coordinator = RemoteSyncBootstrapCoordinator(
+            adapter: adapter,
+            stateStore: stateStore,
+            bundleIdentifier: "org.andbible.ios",
+            deviceIdentifier: "ios-device"
+        )
+
+        let state = try await coordinator.createRemoteFolder(
+            for: .bookmarks,
+            replacingRemoteFolderID: "/stale-remote-bookmarks"
+        )
+
+        XCTAssertEqual(
+            state,
+            RemoteSyncBootstrapState(
+                syncFolderID: "/org.andbible.ios-sync-bookmarks",
+                deviceFolderID: "/org.andbible.ios-sync-bookmarks/ios-device",
+                secretFileName: "device-known-ios-device-secret"
+            )
+        )
+        let events = await adapter.eventsSnapshot()
+
+        XCTAssertEqual(events, [
+            .delete(id: "/stale-remote-bookmarks"),
+            .createFolder(name: "org.andbible.ios-sync-bookmarks", parentID: nil),
+            .makeKnown(syncFolderID: "/org.andbible.ios-sync-bookmarks", deviceIdentifier: "ios-device"),
+            .createFolder(name: "ios-device", parentID: "/org.andbible.ios-sync-bookmarks"),
+        ])
+    }
+
     func testWebDAVSyncConfigurationRejectsLoginPageURLs() {
         let configuration = WebDAVSyncConfiguration(
             serverURL: "https://nextcloud.example.com/login",
@@ -1037,4 +1311,86 @@ private final class RequestLog: @unchecked Sendable {
 private struct RequestLogEntry: Equatable {
     let method: String
     let path: String
+}
+
+private actor MockRemoteSyncAdapter: RemoteSyncAdapting {
+    private var listFilesResult: [RemoteSyncFile] = []
+    private var createFolderResults: [RemoteSyncFile] = []
+    private var knownResponses: [String: Bool] = [:]
+    private var makeKnownResponse = "device-known-default"
+    private var events: [MockRemoteSyncAdapterEvent] = []
+
+    func setListFilesResult(_ result: [RemoteSyncFile]) {
+        listFilesResult = result
+    }
+
+    func enqueueCreateFolderResult(_ result: RemoteSyncFile) {
+        createFolderResults.append(result)
+    }
+
+    func setKnownResponse(_ value: Bool, forSyncFolderID syncFolderID: String, secretFileName: String) {
+        knownResponses["\(syncFolderID)|\(secretFileName)"] = value
+    }
+
+    func setMakeKnownResponse(_ value: String) {
+        makeKnownResponse = value
+    }
+
+    func eventsSnapshot() -> [MockRemoteSyncAdapterEvent] {
+        events
+    }
+
+    func listFiles(
+        parentIDs: [String]?,
+        name: String?,
+        mimeType: String?,
+        modifiedAtLeast: Date?
+    ) async throws -> [RemoteSyncFile] {
+        events.append(
+            .listFiles(
+                parentIDs: parentIDs,
+                name: name,
+                mimeType: mimeType,
+                modifiedAtLeast: modifiedAtLeast
+            )
+        )
+        return listFilesResult
+    }
+
+    func createNewFolder(name: String, parentID: String?) async throws -> RemoteSyncFile {
+        events.append(.createFolder(name: name, parentID: parentID))
+        if !createFolderResults.isEmpty {
+            return createFolderResults.removeFirst()
+        }
+        return RemoteSyncFile(
+            id: [parentID, name].compactMap { $0 }.joined(separator: "/"),
+            name: name,
+            size: 0,
+            timestamp: 0,
+            parentID: parentID ?? "/",
+            mimeType: NextCloudSyncAdapter.folderMimeType
+        )
+    }
+
+    func delete(id: String) async throws {
+        events.append(.delete(id: id))
+    }
+
+    func isSyncFolderKnown(syncFolderID: String, secretFileName: String) async throws -> Bool {
+        events.append(.isSyncFolderKnown(syncFolderID: syncFolderID, secretFileName: secretFileName))
+        return knownResponses["\(syncFolderID)|\(secretFileName)"] ?? false
+    }
+
+    func makeSyncFolderKnown(syncFolderID: String, deviceIdentifier: String) async throws -> String {
+        events.append(.makeKnown(syncFolderID: syncFolderID, deviceIdentifier: deviceIdentifier))
+        return makeKnownResponse
+    }
+}
+
+private enum MockRemoteSyncAdapterEvent: Equatable {
+    case listFiles(parentIDs: [String]?, name: String?, mimeType: String?, modifiedAtLeast: Date?)
+    case createFolder(name: String, parentID: String?)
+    case delete(id: String)
+    case isSyncFolderKnown(syncFolderID: String, secretFileName: String)
+    case makeKnown(syncFolderID: String, deviceIdentifier: String)
 }

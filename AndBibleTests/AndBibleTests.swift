@@ -6032,6 +6032,26 @@ final class AndBibleTests: XCTestCase {
         }
     }
 
+    func testGoogleDriveOAuthConfigurationRejectsBlankClientID() {
+        let infoDictionary: [String: Any] = [
+            "GIDClientID": "   ",
+            "GIDServerClientID": "",
+            "CFBundleURLTypes": [
+                [
+                    "CFBundleURLSchemes": [
+                        "",
+                    ],
+                ],
+            ],
+        ]
+
+        XCTAssertThrowsError(
+            try GoogleDriveOAuthConfiguration.from(infoDictionary: infoDictionary)
+        ) { error in
+            XCTAssertEqual(error as? GoogleDriveAuthServiceError, .notConfigured)
+        }
+    }
+
     @MainActor
     func testGoogleDriveAuthServiceRestoresPreviousSignInOnceAndBecomesReadyForSync() async {
         let clientID = "1234567890-abcdefg.apps.googleusercontent.com"
@@ -7732,7 +7752,6 @@ private final class MockRemoteSyncLifecycleSynchronizer: RemoteSyncCategorySynch
  The fake captures registrations, submitted requests, and cancellations so tests can verify the
  coordinator's scheduling policy without talking to `BGTaskScheduler`.
  */
-@MainActor
 private final class FakeRemoteSyncBackgroundRefreshScheduler: RemoteSyncBackgroundRefreshScheduling {
     /// Identifier most recently registered with the fake scheduler.
     private(set) var registeredIdentifier: String?
@@ -7793,7 +7812,6 @@ private final class FakeRemoteSyncBackgroundRefreshScheduler: RemoteSyncBackgrou
 
  Tests use this handle to observe completion state and manually trigger the expiration callback.
  */
-@MainActor
 private final class FakeRemoteSyncBackgroundRefreshTask: RemoteSyncBackgroundRefreshTaskHandling {
     /// Callback fired when the coordinator installs an expiration handler.
     var onExpirationHandlerSet: (() -> Void)?

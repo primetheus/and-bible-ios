@@ -3138,6 +3138,616 @@ final class AndBibleTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: stagedArchives[1].archiveFileURL.path))
     }
 
+    /// Verifies that synchronization stops at the Android adopt-vs-create branch when a same-named remote folder exists.
+    func testRemoteSyncSynchronizationServiceReturnsRemoteAdoptionDecision() async throws {
+        let container = try makeReadingPlanRestoreModelContainer()
+        let modelContext = ModelContext(container)
+        let settingsStore = SettingsStore(modelContext: modelContext)
+
+        let adapter = MockRemoteSyncAdapter()
+        await adapter.setListFilesResult([
+            RemoteSyncFile(
+                id: "/org.andbible.ios-sync-readingplans",
+                name: "org.andbible.ios-sync-readingplans",
+                size: 0,
+                timestamp: 1_000,
+                parentID: "/",
+                mimeType: NextCloudSyncAdapter.folderMimeType
+            )
+        ])
+
+        let service = RemoteSyncSynchronizationService(
+            adapter: adapter,
+            bundleIdentifier: "org.andbible.ios",
+            deviceIdentifier: "ios-device",
+            nowProvider: { 2_000_000 }
+        )
+
+        let outcome = try await service.synchronize(
+            .readingPlans,
+            modelContext: modelContext,
+            settingsStore: settingsStore
+        )
+
+        XCTAssertEqual(
+            outcome,
+            .requiresRemoteAdoption(
+                RemoteSyncBootstrapCandidate(
+                    category: .readingPlans,
+                    syncFolderName: "org.andbible.ios-sync-readingplans",
+                    remoteFolderID: "/org.andbible.ios-sync-readingplans"
+                )
+            )
+        )
+    }
+
+    /// Verifies that a ready reading-plan category downloads and applies the next valid remote patch.
+    func testRemoteSyncSynchronizationServiceSynchronizesReadyReadingPlanCategory() async throws {
+        let container = try makeReadingPlanRestoreModelContainer()
+        let modelContext = ModelContext(container)
+        let settingsStore = SettingsStore(modelContext: modelContext)
+        let stateStore = RemoteSyncStateStore(settingsStore: settingsStore)
+        let statusStore = RemoteSyncReadingPlanStatusStore(settingsStore: settingsStore)
+        let logEntryStore = RemoteSyncLogEntryStore(settingsStore: settingsStore)
+        let restoreService = RemoteSyncReadingPlanRestoreService()
+
+        let syncFolderID = "/org.andbible.ios-sync-readingplans"
+        let deviceFolderID = "/org.andbible.ios-sync-readingplans/ios-device"
+        stateStore.setBootstrapState(
+            RemoteSyncBootstrapState(
+                syncFolderID: syncFolderID,
+                deviceFolderID: deviceFolderID,
+                secretFileName: "device-known-ios-device-secret"
+            ),
+            for: .readingPlans
+        )
+
+        let planID = UUID(uuidString: "e1000000-0000-0000-0000-000000000001")!
+        let baselineStatusID = UUID(uuidString: "e1000000-0000-0000-0000-000000000011")!
+        let patchStatusID = UUID(uuidString: "e1000000-0000-0000-0000-000000000022")!
+
+        let initialDatabaseURL = try makeAndroidReadingPlansDatabase(
+            plans: [
+                .init(
+                    id: planID,
+                    planCode: "y1ot1nt1_OTthenNT",
+                    startDate: Date(timeIntervalSince1970: 1_700_000_000),
+                    currentDay: 1
+                )
+            ],
+            statuses: [
+                .init(
+                    id: baselineStatusID,
+                    planCode: "y1ot1nt1_OTthenNT",
+                    dayNumber: 1,
+                    readingStatusJSON: #"{"chapterReadArray":[{"readingNumber":1,"isRead":false}]}"#
+                )
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: initialDatabaseURL) }
+
+        let initialSnapshot = try restoreService.readSnapshot(from: initialDatabaseURL)
+        _ = try restoreService.replaceLocalReadingPlans(
+            from: initialSnapshot,
+            modelContext: modelContext,
+            statusStore: statusStore
+        )
+
+        logEntryStore.addEntry(
+            .init(
+                tableName: "ReadingPlan",
+                entityID1: .blob(uuidBlob(planID)),
+                entityID2: .text(""),
+                type: .upsert,
+                lastUpdated: 1_000,
+                sourceDevice: "pixel"
+            ),
+            for: .readingPlans
+        )
+        logEntryStore.addEntry(
+            .init(
+                tableName: "ReadingPlanStatus",
+                entityID1: .blob(uuidBlob(baselineStatusID)),
+                entityID2: .text(""),
+                type: .upsert,
+                lastUpdated: 1_000,
+                sourceDevice: "pixel"
+            ),
+            for: .readingPlans
+        )
+
+        let patchDatabaseURL = try makeAndroidReadingPlansDatabase(
+            plans: [
+                .init(
+                    id: planID,
+                    planCode: "y1ot1nt1_OTthenNT",
+                    startDate: Date(timeIntervalSince1970: 1_700_000_000),
+                    currentDay: 2
+                )
+            ],
+            statuses: [
+                .init(
+                    id: patchStatusID,
+                    planCode: "y1ot1nt1_OTthenNT",
+                    dayNumber: 2,
+                    readingStatusJSON: #"{"chapterReadArray":[{"readingNumber":1,"isRead":true}]}"#
+                )
+            ],
+            logEntries: [
+                .init(
+                    tableName: "ReadingPlan",
+                    entityID1: .blob(uuidBlob(planID)),
+                    entityID2: .text(""),
+                    type: .upsert,
+                    lastUpdated: 2_000,
+                    sourceDevice: "pixel"
+                ),
+                .init(
+                    tableName: "ReadingPlanStatus",
+                    entityID1: .blob(uuidBlob(patchStatusID)),
+                    entityID2: .text(""),
+                    type: .upsert,
+                    lastUpdated: 2_000,
+                    sourceDevice: "pixel"
+                ),
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: patchDatabaseURL) }
+
+        let patchArchiveData = try RemoteSyncArchiveStagingService.gzip(Data(contentsOf: patchDatabaseURL))
+        let patchFile = RemoteSyncFile(
+            id: "/org.andbible.ios-sync-readingplans/pixel/1.1.sqlite3.gz",
+            name: "1.1.sqlite3.gz",
+            size: Int64(patchArchiveData.count),
+            timestamp: 1_735_689_800_000,
+            parentID: "/org.andbible.ios-sync-readingplans/pixel",
+            mimeType: "application/gzip"
+        )
+
+        let adapter = MockRemoteSyncAdapter()
+        await adapter.setKnownResponse(
+            true,
+            forSyncFolderID: syncFolderID,
+            secretFileName: "device-known-ios-device-secret"
+        )
+        await adapter.enqueueListFilesResult([
+            RemoteSyncFile(
+                id: "/org.andbible.ios-sync-readingplans/pixel",
+                name: "pixel",
+                size: 0,
+                timestamp: 1_735_689_700_000,
+                parentID: syncFolderID,
+                mimeType: NextCloudSyncAdapter.folderMimeType
+            )
+        ])
+        await adapter.enqueueListFilesResult([patchFile])
+        await adapter.setDownloadData(patchArchiveData, forID: patchFile.id)
+
+        let service = RemoteSyncSynchronizationService(
+            adapter: adapter,
+            bundleIdentifier: "org.andbible.ios",
+            deviceIdentifier: "ios-device",
+            nowProvider: { 2_000_000 }
+        )
+
+        let outcome = try await service.synchronize(
+            .readingPlans,
+            modelContext: modelContext,
+            settingsStore: settingsStore
+        )
+
+        guard case .synchronized(let report) = outcome else {
+            return XCTFail("Expected synchronized outcome")
+        }
+
+        XCTAssertEqual(report.category, .readingPlans)
+        XCTAssertNil(report.initialRestoreReport)
+        XCTAssertEqual(report.discoveredPatchCount, 1)
+        XCTAssertEqual(report.lastPatchWritten, nil)
+        XCTAssertEqual(report.lastSynchronized, 2_000_000)
+
+        guard case .readingPlans(let patchReport)? = report.patchReplayReport else {
+            return XCTFail("Expected reading-plan patch replay report")
+        }
+
+        XCTAssertEqual(patchReport.appliedPatchCount, 1)
+        XCTAssertEqual(patchReport.appliedLogEntryCount, 2)
+        XCTAssertEqual(patchReport.skippedLogEntryCount, 0)
+
+        let plans = try modelContext.fetch(FetchDescriptor<ReadingPlan>())
+        XCTAssertEqual(plans.count, 1)
+        XCTAssertEqual(plans[0].currentDay, 2)
+
+        let persistedProgress = stateStore.progressState(for: .readingPlans)
+        XCTAssertEqual(persistedProgress.lastSynchronized, 2_000_000)
+
+        let events = await adapter.eventsSnapshot()
+        XCTAssertEqual(events, [
+            .isSyncFolderKnown(
+                syncFolderID: syncFolderID,
+                secretFileName: "device-known-ios-device-secret"
+            ),
+            .listFiles(
+                parentIDs: [syncFolderID],
+                name: nil,
+                mimeType: NextCloudSyncAdapter.folderMimeType,
+                modifiedAtLeast: nil
+            ),
+            .listFiles(
+                parentIDs: ["/org.andbible.ios-sync-readingplans/pixel"],
+                name: nil,
+                mimeType: nil,
+                modifiedAtLeast: nil
+            ),
+            .download(id: patchFile.id),
+        ])
+    }
+
+    /// Verifies that skipped-patch discovery retries once from a zero sync baseline before applying the next valid patch.
+    func testRemoteSyncSynchronizationServiceRetriesSkippedPatchDiscoveryOnce() async throws {
+        let container = try makeReadingPlanRestoreModelContainer()
+        let modelContext = ModelContext(container)
+        let settingsStore = SettingsStore(modelContext: modelContext)
+        let stateStore = RemoteSyncStateStore(settingsStore: settingsStore)
+        let statusStore = RemoteSyncReadingPlanStatusStore(settingsStore: settingsStore)
+        let logEntryStore = RemoteSyncLogEntryStore(settingsStore: settingsStore)
+
+        let restoreService = RemoteSyncReadingPlanRestoreService()
+
+        let syncFolderID = "/org.andbible.ios-sync-readingplans"
+        let deviceFolderID = "/org.andbible.ios-sync-readingplans/ios-device"
+        stateStore.setBootstrapState(
+            RemoteSyncBootstrapState(
+                syncFolderID: syncFolderID,
+                deviceFolderID: deviceFolderID,
+                secretFileName: "device-known-ios-device-secret"
+            ),
+            for: .readingPlans
+        )
+
+        let planID = UUID(uuidString: "f1000000-0000-0000-0000-000000000001")!
+        let baselineStatusID = UUID(uuidString: "f1000000-0000-0000-0000-000000000011")!
+        let patchStatusID = UUID(uuidString: "f1000000-0000-0000-0000-000000000022")!
+
+        let initialDatabaseURL = try makeAndroidReadingPlansDatabase(
+            plans: [
+                .init(
+                    id: planID,
+                    planCode: "y1ot1nt1_OTthenNT",
+                    startDate: Date(timeIntervalSince1970: 1_700_000_000),
+                    currentDay: 1
+                )
+            ],
+            statuses: [
+                .init(
+                    id: baselineStatusID,
+                    planCode: "y1ot1nt1_OTthenNT",
+                    dayNumber: 1,
+                    readingStatusJSON: #"{"chapterReadArray":[{"readingNumber":1,"isRead":false}]}"#
+                )
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: initialDatabaseURL) }
+
+        let initialSnapshot = try restoreService.readSnapshot(from: initialDatabaseURL)
+        _ = try restoreService.replaceLocalReadingPlans(
+            from: initialSnapshot,
+            modelContext: modelContext,
+            statusStore: statusStore
+        )
+
+        logEntryStore.addEntry(
+            .init(
+                tableName: "ReadingPlan",
+                entityID1: .blob(uuidBlob(planID)),
+                entityID2: .text(""),
+                type: .upsert,
+                lastUpdated: 1_000,
+                sourceDevice: "pixel"
+            ),
+            for: .readingPlans
+        )
+        logEntryStore.addEntry(
+            .init(
+                tableName: "ReadingPlanStatus",
+                entityID1: .blob(uuidBlob(baselineStatusID)),
+                entityID2: .text(""),
+                type: .upsert,
+                lastUpdated: 1_000,
+                sourceDevice: "pixel"
+            ),
+            for: .readingPlans
+        )
+
+        let patchDatabaseURL = try makeAndroidReadingPlansDatabase(
+            plans: [
+                .init(
+                    id: planID,
+                    planCode: "y1ot1nt1_OTthenNT",
+                    startDate: Date(timeIntervalSince1970: 1_700_000_000),
+                    currentDay: 2
+                )
+            ],
+            statuses: [
+                .init(
+                    id: patchStatusID,
+                    planCode: "y1ot1nt1_OTthenNT",
+                    dayNumber: 2,
+                    readingStatusJSON: #"{"chapterReadArray":[{"readingNumber":1,"isRead":true}]}"#
+                )
+            ],
+            logEntries: [
+                .init(
+                    tableName: "ReadingPlan",
+                    entityID1: .blob(uuidBlob(planID)),
+                    entityID2: .text(""),
+                    type: .upsert,
+                    lastUpdated: 2_000,
+                    sourceDevice: "pixel"
+                ),
+                .init(
+                    tableName: "ReadingPlanStatus",
+                    entityID1: .blob(uuidBlob(patchStatusID)),
+                    entityID2: .text(""),
+                    type: .upsert,
+                    lastUpdated: 2_000,
+                    sourceDevice: "pixel"
+                ),
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: patchDatabaseURL) }
+
+        let patchArchiveData = try RemoteSyncArchiveStagingService.gzip(Data(contentsOf: patchDatabaseURL))
+        let skippedPatch = RemoteSyncFile(
+            id: "/org.andbible.ios-sync-readingplans/pixel/2.1.sqlite3.gz",
+            name: "2.1.sqlite3.gz",
+            size: Int64(patchArchiveData.count),
+            timestamp: 1_735_689_800_000,
+            parentID: "/org.andbible.ios-sync-readingplans/pixel",
+            mimeType: "application/gzip"
+        )
+        let retriedPatch = RemoteSyncFile(
+            id: "/org.andbible.ios-sync-readingplans/pixel/1.1.sqlite3.gz",
+            name: "1.1.sqlite3.gz",
+            size: Int64(patchArchiveData.count),
+            timestamp: 1_735_689_810_000,
+            parentID: "/org.andbible.ios-sync-readingplans/pixel",
+            mimeType: "application/gzip"
+        )
+
+        let adapter = MockRemoteSyncAdapter()
+        await adapter.setKnownResponse(
+            true,
+            forSyncFolderID: syncFolderID,
+            secretFileName: "device-known-ios-device-secret"
+        )
+        await adapter.enqueueListFilesResult([
+            RemoteSyncFile(
+                id: "/org.andbible.ios-sync-readingplans/pixel",
+                name: "pixel",
+                size: 0,
+                timestamp: 1_735_689_700_000,
+                parentID: syncFolderID,
+                mimeType: NextCloudSyncAdapter.folderMimeType
+            )
+        ])
+        await adapter.enqueueListFilesResult([skippedPatch])
+        await adapter.enqueueListFilesResult([
+            RemoteSyncFile(
+                id: "/org.andbible.ios-sync-readingplans/pixel",
+                name: "pixel",
+                size: 0,
+                timestamp: 1_735_689_700_000,
+                parentID: syncFolderID,
+                mimeType: NextCloudSyncAdapter.folderMimeType
+            )
+        ])
+        await adapter.enqueueListFilesResult([retriedPatch])
+        await adapter.setDownloadData(patchArchiveData, forID: retriedPatch.id)
+
+        let service = RemoteSyncSynchronizationService(
+            adapter: adapter,
+            bundleIdentifier: "org.andbible.ios",
+            deviceIdentifier: "ios-device",
+            nowProvider: { 2_500_000 }
+        )
+
+        let outcome = try await service.synchronize(
+            .readingPlans,
+            modelContext: modelContext,
+            settingsStore: settingsStore
+        )
+
+        guard case .synchronized(let report) = outcome else {
+            return XCTFail("Expected synchronized outcome")
+        }
+
+        XCTAssertEqual(report.category, .readingPlans)
+        XCTAssertEqual(report.discoveredPatchCount, 1)
+        XCTAssertEqual(report.lastSynchronized, 2_500_000)
+
+        guard case .readingPlans(let patchReport)? = report.patchReplayReport else {
+            return XCTFail("Expected reading-plan patch replay report")
+        }
+
+        XCTAssertEqual(patchReport.appliedPatchCount, 1)
+        XCTAssertEqual(patchReport.appliedLogEntryCount, 2)
+        XCTAssertEqual(patchReport.skippedLogEntryCount, 0)
+
+        let plans = try modelContext.fetch(FetchDescriptor<ReadingPlan>())
+        XCTAssertEqual(plans.count, 1)
+        XCTAssertEqual(plans[0].currentDay, 2)
+
+        let persistedProgress = stateStore.progressState(for: .readingPlans)
+        XCTAssertEqual(persistedProgress.lastSynchronized, 2_500_000)
+
+        let events = await adapter.eventsSnapshot()
+        XCTAssertEqual(events, [
+            .isSyncFolderKnown(
+                syncFolderID: syncFolderID,
+                secretFileName: "device-known-ios-device-secret"
+            ),
+            .listFiles(
+                parentIDs: [syncFolderID],
+                name: nil,
+                mimeType: NextCloudSyncAdapter.folderMimeType,
+                modifiedAtLeast: nil
+            ),
+            .listFiles(
+                parentIDs: ["/org.andbible.ios-sync-readingplans/pixel"],
+                name: nil,
+                mimeType: nil,
+                modifiedAtLeast: nil
+            ),
+            .listFiles(
+                parentIDs: [syncFolderID],
+                name: nil,
+                mimeType: NextCloudSyncAdapter.folderMimeType,
+                modifiedAtLeast: nil
+            ),
+            .listFiles(
+                parentIDs: ["/org.andbible.ios-sync-readingplans/pixel"],
+                name: nil,
+                mimeType: nil,
+                modifiedAtLeast: nil
+            ),
+            .download(id: retriedPatch.id),
+        ])
+    }
+
+    /// Verifies that adopting a remote folder restores its initial backup, records patch zero, and then runs ready-state synchronization.
+    func testRemoteSyncSynchronizationServiceAdoptRemoteFolderRestoresInitialAndRecordsPatchZero() async throws {
+        let container = try makeReadingPlanRestoreModelContainer()
+        let modelContext = ModelContext(container)
+        let settingsStore = SettingsStore(modelContext: modelContext)
+        let patchStatusStore = RemoteSyncPatchStatusStore(settingsStore: settingsStore)
+        let stateStore = RemoteSyncStateStore(settingsStore: settingsStore)
+
+        let initialDatabaseURL = try makeAndroidReadingPlansDatabase(
+            plans: [
+                .init(
+                    id: UUID(uuidString: "e2000000-0000-0000-0000-000000000001")!,
+                    planCode: "y1ot1nt1_OTthenNT",
+                    startDate: Date(timeIntervalSince1970: 1_735_689_600),
+                    currentDay: 2
+                )
+            ],
+            statuses: [
+                .init(
+                    id: UUID(uuidString: "e2000000-0000-0000-0000-000000000011")!,
+                    planCode: "y1ot1nt1_OTthenNT",
+                    dayNumber: 2,
+                    readingStatusJSON: #"{"chapterReadArray":[{"readingNumber":1,"isRead":true}]}"#
+                )
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: initialDatabaseURL) }
+
+        let initialArchiveData = try RemoteSyncArchiveStagingService.gzip(Data(contentsOf: initialDatabaseURL))
+        let initialFile = RemoteSyncFile(
+            id: "/org.andbible.ios-sync-readingplans/initial.sqlite3.gz",
+            name: "initial.sqlite3.gz",
+            size: Int64(initialArchiveData.count),
+            timestamp: 1_735_689_700_000,
+            parentID: "/org.andbible.ios-sync-readingplans",
+            mimeType: "application/gzip"
+        )
+
+        let adapter = MockRemoteSyncAdapter()
+        await adapter.setMakeKnownResponse("device-known-ios-device-secret")
+        await adapter.enqueueCreateFolderResult(
+            RemoteSyncFile(
+                id: "/org.andbible.ios-sync-readingplans/ios-device",
+                name: "ios-device",
+                size: 0,
+                timestamp: 1_735_689_650_000,
+                parentID: "/org.andbible.ios-sync-readingplans",
+                mimeType: NextCloudSyncAdapter.folderMimeType
+            )
+        )
+        await adapter.enqueueListFilesResult([initialFile])
+        await adapter.enqueueListFilesResult([
+            RemoteSyncFile(
+                id: "/org.andbible.ios-sync-readingplans/ios-device",
+                name: "ios-device",
+                size: 0,
+                timestamp: 1_735_689_650_000,
+                parentID: "/org.andbible.ios-sync-readingplans",
+                mimeType: NextCloudSyncAdapter.folderMimeType
+            )
+        ])
+        await adapter.enqueueListFilesResult([])
+        await adapter.setDownloadData(initialArchiveData, forID: initialFile.id)
+
+        let service = RemoteSyncSynchronizationService(
+            adapter: adapter,
+            bundleIdentifier: "org.andbible.ios",
+            deviceIdentifier: "ios-device",
+            nowProvider: { 3_000_000 }
+        )
+
+        let report = try await service.adoptRemoteFolderAndSynchronize(
+            for: .readingPlans,
+            remoteFolderID: "/org.andbible.ios-sync-readingplans",
+            modelContext: modelContext,
+            settingsStore: settingsStore
+        )
+
+        XCTAssertEqual(report.category, .readingPlans)
+        XCTAssertEqual(report.discoveredPatchCount, 0)
+        XCTAssertEqual(report.lastPatchWritten, 3_000_000)
+        XCTAssertEqual(report.lastSynchronized, 3_000_000)
+        XCTAssertNil(report.patchReplayReport)
+        XCTAssertEqual(
+            report.initialRestoreReport,
+            .readingPlans(
+                RemoteSyncReadingPlanRestoreReport(
+                    restoredPlanCodes: ["y1ot1nt1_OTthenNT"],
+                    restoredDayCount: ReadingPlanService.availablePlans.first(where: { $0.code == "y1ot1nt1_OTthenNT" })!.totalDays,
+                    preservedStatusCount: 1
+                )
+            )
+        )
+
+        XCTAssertEqual(
+            patchStatusStore.statuses(for: .readingPlans),
+            [
+                RemoteSyncPatchStatus(
+                    sourceDevice: "ios-device",
+                    patchNumber: 0,
+                    sizeBytes: initialFile.size,
+                    appliedDate: initialFile.timestamp
+                )
+            ]
+        )
+        XCTAssertEqual(stateStore.progressState(for: .readingPlans).lastPatchWritten, 3_000_000)
+
+        let events = await adapter.eventsSnapshot()
+        XCTAssertEqual(events, [
+            .makeKnown(syncFolderID: "/org.andbible.ios-sync-readingplans", deviceIdentifier: "ios-device"),
+            .createFolder(name: "ios-device", parentID: "/org.andbible.ios-sync-readingplans"),
+            .listFiles(
+                parentIDs: ["/org.andbible.ios-sync-readingplans"],
+                name: "initial.sqlite3.gz",
+                mimeType: nil,
+                modifiedAtLeast: nil
+            ),
+            .download(id: initialFile.id),
+            .listFiles(
+                parentIDs: ["/org.andbible.ios-sync-readingplans"],
+                name: nil,
+                mimeType: NextCloudSyncAdapter.folderMimeType,
+                modifiedAtLeast: nil
+            ),
+            .listFiles(
+                parentIDs: ["/org.andbible.ios-sync-readingplans/ios-device"],
+                name: nil,
+                mimeType: nil,
+                modifiedAtLeast: nil
+            ),
+        ])
+    }
+
     func testWebDAVSyncConfigurationRejectsLoginPageURLs() {
         let configuration = WebDAVSyncConfiguration(
             serverURL: "https://nextcloud.example.com/login",

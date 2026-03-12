@@ -84,6 +84,8 @@ public struct RemoteSyncWorkspacePatchApplyReport: Sendable, Equatable {
 
  Data dependencies:
  - `RemoteSyncWorkspaceRestoreService` performs the final SwiftData rewrite and fidelity-store refresh
+ - `RemoteSyncWorkspaceSnapshotService` refreshes outbound workspace fingerprint baselines after
+   remote replay succeeds
  - `RemoteSyncInitialBackupMetadataRestoreService` reads Android `LogEntry` rows from staged patch files
  - `RemoteSyncLogEntryStore` provides the local Android conflict baseline for timestamp comparison
  - `RemoteSyncPatchStatusStore` records successfully applied patch archives per source device
@@ -96,6 +98,7 @@ public struct RemoteSyncWorkspacePatchApplyReport: Sendable, Equatable {
  - rewrites the local workspace-category SwiftData graph after the full batch succeeds
  - replaces local Android `LogEntry` metadata for `.workspaces`
  - appends applied-patch bookkeeping rows to `RemoteSyncPatchStatusStore`
+ - refreshes the outbound workspace fingerprint baseline after accepted replay
 
  Failure modes:
  - throws `RemoteSyncArchiveStagingError.decompressionFailed` when a staged gzip archive cannot be extracted
@@ -379,6 +382,7 @@ public final class RemoteSyncWorkspacePatchApplyService {
 
     private let metadataRestoreService: RemoteSyncInitialBackupMetadataRestoreService
     private let restoreService: RemoteSyncWorkspaceRestoreService
+    private let snapshotService: RemoteSyncWorkspaceSnapshotService
     private let fileManager: FileManager
     private let temporaryDirectory: URL
     private let decoder = JSONDecoder()
@@ -389,6 +393,8 @@ public final class RemoteSyncWorkspacePatchApplyService {
      - Parameters:
        - metadataRestoreService: Reader used for staged Android `LogEntry` rows.
        - restoreService: Centralized workspace restore path used for the final SwiftData rewrite.
+       - snapshotService: Snapshot service used to refresh outbound workspace fingerprint baselines
+         after accepted replay.
        - fileManager: File manager used for temporary-file cleanup.
        - temporaryDirectory: Scratch directory for temporary decompressed patch databases. Defaults
          to the process temporary directory.
@@ -398,11 +404,13 @@ public final class RemoteSyncWorkspacePatchApplyService {
     public init(
         metadataRestoreService: RemoteSyncInitialBackupMetadataRestoreService = RemoteSyncInitialBackupMetadataRestoreService(),
         restoreService: RemoteSyncWorkspaceRestoreService = RemoteSyncWorkspaceRestoreService(),
+        snapshotService: RemoteSyncWorkspaceSnapshotService = RemoteSyncWorkspaceSnapshotService(),
         fileManager: FileManager = .default,
         temporaryDirectory: URL? = nil
     ) {
         self.metadataRestoreService = metadataRestoreService
         self.restoreService = restoreService
+        self.snapshotService = snapshotService
         self.fileManager = fileManager
         self.temporaryDirectory = temporaryDirectory ?? fileManager.temporaryDirectory
     }
@@ -423,6 +431,7 @@ public final class RemoteSyncWorkspacePatchApplyService {
        - rewrites the local workspace graph after the full batch succeeds
        - replaces local Android `LogEntry` rows for `.workspaces`
        - appends applied-patch rows to `RemoteSyncPatchStatusStore`
+       - refreshes the outbound workspace fingerprint baseline after accepted replay
      - Failure modes:
        - rethrows patch-archive decompression failures
        - rethrows malformed staged `LogEntry` metadata failures
@@ -520,6 +529,10 @@ public final class RemoteSyncWorkspacePatchApplyService {
             for: .workspaces
         )
         patchStatusStore.addStatuses(appliedPatchStatuses, for: .workspaces)
+        snapshotService.refreshBaselineFingerprints(
+            modelContext: modelContext,
+            settingsStore: settingsStore
+        )
 
         return RemoteSyncWorkspacePatchApplyReport(
             appliedPatchCount: appliedPatchStatuses.count,

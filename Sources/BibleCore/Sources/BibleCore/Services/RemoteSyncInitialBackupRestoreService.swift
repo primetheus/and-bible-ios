@@ -36,6 +36,8 @@ through one generic SQLite importer.
    `SyncStatus` rows needed for later patch replay
  - `RemoteSyncBookmarkSnapshotService` refreshes outbound bookmark fingerprint baselines after
    successful bookmark restores
+ - `RemoteSyncWorkspaceSnapshotService` refreshes outbound workspace fingerprint baselines after
+   successful workspace restores
  - `SettingsStore` provides local-only persistence for fidelity-preserving side stores such as
   `RemoteSyncReadingPlanStatusStore`, `RemoteSyncBookmarkPlaybackSettingsStore`, and
   `RemoteSyncBookmarkLabelAliasStore`, `RemoteSyncWorkspaceFidelityStore`,
@@ -45,8 +47,8 @@ through one generic SQLite importer.
  - mutates live local SwiftData records for the supported category
  - may write local-only settings rows needed to preserve Android-only fidelity
  - replaces local Android sync metadata rows for the category after content restore succeeds
- - refreshes outbound bookmark and reading-plan fingerprint baselines after successful restores for
-   those categories
+ - refreshes outbound bookmark, workspace, and reading-plan fingerprint baselines after successful
+   restores for those categories
 
  Failure modes:
  - rethrows category-specific restore errors from the selected restore service
@@ -62,6 +64,7 @@ public final class RemoteSyncInitialBackupRestoreService {
     private let workspaceRestoreService: RemoteSyncWorkspaceRestoreService
     private let metadataRestoreService: RemoteSyncInitialBackupMetadataRestoreService
     private let bookmarkSnapshotService: RemoteSyncBookmarkSnapshotService
+    private let workspaceSnapshotService: RemoteSyncWorkspaceSnapshotService
     private let readingPlanSnapshotService: RemoteSyncReadingPlanSnapshotService
 
     /**
@@ -75,6 +78,8 @@ public final class RemoteSyncInitialBackupRestoreService {
          rows after content restore succeeds.
        - bookmarkSnapshotService: Snapshot service used to refresh outbound bookmark fingerprint
          baselines after successful bookmark restores.
+       - workspaceSnapshotService: Snapshot service used to refresh outbound workspace fingerprint
+         baselines after successful workspace restores.
        - readingPlanSnapshotService: Snapshot service used to refresh outbound reading-plan
          fingerprint baselines after successful remote restores.
      - Side effects: none.
@@ -86,6 +91,7 @@ public final class RemoteSyncInitialBackupRestoreService {
         workspaceRestoreService: RemoteSyncWorkspaceRestoreService = RemoteSyncWorkspaceRestoreService(),
         metadataRestoreService: RemoteSyncInitialBackupMetadataRestoreService = RemoteSyncInitialBackupMetadataRestoreService(),
         bookmarkSnapshotService: RemoteSyncBookmarkSnapshotService = RemoteSyncBookmarkSnapshotService(),
+        workspaceSnapshotService: RemoteSyncWorkspaceSnapshotService = RemoteSyncWorkspaceSnapshotService(),
         readingPlanSnapshotService: RemoteSyncReadingPlanSnapshotService = RemoteSyncReadingPlanSnapshotService()
     ) {
         self.bookmarkRestoreService = bookmarkRestoreService
@@ -93,6 +99,7 @@ public final class RemoteSyncInitialBackupRestoreService {
         self.workspaceRestoreService = workspaceRestoreService
         self.metadataRestoreService = metadataRestoreService
         self.bookmarkSnapshotService = bookmarkSnapshotService
+        self.workspaceSnapshotService = workspaceSnapshotService
         self.readingPlanSnapshotService = readingPlanSnapshotService
     }
 
@@ -109,7 +116,7 @@ public final class RemoteSyncInitialBackupRestoreService {
        - mutates live SwiftData state for the supported category
        - may persist local-only helper state needed to preserve Android-only fidelity
        - replaces local Android sync metadata rows for the category after the content restore succeeds
-       - refreshes outbound bookmark or reading-plan fingerprint baselines after successful restores
+       - refreshes outbound bookmark, workspace, or reading-plan fingerprint baselines after successful restores
      - Failure modes:
        - rethrows category-specific snapshot and restore errors from the selected service
        - rethrows staged sync-metadata read errors when present Android metadata tables are malformed
@@ -158,6 +165,11 @@ public final class RemoteSyncInitialBackupRestoreService {
         )
         if category == .bookmarks {
             bookmarkSnapshotService.refreshBaselineFingerprints(
+                modelContext: modelContext,
+                settingsStore: settingsStore
+            )
+        } else if category == .workspaces {
+            workspaceSnapshotService.refreshBaselineFingerprints(
                 modelContext: modelContext,
                 settingsStore: settingsStore
             )

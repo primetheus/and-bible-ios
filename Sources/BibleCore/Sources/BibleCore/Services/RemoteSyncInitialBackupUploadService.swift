@@ -350,6 +350,17 @@ public final class RemoteSyncInitialBackupUploadService {
 
     /**
      Builds one full Android reading-plan database from the current local snapshot.
+
+     - Parameters:
+       - modelContext: SwiftData context that owns the current reading-plan graph.
+       - settingsStore: Local-only settings store that preserves Android fidelity side data.
+       - schemaVersion: SQLite user-version written into the exported database.
+     - Returns: Temporary SQLite database containing the current reading-plan baseline.
+     - Side effects:
+       - reads reading-plan rows from `modelContext`
+       - writes one temporary SQLite database beneath the configured temporary directory
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects schema creation or row insertion
      */
     private func buildReadingPlanInitialBackup(
         modelContext: ModelContext,
@@ -432,6 +443,17 @@ public final class RemoteSyncInitialBackupUploadService {
 
     /**
      Builds one full Android bookmark database from the current local snapshot.
+
+     - Parameters:
+       - modelContext: SwiftData context that owns the current bookmark graph.
+       - settingsStore: Local-only settings store that preserves Android fidelity side data.
+       - schemaVersion: SQLite user-version written into the exported database.
+     - Returns: Temporary SQLite database containing the current bookmark baseline.
+     - Side effects:
+       - reads bookmark-category rows from `modelContext`
+       - writes one temporary SQLite database beneath the configured temporary directory
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects schema creation or row insertion
      */
     private func buildBookmarkInitialBackup(
         modelContext: ModelContext,
@@ -610,6 +632,18 @@ public final class RemoteSyncInitialBackupUploadService {
 
     /**
      Builds one full Android workspace database from the current local snapshot.
+
+     - Parameters:
+       - modelContext: SwiftData context that owns the current workspace graph.
+       - settingsStore: Local-only settings store that preserves Android fidelity side data.
+       - schemaVersion: SQLite user-version written into the exported database.
+     - Returns: Temporary SQLite database and any synthesized workspace-history aliases for the baseline.
+     - Side effects:
+       - reads workspace rows and history items from `modelContext`
+       - writes one temporary SQLite database beneath the configured temporary directory
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects schema creation or row insertion
+       - rethrows lower-level JSON-encoding failures from workspace fidelity serialization when Android payloads cannot be encoded
      */
     private func buildWorkspaceInitialBackup(
         modelContext: ModelContext,
@@ -820,6 +854,16 @@ public final class RemoteSyncInitialBackupUploadService {
 
     /**
      Projects the current local workspace history into Android `HistoryItem` rows.
+
+     - Parameters:
+       - modelContext: SwiftData context that owns the current workspace-history graph.
+       - settingsStore: Local-only settings store that preserves Android history-item aliases.
+     - Returns: Android-shaped history rows plus the alias rows that should be retained after export.
+     - Side effects:
+       - reads current `HistoryItem` rows from `modelContext`
+       - reads preserved history aliases from `RemoteSyncWorkspaceFidelityStore`
+     - Failure modes:
+       - fetch failures from `ModelContext` are swallowed and treated as an empty local history set
      */
     private func projectWorkspaceHistory(
         modelContext: ModelContext,
@@ -881,6 +925,16 @@ public final class RemoteSyncInitialBackupUploadService {
         return ProjectedWorkspaceHistory(rows: rows, aliases: aliases)
     }
 
+    /**
+     Sorts reading-plan rows into a deterministic export order.
+
+     - Parameters:
+       - lhs: First reading-plan row to compare.
+       - rhs: Second reading-plan row to compare.
+     - Returns: True when `lhs` should be serialized before `rhs`.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
     private static func readingPlanSort(_ lhs: RemoteSyncCurrentReadingPlanRow, _ rhs: RemoteSyncCurrentReadingPlanRow) -> Bool {
         if lhs.planCode == rhs.planCode {
             return lhs.id.uuidString < rhs.id.uuidString
@@ -888,6 +942,16 @@ public final class RemoteSyncInitialBackupUploadService {
         return lhs.planCode < rhs.planCode
     }
 
+    /**
+     Sorts reading-plan status rows into a deterministic export order.
+
+     - Parameters:
+       - lhs: First reading-plan status row to compare.
+       - rhs: Second reading-plan status row to compare.
+     - Returns: True when `lhs` should be serialized before `rhs`.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
     private static func readingPlanStatusSort(_ lhs: RemoteSyncCurrentReadingPlanStatusRow, _ rhs: RemoteSyncCurrentReadingPlanStatusRow) -> Bool {
         if lhs.planCode == rhs.planCode {
             if lhs.planDay == rhs.planDay {
@@ -898,6 +962,16 @@ public final class RemoteSyncInitialBackupUploadService {
         return lhs.planCode < rhs.planCode
     }
 
+    /**
+     Sorts label rows into a deterministic export order.
+
+     - Parameters:
+       - lhs: First label row to compare.
+       - rhs: Second label row to compare.
+     - Returns: True when `lhs` should be serialized before `rhs`.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
     private static func bookmarkLabelSort(_ lhs: RemoteSyncAndroidLabel, _ rhs: RemoteSyncAndroidLabel) -> Bool {
         if lhs.name == rhs.name {
             return lhs.id.uuidString < rhs.id.uuidString
@@ -905,6 +979,16 @@ public final class RemoteSyncInitialBackupUploadService {
         return lhs.name < rhs.name
     }
 
+    /**
+     Sorts Bible bookmark rows into a deterministic export order.
+
+     - Parameters:
+       - lhs: First Bible bookmark row to compare.
+       - rhs: Second Bible bookmark row to compare.
+     - Returns: True when `lhs` should be serialized before `rhs`.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
     private static func bibleBookmarkSort(_ lhs: RemoteSyncAndroidBibleBookmark, _ rhs: RemoteSyncAndroidBibleBookmark) -> Bool {
         if lhs.createdAt == rhs.createdAt {
             return lhs.id.uuidString < rhs.id.uuidString
@@ -912,6 +996,16 @@ public final class RemoteSyncInitialBackupUploadService {
         return lhs.createdAt < rhs.createdAt
     }
 
+    /**
+     Sorts generic bookmark rows into a deterministic export order.
+
+     - Parameters:
+       - lhs: First generic bookmark row to compare.
+       - rhs: Second generic bookmark row to compare.
+     - Returns: True when `lhs` should be serialized before `rhs`.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
     private static func genericBookmarkSort(_ lhs: RemoteSyncAndroidGenericBookmark, _ rhs: RemoteSyncAndroidGenericBookmark) -> Bool {
         if lhs.createdAt == rhs.createdAt {
             return lhs.id.uuidString < rhs.id.uuidString
@@ -919,10 +1013,30 @@ public final class RemoteSyncInitialBackupUploadService {
         return lhs.createdAt < rhs.createdAt
     }
 
+    /**
+     Sorts detached bookmark-note rows into a deterministic export order.
+
+     - Parameters:
+       - lhs: First note row to compare.
+       - rhs: Second note row to compare.
+     - Returns: True when `lhs` should be serialized before `rhs`.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
     private static func bookmarkNoteSort(_ lhs: RemoteSyncCurrentBookmarkNoteRow, _ rhs: RemoteSyncCurrentBookmarkNoteRow) -> Bool {
         lhs.bookmarkID.uuidString < rhs.bookmarkID.uuidString
     }
 
+    /**
+     Sorts bookmark-to-label rows into a deterministic export order.
+
+     - Parameters:
+       - lhs: First junction row to compare.
+       - rhs: Second junction row to compare.
+     - Returns: True when `lhs` should be serialized before `rhs`.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
     private static func bookmarkLabelLinkSort(_ lhs: RemoteSyncCurrentBookmarkLabelLinkRow, _ rhs: RemoteSyncCurrentBookmarkLabelLinkRow) -> Bool {
         if lhs.bookmarkID == rhs.bookmarkID {
             return lhs.labelID.uuidString < rhs.labelID.uuidString
@@ -930,6 +1044,16 @@ public final class RemoteSyncInitialBackupUploadService {
         return lhs.bookmarkID.uuidString < rhs.bookmarkID.uuidString
     }
 
+    /**
+     Sorts StudyPad entry rows into a deterministic export order.
+
+     - Parameters:
+       - lhs: First StudyPad entry row to compare.
+       - rhs: Second StudyPad entry row to compare.
+     - Returns: True when `lhs` should be serialized before `rhs`.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
     private static func studyPadEntrySort(_ lhs: RemoteSyncAndroidStudyPadEntry, _ rhs: RemoteSyncAndroidStudyPadEntry) -> Bool {
         if lhs.orderNumber == rhs.orderNumber {
             return lhs.id.uuidString < rhs.id.uuidString
@@ -937,10 +1061,30 @@ public final class RemoteSyncInitialBackupUploadService {
         return lhs.orderNumber < rhs.orderNumber
     }
 
+    /**
+     Sorts detached StudyPad text rows into a deterministic export order.
+
+     - Parameters:
+       - lhs: First StudyPad text row to compare.
+       - rhs: Second StudyPad text row to compare.
+     - Returns: True when `lhs` should be serialized before `rhs`.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
     private static func studyPadTextSort(_ lhs: RemoteSyncCurrentStudyPadTextRow, _ rhs: RemoteSyncCurrentStudyPadTextRow) -> Bool {
         lhs.entryID.uuidString < rhs.entryID.uuidString
     }
 
+    /**
+     Sorts workspace rows into a deterministic export order.
+
+     - Parameters:
+       - lhs: First workspace row to compare.
+       - rhs: Second workspace row to compare.
+     - Returns: True when `lhs` should be serialized before `rhs`.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
     private static func workspaceSort(_ lhs: RemoteSyncCurrentWorkspaceRow, _ rhs: RemoteSyncCurrentWorkspaceRow) -> Bool {
         if lhs.orderNumber == rhs.orderNumber {
             return lhs.id.uuidString < rhs.id.uuidString
@@ -948,6 +1092,16 @@ public final class RemoteSyncInitialBackupUploadService {
         return lhs.orderNumber < rhs.orderNumber
     }
 
+    /**
+     Sorts workspace-window rows into a deterministic export order.
+
+     - Parameters:
+       - lhs: First workspace-window row to compare.
+       - rhs: Second workspace-window row to compare.
+     - Returns: True when `lhs` should be serialized before `rhs`.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
     private static func windowSort(_ lhs: RemoteSyncCurrentWorkspaceWindowRow, _ rhs: RemoteSyncCurrentWorkspaceWindowRow) -> Bool {
         if lhs.workspaceID == rhs.workspaceID {
             if lhs.orderNumber == rhs.orderNumber {
@@ -958,10 +1112,30 @@ public final class RemoteSyncInitialBackupUploadService {
         return lhs.workspaceID.uuidString < rhs.workspaceID.uuidString
     }
 
+    /**
+     Sorts page-manager rows into a deterministic export order.
+
+     - Parameters:
+       - lhs: First page-manager row to compare.
+       - rhs: Second page-manager row to compare.
+     - Returns: True when `lhs` should be serialized before `rhs`.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
     private static func pageManagerSort(_ lhs: RemoteSyncCurrentWorkspacePageManagerRow, _ rhs: RemoteSyncCurrentWorkspacePageManagerRow) -> Bool {
         lhs.windowID.uuidString < rhs.windowID.uuidString
     }
 
+    /**
+     Inserts one Android `ReadingPlan` row into the open initial-backup database.
+
+     - Parameters:
+       - row: Android-shaped reading-plan row to insert.
+       - database: Open SQLite database handle.
+     - Side effects: writes one row into the `ReadingPlan` table.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects prepare, bind, or step work
+     */
     private func insertReadingPlanRow(_ row: RemoteSyncCurrentReadingPlanRow, in database: OpaquePointer) throws {
         let sql = "INSERT INTO ReadingPlan (planCode, planStartDate, planCurrentDay, id) VALUES (?, ?, ?, ?)"
         var statement: OpaquePointer?
@@ -979,6 +1153,16 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Inserts one Android `ReadingPlanStatus` row into the open initial-backup database.
+
+     - Parameters:
+       - row: Android-shaped reading-plan status row to insert.
+       - database: Open SQLite database handle.
+     - Side effects: writes one row into the `ReadingPlanStatus` table.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects prepare, bind, or step work
+     */
     private func insertReadingPlanStatusRow(_ row: RemoteSyncCurrentReadingPlanStatusRow, in database: OpaquePointer) throws {
         let sql = "INSERT INTO ReadingPlanStatus (planCode, planDay, readingStatus, id) VALUES (?, ?, ?, ?)"
         var statement: OpaquePointer?
@@ -996,6 +1180,16 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Inserts one Android `Label` row into the open initial-backup database.
+
+     - Parameters:
+       - row: Android-shaped label row to insert.
+       - database: Open SQLite database handle.
+     - Side effects: writes one row into the `Label` table.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects prepare, bind, or step work
+     */
     private func insertLabelRow(_ row: RemoteSyncAndroidLabel, in database: OpaquePointer) throws {
         let sql = "INSERT INTO Label (id, name, color, markerStyle, markerStyleWholeVerse, underlineStyle, underlineStyleWholeVerse, hideStyle, hideStyleWholeVerse, favourite, type, customIcon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         var statement: OpaquePointer?
@@ -1021,6 +1215,16 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Inserts one Android `BibleBookmark` row into the open initial-backup database.
+
+     - Parameters:
+       - row: Android-shaped Bible bookmark row to insert.
+       - database: Open SQLite database handle.
+     - Side effects: writes one row into the `BibleBookmark` table.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects prepare, bind, or step work
+     */
     private func insertBibleBookmarkRow(_ row: RemoteSyncAndroidBibleBookmark, in database: OpaquePointer) throws {
         let sql = "INSERT INTO BibleBookmark (kjvOrdinalStart, kjvOrdinalEnd, ordinalStart, ordinalEnd, v11n, playbackSettings, id, createdAt, book, startOffset, endOffset, primaryLabelId, lastUpdatedOn, wholeVerse, type, customIcon, editAction_mode, editAction_content) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         var statement: OpaquePointer?
@@ -1052,6 +1256,17 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Inserts one detached bookmark-note row into the open initial-backup database.
+
+     - Parameters:
+       - row: Android-shaped bookmark-note row to insert.
+       - tableName: Either `BibleBookmarkNotes` or `GenericBookmarkNotes`.
+       - database: Open SQLite database handle.
+     - Side effects: writes one row into the supplied note table.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects prepare, bind, or step work
+     */
     private func insertBookmarkNoteRow(
         _ row: RemoteSyncCurrentBookmarkNoteRow,
         tableName: String,
@@ -1071,6 +1286,17 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Inserts one bookmark-to-label junction row into the open initial-backup database.
+
+     - Parameters:
+       - row: Android-shaped bookmark-to-label row to insert.
+       - tableName: Either `BibleBookmarkToLabel` or `GenericBookmarkToLabel`.
+       - database: Open SQLite database handle.
+     - Side effects: writes one row into the supplied junction table.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects prepare, bind, or step work
+     */
     private func insertBookmarkLabelLinkRow(
         _ row: RemoteSyncCurrentBookmarkLabelLinkRow,
         tableName: String,
@@ -1093,6 +1319,16 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Inserts one Android `GenericBookmark` row into the open initial-backup database.
+
+     - Parameters:
+       - row: Android-shaped generic bookmark row to insert.
+       - database: Open SQLite database handle.
+     - Side effects: writes one row into the `GenericBookmark` table.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects prepare, bind, or step work
+     */
     private func insertGenericBookmarkRow(_ row: RemoteSyncAndroidGenericBookmark, in database: OpaquePointer) throws {
         let sql = "INSERT INTO GenericBookmark (id, `key`, createdAt, bookInitials, ordinalStart, ordinalEnd, startOffset, endOffset, primaryLabelId, lastUpdatedOn, wholeVerse, playbackSettings, customIcon, editAction_mode, editAction_content) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         var statement: OpaquePointer?
@@ -1121,6 +1357,16 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Inserts one Android `StudyPadTextEntry` row into the open initial-backup database.
+
+     - Parameters:
+       - row: Android-shaped StudyPad entry row to insert.
+       - database: Open SQLite database handle.
+     - Side effects: writes one row into the `StudyPadTextEntry` table.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects prepare, bind, or step work
+     */
     private func insertStudyPadEntryRow(_ row: RemoteSyncAndroidStudyPadEntry, in database: OpaquePointer) throws {
         let sql = "INSERT INTO StudyPadTextEntry (id, labelId, orderNumber, indentLevel) VALUES (?, ?, ?, ?)"
         var statement: OpaquePointer?
@@ -1138,6 +1384,16 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Inserts one detached StudyPad text row into the open initial-backup database.
+
+     - Parameters:
+       - row: Android-shaped StudyPad text row to insert.
+       - database: Open SQLite database handle.
+     - Side effects: writes one row into the `StudyPadTextEntryText` table.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects prepare, bind, or step work
+     */
     private func insertStudyPadTextRow(_ row: RemoteSyncCurrentStudyPadTextRow, in database: OpaquePointer) throws {
         let sql = "INSERT INTO StudyPadTextEntryText (studyPadTextEntryId, text) VALUES (?, ?)"
         var statement: OpaquePointer?
@@ -1153,6 +1409,17 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Inserts one Android `Workspace` row into the open initial-backup database.
+
+     - Parameters:
+       - row: Android-shaped workspace row to insert.
+       - database: Open SQLite database handle.
+     - Side effects: writes one row into the `Workspace` table.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects prepare, bind, or step work
+       - rethrows JSON-encoding failures from `bindTextDisplaySettings` and `bindWorkspaceSettings`
+     */
     private func insertWorkspaceRow(_ row: RemoteSyncCurrentWorkspaceRow, in database: OpaquePointer) throws {
         let sql = "INSERT INTO \"Workspace\" (name, contentsText, id, orderNumber, unPinnedWeight, maximizedWindowId, primaryTargetLinksWindowId, text_display_settings_strongsMode, text_display_settings_showMorphology, text_display_settings_showFootNotes, text_display_settings_showFootNotesInline, text_display_settings_expandXrefs, text_display_settings_showXrefs, text_display_settings_showRedLetters, text_display_settings_showSectionTitles, text_display_settings_showVerseNumbers, text_display_settings_showVersePerLine, text_display_settings_showBookmarks, text_display_settings_showMyNotes, text_display_settings_justifyText, text_display_settings_hyphenation, text_display_settings_topMargin, text_display_settings_fontSize, text_display_settings_fontFamily, text_display_settings_lineSpacing, text_display_settings_bookmarksHideLabels, text_display_settings_showPageNumber, text_display_settings_margin_size_marginLeft, text_display_settings_margin_size_marginRight, text_display_settings_margin_size_maxWidth, text_display_settings_colors_dayTextColor, text_display_settings_colors_dayBackground, text_display_settings_colors_dayNoise, text_display_settings_colors_nightTextColor, text_display_settings_colors_nightBackground, text_display_settings_colors_nightNoise, workspace_settings_enableTiltToScroll, workspace_settings_enableReverseSplitMode, workspace_settings_autoPin, workspace_settings_speakSettings, workspace_settings_recentLabels, workspace_settings_autoAssignLabels, workspace_settings_autoAssignPrimaryLabel, workspace_settings_studyPadCursors, workspace_settings_hideCompareDocuments, workspace_settings_limitAmbiguousModalSize, workspace_settings_workspaceColor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         var statement: OpaquePointer?
@@ -1189,6 +1456,16 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Inserts one Android `Window` row into the open initial-backup database.
+
+     - Parameters:
+       - row: Android-shaped workspace-window row to insert.
+       - database: Open SQLite database handle.
+     - Side effects: writes one row into the `Window` table.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects prepare, bind, or step work
+     */
     private func insertWindowRow(_ row: RemoteSyncCurrentWorkspaceWindowRow, in database: OpaquePointer) throws {
         let sql = "INSERT INTO \"Window\" (workspaceId, isSynchronized, isPinMode, isLinksWindow, id, orderNumber, targetLinksWindowId, syncGroup, window_layout_state, window_layout_weight) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         var statement: OpaquePointer?
@@ -1212,6 +1489,16 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Inserts one Android `HistoryItem` row into the open initial-backup database.
+
+     - Parameters:
+       - row: Android-shaped workspace-history row to insert.
+       - database: Open SQLite database handle.
+     - Side effects: writes one row into the `HistoryItem` table.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects prepare, bind, or step work
+     */
     private func insertWorkspaceHistoryRow(_ row: RemoteSyncAndroidWorkspaceHistoryItem, in database: OpaquePointer) throws {
         let sql = "INSERT INTO \"HistoryItem\" (windowId, createdAt, document, key, anchorOrdinal, id) VALUES (?, ?, ?, ?, ?, ?)"
         var statement: OpaquePointer?
@@ -1231,6 +1518,17 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Inserts one Android `PageManager` row into the open initial-backup database.
+
+     - Parameters:
+       - row: Android-shaped page-manager row to insert.
+       - database: Open SQLite database handle.
+     - Side effects: writes one row into the `PageManager` table.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects prepare, bind, or step work
+       - rethrows JSON-encoding failures from `bindTextDisplaySettings`
+     */
     private func insertPageManagerRow(_ row: RemoteSyncCurrentWorkspacePageManagerRow, in database: OpaquePointer) throws {
         let sql = "INSERT INTO PageManager (windowId, currentCategoryName, jsState, bible_document, bible_verse_versification, bible_verse_bibleBook, bible_verse_chapterNo, bible_verse_verseNo, commentary_document, commentary_anchorOrdinal, commentary_sourceBookAndKey, dictionary_document, dictionary_key, dictionary_anchorOrdinal, general_book_document, general_book_key, general_book_anchorOrdinal, map_document, map_key, map_anchorOrdinal, text_display_settings_strongsMode, text_display_settings_showMorphology, text_display_settings_showFootNotes, text_display_settings_showFootNotesInline, text_display_settings_expandXrefs, text_display_settings_showXrefs, text_display_settings_showRedLetters, text_display_settings_showSectionTitles, text_display_settings_showVerseNumbers, text_display_settings_showVersePerLine, text_display_settings_showBookmarks, text_display_settings_showMyNotes, text_display_settings_justifyText, text_display_settings_hyphenation, text_display_settings_topMargin, text_display_settings_fontSize, text_display_settings_fontFamily, text_display_settings_lineSpacing, text_display_settings_bookmarksHideLabels, text_display_settings_showPageNumber, text_display_settings_margin_size_marginLeft, text_display_settings_margin_size_marginRight, text_display_settings_margin_size_maxWidth, text_display_settings_colors_dayTextColor, text_display_settings_colors_dayBackground, text_display_settings_colors_dayNoise, text_display_settings_colors_nightTextColor, text_display_settings_colors_nightBackground, text_display_settings_colors_nightNoise) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         var statement: OpaquePointer?
@@ -1286,6 +1584,17 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Binds one optional text-display-settings payload into a workspace or page-manager insert row.
+
+     - Parameters:
+       - value: Optional text-display settings to serialize.
+       - statement: Prepared SQLite statement receiving the bound values.
+       - index: In-out one-based SQLite bind slot advanced across all serialized columns.
+     - Side effects: mutates the prepared SQLite statement's bound-parameter state.
+     - Failure modes:
+       - rethrows JSON-encoding failures when Android array payloads such as hidden-label UUIDs cannot be serialized
+     */
     private func bindTextDisplaySettings(
         _ value: TextDisplaySettings?,
         to statement: OpaquePointer,
@@ -1360,6 +1669,19 @@ public final class RemoteSyncInitialBackupUploadService {
         index += 1
     }
 
+    /**
+     Binds one workspace-settings payload into a workspace insert row.
+
+     - Parameters:
+       - value: Workspace settings to serialize.
+       - speakSettingsJSON: Optional raw Android speak-settings JSON preserved in the fidelity store.
+       - workspaceColor: Optional Android signed ARGB workspace color.
+       - statement: Prepared SQLite statement receiving the bound values.
+       - index: In-out one-based SQLite bind slot advanced across all serialized columns.
+     - Side effects: mutates the prepared SQLite statement's bound-parameter state.
+     - Failure modes:
+       - rethrows JSON-encoding failures when Android set or dictionary payloads cannot be serialized
+     */
     private func bindWorkspaceSettings(
         _ value: WorkspaceSettings,
         speakSettingsJSON: String?,
@@ -1407,6 +1729,15 @@ public final class RemoteSyncInitialBackupUploadService {
         index += 1
     }
 
+    /**
+     Encodes recent-label metadata into Android's JSON payload shape.
+
+     - Parameter value: Recent-label rows to encode.
+     - Returns: JSON string payload, or `nil` when the collection is empty.
+     - Side effects: none.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.jsonEncodingFailed` when JSON encoding fails
+     */
     private func encodeRecentLabelsJSON(_ value: [RecentLabel]) throws -> String? {
         guard !value.isEmpty else {
             return nil
@@ -1421,6 +1752,17 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Encodes one UUID set as a lowercase-sorted Android JSON string array.
+
+     - Parameters:
+       - value: UUID set to encode.
+       - field: Android field name used for error reporting.
+     - Returns: JSON string payload, or `nil` when the set is empty.
+     - Side effects: none.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.jsonEncodingFailed` when JSON encoding fails
+     */
     private func encodeSortedUUIDSetJSON(_ value: Set<UUID>, field: String) throws -> String? {
         guard !value.isEmpty else {
             return nil
@@ -1434,6 +1776,17 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Encodes one UUID array as Android's lowercase JSON string array payload.
+
+     - Parameters:
+       - value: UUID array to encode.
+       - field: Android field name used for error reporting.
+     - Returns: JSON string payload, or `"[]"` when the array is empty.
+     - Side effects: none.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.jsonEncodingFailed` when JSON encoding fails
+     */
     private func encodeUUIDArrayJSON(_ value: [UUID], field: String) throws -> String? {
         guard !value.isEmpty else {
             return "[]"
@@ -1447,6 +1800,15 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Encodes StudyPad cursor offsets into Android's keyed JSON payload.
+
+     - Parameter value: Dictionary keyed by StudyPad entry UUID.
+     - Returns: JSON string payload, or `nil` when the dictionary is empty.
+     - Side effects: none.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.jsonEncodingFailed` when JSON encoding fails
+     */
     private func encodeStudyPadCursorsJSON(_ value: [UUID: Int]) throws -> String? {
         guard !value.isEmpty else {
             return nil
@@ -1460,6 +1822,17 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Encodes one string set as a sorted Android JSON string array.
+
+     - Parameters:
+       - value: String set to encode.
+       - field: Android field name used for error reporting.
+     - Returns: JSON string payload, or `nil` when the set is empty.
+     - Side effects: none.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.jsonEncodingFailed` when JSON encoding fails
+     */
     private func encodeSortedStringSetJSON(_ value: Set<String>, field: String) throws -> String? {
         guard !value.isEmpty else {
             return nil
@@ -1472,20 +1845,60 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Executes one schema or pragma SQL batch against the open initial-backup database.
+
+     - Parameters:
+       - sql: SQL batch to execute.
+       - database: Open SQLite database handle.
+     - Side effects: mutates the open SQLite database schema or metadata.
+     - Failure modes:
+       - throws `RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase` when SQLite rejects the batch
+     */
     private func execute(_ sql: String, in database: OpaquePointer) throws {
         guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else {
             throw RemoteSyncInitialBackupUploadError.invalidSQLiteDatabase
         }
     }
 
+    /**
+     Creates a new unique temporary URL beneath the configured temporary directory.
+
+     - Parameters:
+       - prefix: File-name prefix for the temporary file.
+       - suffix: File-name suffix for the temporary file.
+     - Returns: Temporary file URL that does not currently exist.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
     private func temporaryURL(prefix: String, suffix: String) -> URL {
         temporaryDirectory.appendingPathComponent("\(prefix)\(UUID().uuidString)\(suffix)")
     }
 
+    /**
+     Binds one required text value into a prepared SQLite statement parameter.
+
+     - Parameters:
+       - value: Text payload to bind.
+       - statement: Prepared SQLite statement receiving the bound value.
+       - index: One-based SQLite bind parameter index.
+     - Side effects: mutates the prepared SQLite statement's bound-parameter state.
+     - Failure modes: This helper cannot fail.
+     */
     private func bindText(_ value: String, to statement: OpaquePointer?, index: Int32) {
         sqlite3_bind_text(statement, index, value, -1, remoteSyncInitialBackupUploadSQLiteTransient)
     }
 
+    /**
+     Binds one optional text value into a prepared SQLite statement parameter.
+
+     - Parameters:
+       - value: Optional text payload to bind.
+       - statement: Prepared SQLite statement receiving the bound value.
+       - index: One-based SQLite bind parameter index.
+     - Side effects: mutates the prepared SQLite statement's bound-parameter state.
+     - Failure modes: This helper cannot fail.
+     */
     private func bindOptionalText(_ value: String?, to statement: OpaquePointer?, index: Int32) {
         guard let value else {
             sqlite3_bind_null(statement, index)
@@ -1494,10 +1907,30 @@ public final class RemoteSyncInitialBackupUploadService {
         bindText(value, to: statement, index: index)
     }
 
+    /**
+     Binds one Boolean value into a prepared SQLite statement parameter as Android's integer form.
+
+     - Parameters:
+       - value: Boolean payload to bind.
+       - statement: Prepared SQLite statement receiving the bound value.
+       - index: One-based SQLite bind parameter index.
+     - Side effects: mutates the prepared SQLite statement's bound-parameter state.
+     - Failure modes: This helper cannot fail.
+     */
     private func bindBool(_ value: Bool, to statement: OpaquePointer?, index: Int32) {
         sqlite3_bind_int(statement, index, value ? 1 : 0)
     }
 
+    /**
+     Binds one optional Boolean value into a prepared SQLite statement parameter.
+
+     - Parameters:
+       - value: Optional Boolean payload to bind.
+       - statement: Prepared SQLite statement receiving the bound value.
+       - index: One-based SQLite bind parameter index.
+     - Side effects: mutates the prepared SQLite statement's bound-parameter state.
+     - Failure modes: This helper cannot fail.
+     */
     private func bindOptionalBool(_ value: Bool?, to statement: OpaquePointer?, index: Int32) {
         guard let value else {
             sqlite3_bind_null(statement, index)
@@ -1506,6 +1939,16 @@ public final class RemoteSyncInitialBackupUploadService {
         bindBool(value, to: statement, index: index)
     }
 
+    /**
+     Binds one optional integer value into a prepared SQLite statement parameter.
+
+     - Parameters:
+       - value: Optional integer payload to bind.
+       - statement: Prepared SQLite statement receiving the bound value.
+       - index: One-based SQLite bind parameter index.
+     - Side effects: mutates the prepared SQLite statement's bound-parameter state.
+     - Failure modes: This helper cannot fail.
+     */
     private func bindOptionalInt(_ value: Int?, to statement: OpaquePointer?, index: Int32) {
         guard let value else {
             sqlite3_bind_null(statement, index)
@@ -1553,6 +1996,16 @@ public final class RemoteSyncInitialBackupUploadService {
         bindAndroidSignedInt32(value, to: statement, index: index)
     }
 
+    /**
+     Binds one optional floating-point value into a prepared SQLite statement parameter.
+
+     - Parameters:
+       - value: Optional floating-point payload to bind.
+       - statement: Prepared SQLite statement receiving the bound value.
+       - index: One-based SQLite bind parameter index.
+     - Side effects: mutates the prepared SQLite statement's bound-parameter state.
+     - Failure modes: This helper cannot fail.
+     */
     private func bindOptionalFloat(_ value: Float?, to statement: OpaquePointer?, index: Int32) {
         guard let value else {
             sqlite3_bind_null(statement, index)
@@ -1561,6 +2014,16 @@ public final class RemoteSyncInitialBackupUploadService {
         sqlite3_bind_double(statement, index, Double(value))
     }
 
+    /**
+     Binds one required UUID into a prepared SQLite statement parameter as Android's raw 16-byte blob.
+
+     - Parameters:
+       - uuid: UUID to bind.
+       - statement: Prepared SQLite statement receiving the bound value.
+       - index: One-based SQLite bind parameter index.
+     - Side effects: mutates the prepared SQLite statement's bound-parameter state.
+     - Failure modes: This helper cannot fail.
+     */
     private func bindUUIDBlob(_ uuid: UUID, to statement: OpaquePointer?, index: Int32) {
         let data = uuidBlob(uuid)
         _ = data.withUnsafeBytes { bytes in
@@ -1568,6 +2031,16 @@ public final class RemoteSyncInitialBackupUploadService {
         }
     }
 
+    /**
+     Binds one optional UUID into a prepared SQLite statement parameter.
+
+     - Parameters:
+       - uuid: Optional UUID to bind.
+       - statement: Prepared SQLite statement receiving the bound value.
+       - index: One-based SQLite bind parameter index.
+     - Side effects: mutates the prepared SQLite statement's bound-parameter state.
+     - Failure modes: This helper cannot fail.
+     */
     private func bindOptionalUUIDBlob(_ uuid: UUID?, to statement: OpaquePointer?, index: Int32) {
         guard let uuid else {
             sqlite3_bind_null(statement, index)
@@ -1576,6 +2049,14 @@ public final class RemoteSyncInitialBackupUploadService {
         bindUUIDBlob(uuid, to: statement, index: index)
     }
 
+    /**
+     Converts one UUID into Android's raw 16-byte blob representation.
+
+     - Parameter uuid: UUID to encode.
+     - Returns: Raw 16-byte UUID payload suitable for Android SQLite BLOB columns.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
     private func uuidBlob(_ uuid: UUID) -> Data {
         var value = uuid.uuid
         return withUnsafeBytes(of: &value) { Data($0) }

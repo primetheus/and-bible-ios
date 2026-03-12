@@ -7,12 +7,13 @@ import SQLite3
 private let workspaceSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
 /**
- Regression coverage for Android workspace initial-backup restore.
+ Regression coverage for Android workspace restore and patch replay.
 
  The suite exercises three boundaries:
  - snapshot parsing from Android-shaped SQLite databases
  - destructive replacement of the local SwiftData workspace graph
  - preservation of Android-only fidelity payloads that do not map directly onto iOS models
+ - incremental patch replay against the preserved Android `LogEntry` baseline
 
  Test dependencies:
  - in-memory SwiftData containers are created per test
@@ -868,6 +869,586 @@ final class WorkspaceSyncRestoreTests: XCTestCase {
     }
 
     /**
+     Verifies that newer Android workspace patch rows replay through the centralized restore path while preserving local history rows and Android-only fidelity payloads.
+     */
+    func testRemoteSyncWorkspacePatchApplyReplaysNewerRowsAndPreservesHistoryAndFidelity() throws {
+        let container = try makeWorkspaceRestoreModelContainer()
+        let modelContext = ModelContext(container)
+        let settingsStore = SettingsStore(modelContext: modelContext)
+        let restoreService = RemoteSyncWorkspaceRestoreService()
+        let patchService = RemoteSyncWorkspacePatchApplyService()
+        let logEntryStore = RemoteSyncLogEntryStore(settingsStore: settingsStore)
+        let patchStatusStore = RemoteSyncPatchStatusStore(settingsStore: settingsStore)
+
+        let workspaceID = UUID(uuidString: "c6000000-0000-0000-0000-000000000001")!
+        let firstWindowID = UUID(uuidString: "c6000000-0000-0000-0000-000000000002")!
+        let secondWindowID = UUID(uuidString: "c6000000-0000-0000-0000-000000000003")!
+        let hiddenLabelID = UUID(uuidString: "c6000000-0000-0000-0000-000000000004")!
+
+        let initialDatabaseURL = try makeAndroidWorkspacesDatabase(
+            workspaces: [
+                .init(
+                    id: workspaceID,
+                    name: "Initial Workspace",
+                    contentsText: "Initial content",
+                    orderNumber: 0,
+                    textDisplaySettings: .init(fontSize: 18),
+                    workspaceSettings: .init(
+                        enableTiltToScroll: true,
+                        enableReverseSplitMode: false,
+                        autoPin: false,
+                        speakSettingsJSON: #"{"sleepTimer":5}"#
+                    ),
+                    maximizedWindowID: firstWindowID,
+                    primaryTargetLinksWindowID: firstWindowID
+                )
+            ],
+            windows: [
+                .init(
+                    id: firstWindowID,
+                    workspaceID: workspaceID,
+                    isSynchronized: true,
+                    isPinMode: false,
+                    isLinksWindow: false,
+                    orderNumber: 0,
+                    syncGroup: 1,
+                    layoutState: "split",
+                    layoutWeight: 1.0
+                )
+            ],
+            pageManagers: [
+                .init(
+                    windowID: firstWindowID,
+                    bibleDocument: "KJV",
+                    bibleVersification: "KJVA",
+                    bibleBook: 0,
+                    bibleChapterNo: 1,
+                    bibleVerseNo: 1,
+                    commentaryDocument: "MHC",
+                    commentaryAnchorOrdinal: 11,
+                    commentarySourceBookAndKey: "GEN.1.1",
+                    dictionaryDocument: "StrongsHebrew",
+                    dictionaryKey: "H02022",
+                    dictionaryAnchorOrdinal: 21,
+                    generalBookDocument: "Josephus",
+                    generalBookKey: "Ant.1.1",
+                    generalBookAnchorOrdinal: 31,
+                    mapDocument: "Maps",
+                    mapKey: "Jerusalem",
+                    mapAnchorOrdinal: 41,
+                    currentCategoryName: "BIBLE",
+                    textDisplaySettings: .init(
+                        showBookmarks: true,
+                        bookmarksHideLabelsJSON: #"["\#(hiddenLabelID.uuidString)"]"#
+                    ),
+                    jsState: #"{"scroll":25}"#
+                )
+            ],
+            historyItems: [
+                .init(
+                    remoteID: 501,
+                    windowID: firstWindowID,
+                    createdAt: Date(timeIntervalSince1970: 1_735_800_000),
+                    document: "KJV",
+                    key: "Gen.1.1",
+                    anchorOrdinal: 100
+                )
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: initialDatabaseURL) }
+
+        let initialSnapshot = try restoreService.readSnapshot(from: initialDatabaseURL)
+        _ = try restoreService.replaceLocalWorkspaces(
+            from: initialSnapshot,
+            modelContext: modelContext,
+            settingsStore: settingsStore
+        )
+
+        settingsStore.activeWorkspaceId = workspaceID
+        logEntryStore.replaceEntries([
+            .init(
+                tableName: "Workspace",
+                entityID1: .blob(uuidBlob(workspaceID)),
+                entityID2: .text(""),
+                type: .upsert,
+                lastUpdated: 1_000,
+                sourceDevice: "ios-local"
+            ),
+            .init(
+                tableName: "Window",
+                entityID1: .blob(uuidBlob(firstWindowID)),
+                entityID2: .text(""),
+                type: .upsert,
+                lastUpdated: 1_100,
+                sourceDevice: "ios-local"
+            ),
+            .init(
+                tableName: "PageManager",
+                entityID1: .blob(uuidBlob(firstWindowID)),
+                entityID2: .text(""),
+                type: .upsert,
+                lastUpdated: 1_200,
+                sourceDevice: "ios-local"
+            ),
+        ], for: .workspaces)
+
+        let patchDatabaseURL = try makeAndroidWorkspacesDatabase(
+            workspaces: [
+                .init(
+                    id: workspaceID,
+                    name: "Patched Workspace",
+                    contentsText: "Updated content",
+                    orderNumber: 2,
+                    textDisplaySettings: .init(fontSize: 22),
+                    workspaceSettings: .init(
+                        enableTiltToScroll: false,
+                        enableReverseSplitMode: true,
+                        autoPin: true,
+                        speakSettingsJSON: #"{"sleepTimer":30,"queue":true}"#
+                    ),
+                    maximizedWindowID: secondWindowID,
+                    primaryTargetLinksWindowID: secondWindowID
+                )
+            ],
+            windows: [
+                .init(
+                    id: firstWindowID,
+                    workspaceID: workspaceID,
+                    isSynchronized: false,
+                    isPinMode: true,
+                    isLinksWindow: false,
+                    orderNumber: 1,
+                    targetLinksWindowID: secondWindowID,
+                    syncGroup: 3,
+                    layoutState: "minimized",
+                    layoutWeight: 0.8
+                ),
+                .init(
+                    id: secondWindowID,
+                    workspaceID: workspaceID,
+                    isSynchronized: true,
+                    isPinMode: false,
+                    isLinksWindow: true,
+                    orderNumber: 0,
+                    syncGroup: 4,
+                    layoutState: "split",
+                    layoutWeight: 1.2
+                )
+            ],
+            pageManagers: [
+                .init(
+                    windowID: firstWindowID,
+                    bibleDocument: "ESV",
+                    bibleVersification: "KJVA",
+                    bibleBook: 1,
+                    bibleChapterNo: 2,
+                    bibleVerseNo: 3,
+                    commentaryDocument: "TSK",
+                    commentaryAnchorOrdinal: 12,
+                    commentarySourceBookAndKey: "EXOD.2.3",
+                    dictionaryDocument: "StrongsGreek",
+                    dictionaryKey: "G01234",
+                    dictionaryAnchorOrdinal: 22,
+                    generalBookDocument: "Josephus",
+                    generalBookKey: "Ant.2.1",
+                    generalBookAnchorOrdinal: 32,
+                    mapDocument: "Maps",
+                    mapKey: "Egypt",
+                    mapAnchorOrdinal: 42,
+                    currentCategoryName: "GENERAL_BOOK",
+                    textDisplaySettings: .init(showVersePerLine: true),
+                    jsState: #"{"scroll":125}"#
+                ),
+                .init(
+                    windowID: secondWindowID,
+                    bibleDocument: "NET",
+                    bibleVersification: "KJVA",
+                    bibleBook: 39,
+                    bibleChapterNo: 5,
+                    bibleVerseNo: 3,
+                    commentaryDocument: "MHC",
+                    commentaryAnchorOrdinal: 13,
+                    commentarySourceBookAndKey: "MATT.5.3",
+                    dictionaryDocument: "Easton",
+                    dictionaryKey: "Grace",
+                    dictionaryAnchorOrdinal: 23,
+                    generalBookDocument: "Calvin",
+                    generalBookKey: "Commentary.1",
+                    generalBookAnchorOrdinal: 33,
+                    mapDocument: "Maps",
+                    mapKey: "Galilee",
+                    mapAnchorOrdinal: 43,
+                    currentCategoryName: "MYNOTE",
+                    textDisplaySettings: .init(showBookmarks: false),
+                    jsState: #"{"scroll":225}"#
+                )
+            ],
+            historyItems: [],
+            logEntries: [
+                .init(tableName: "Workspace", entityID1: .blob(uuidBlob(workspaceID)), entityID2: .text(""), type: "UPSERT", lastUpdated: 2_000, sourceDevice: "pixel"),
+                .init(tableName: "Window", entityID1: .blob(uuidBlob(firstWindowID)), entityID2: .text(""), type: "UPSERT", lastUpdated: 2_100, sourceDevice: "pixel"),
+                .init(tableName: "Window", entityID1: .blob(uuidBlob(secondWindowID)), entityID2: .text(""), type: "UPSERT", lastUpdated: 2_200, sourceDevice: "pixel"),
+                .init(tableName: "PageManager", entityID1: .blob(uuidBlob(firstWindowID)), entityID2: .text(""), type: "UPSERT", lastUpdated: 2_300, sourceDevice: "pixel"),
+                .init(tableName: "PageManager", entityID1: .blob(uuidBlob(secondWindowID)), entityID2: .text(""), type: "UPSERT", lastUpdated: 2_400, sourceDevice: "pixel"),
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: patchDatabaseURL) }
+
+        let stagedArchive = try makeWorkspacePatchArchive(
+            patchDatabaseURL: patchDatabaseURL,
+            sourceDevice: "pixel",
+            patchNumber: 7,
+            fileTimestamp: 3_000
+        )
+        defer { try? FileManager.default.removeItem(at: stagedArchive.archiveFileURL) }
+
+        let report = try patchService.applyPatchArchives(
+            [stagedArchive],
+            modelContext: modelContext,
+            settingsStore: settingsStore
+        )
+
+        XCTAssertEqual(report.appliedPatchCount, 1)
+        XCTAssertEqual(report.appliedLogEntryCount, 5)
+        XCTAssertEqual(report.skippedLogEntryCount, 0)
+        XCTAssertEqual(
+            report.restoreReport,
+            .init(
+                restoredWorkspaceCount: 1,
+                restoredWindowCount: 2,
+                restoredHistoryItemCount: 1,
+                preservedWorkspaceFidelityCount: 1,
+                preservedPageManagerFidelityCount: 2,
+                preservedHistoryItemAliasCount: 1
+            )
+        )
+
+        let workspaces = try modelContext.fetch(FetchDescriptor<Workspace>())
+        XCTAssertEqual(workspaces.count, 1)
+        XCTAssertEqual(workspaces[0].name, "Patched Workspace")
+        XCTAssertEqual(workspaces[0].contentsText, "Updated content")
+        XCTAssertEqual(workspaces[0].orderNumber, 2)
+        XCTAssertEqual(workspaces[0].maximizedWindowId, secondWindowID)
+        XCTAssertEqual(workspaces[0].primaryTargetLinksWindowId, secondWindowID)
+        XCTAssertTrue(workspaces[0].workspaceSettings?.enableReverseSplitMode ?? false)
+        XCTAssertEqual(settingsStore.activeWorkspaceId, workspaceID)
+
+        let windows = try modelContext.fetch(FetchDescriptor<Window>()).sorted { lhs, rhs in
+            if lhs.orderNumber == rhs.orderNumber {
+                return lhs.id.uuidString < rhs.id.uuidString
+            }
+            return lhs.orderNumber < rhs.orderNumber
+        }
+        XCTAssertEqual(windows.map(\.id), [secondWindowID, firstWindowID])
+        XCTAssertEqual(windows.first(where: { $0.id == firstWindowID })?.targetLinksWindowId, secondWindowID)
+        XCTAssertEqual(windows.first(where: { $0.id == firstWindowID })?.layoutState, "minimized")
+
+        let pageManagers = try modelContext.fetch(FetchDescriptor<PageManager>())
+        XCTAssertEqual(pageManagers.count, 2)
+        XCTAssertEqual(pageManagers.first(where: { $0.id == firstWindowID })?.currentCategoryName, "general_book")
+        XCTAssertEqual(pageManagers.first(where: { $0.id == secondWindowID })?.currentCategoryName, "bible")
+        XCTAssertEqual(pageManagers.first(where: { $0.id == secondWindowID })?.dictionaryDocument, "Easton")
+
+        let historyItems = try modelContext.fetch(FetchDescriptor<HistoryItem>())
+        XCTAssertEqual(historyItems.count, 1)
+        XCTAssertEqual(historyItems.first?.document, "KJV")
+        XCTAssertEqual(historyItems.first?.key, "Gen.1.1")
+
+        let fidelityStore = RemoteSyncWorkspaceFidelityStore(settingsStore: settingsStore)
+        XCTAssertEqual(
+            fidelityStore.speakSettingsJSON(for: workspaceID),
+            #"{"sleepTimer":30,"queue":true}"#
+        )
+        XCTAssertEqual(
+            fidelityStore.allPageManagerEntries(),
+            [
+                .init(
+                    windowID: firstWindowID,
+                    rawCurrentCategoryName: "GENERAL_BOOK",
+                    commentarySourceBookAndKey: "EXOD.2.3",
+                    dictionaryAnchorOrdinal: 22,
+                    generalBookAnchorOrdinal: 32,
+                    mapAnchorOrdinal: 42
+                ),
+                .init(
+                    windowID: secondWindowID,
+                    rawCurrentCategoryName: "MYNOTE",
+                    commentarySourceBookAndKey: "MATT.5.3",
+                    dictionaryAnchorOrdinal: 23,
+                    generalBookAnchorOrdinal: 33,
+                    mapAnchorOrdinal: 43
+                )
+            ]
+        )
+        XCTAssertNotNil(fidelityStore.localHistoryItemID(for: 501))
+        XCTAssertEqual(
+            patchStatusStore.status(for: .workspaces, sourceDevice: "pixel", patchNumber: 7),
+            .init(sourceDevice: "pixel", patchNumber: 7, sizeBytes: Int64((try Data(contentsOf: stagedArchive.archiveFileURL)).count), appliedDate: 3_000)
+        )
+        XCTAssertEqual(
+            logEntryStore.entry(
+                for: .workspaces,
+                tableName: "PageManager",
+                entityID1: .blob(uuidBlob(secondWindowID)),
+                entityID2: .text("")
+            )?.lastUpdated,
+            2_400
+        )
+    }
+
+    /**
+     Verifies that deleting one Android window removes its page manager and history rows even when the patch carries no separate child-table deletions.
+     */
+    func testRemoteSyncWorkspacePatchApplyDeletesWindowsAndRetainsRemainingHistory() throws {
+        let container = try makeWorkspaceRestoreModelContainer()
+        let modelContext = ModelContext(container)
+        let settingsStore = SettingsStore(modelContext: modelContext)
+        let restoreService = RemoteSyncWorkspaceRestoreService()
+        let patchService = RemoteSyncWorkspacePatchApplyService()
+
+        let workspaceID = UUID(uuidString: "c6100000-0000-0000-0000-000000000001")!
+        let firstWindowID = UUID(uuidString: "c6100000-0000-0000-0000-000000000002")!
+        let secondWindowID = UUID(uuidString: "c6100000-0000-0000-0000-000000000003")!
+
+        let initialDatabaseURL = try makeAndroidWorkspacesDatabase(
+            workspaces: [
+                .init(id: workspaceID, name: "Workspace", orderNumber: 0)
+            ],
+            windows: [
+                .init(id: firstWindowID, workspaceID: workspaceID, isSynchronized: true, isPinMode: false, isLinksWindow: false, orderNumber: 0, syncGroup: 0, layoutState: "split", layoutWeight: 1.0),
+                .init(id: secondWindowID, workspaceID: workspaceID, isSynchronized: true, isPinMode: false, isLinksWindow: false, orderNumber: 1, syncGroup: 0, layoutState: "split", layoutWeight: 1.0),
+            ],
+            pageManagers: [
+                .init(windowID: firstWindowID, bibleDocument: "KJV", bibleVersification: "KJVA", bibleBook: 0, bibleChapterNo: 1, bibleVerseNo: 1, currentCategoryName: "BIBLE"),
+                .init(windowID: secondWindowID, bibleDocument: "ESV", bibleVersification: "KJVA", bibleBook: 1, bibleChapterNo: 2, bibleVerseNo: 3, currentCategoryName: "BIBLE"),
+            ],
+            historyItems: [
+                .init(remoteID: 701, windowID: firstWindowID, createdAt: Date(timeIntervalSince1970: 1_735_810_000), document: "KJV", key: "Gen.1.1", anchorOrdinal: 10),
+                .init(remoteID: 702, windowID: secondWindowID, createdAt: Date(timeIntervalSince1970: 1_735_810_100), document: "ESV", key: "Exod.2.3", anchorOrdinal: 20),
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: initialDatabaseURL) }
+
+        let initialSnapshot = try restoreService.readSnapshot(from: initialDatabaseURL)
+        _ = try restoreService.replaceLocalWorkspaces(
+            from: initialSnapshot,
+            modelContext: modelContext,
+            settingsStore: settingsStore
+        )
+
+        let patchDatabaseURL = try makeAndroidWorkspacesDatabase(
+            workspaces: [],
+            windows: [],
+            pageManagers: [],
+            historyItems: [],
+            logEntries: [
+                .init(tableName: "Window", entityID1: .blob(uuidBlob(secondWindowID)), entityID2: .text(""), type: "DELETE", lastUpdated: 2_000, sourceDevice: "pixel")
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: patchDatabaseURL) }
+
+        let stagedArchive = try makeWorkspacePatchArchive(
+            patchDatabaseURL: patchDatabaseURL,
+            sourceDevice: "pixel",
+            patchNumber: 8,
+            fileTimestamp: 2_500
+        )
+        defer { try? FileManager.default.removeItem(at: stagedArchive.archiveFileURL) }
+
+        let report = try patchService.applyPatchArchives(
+            [stagedArchive],
+            modelContext: modelContext,
+            settingsStore: settingsStore
+        )
+
+        XCTAssertEqual(report.appliedPatchCount, 1)
+        XCTAssertEqual(report.appliedLogEntryCount, 1)
+        XCTAssertEqual(report.skippedLogEntryCount, 0)
+        XCTAssertEqual(report.restoreReport.restoredWindowCount, 1)
+        XCTAssertEqual(report.restoreReport.restoredHistoryItemCount, 1)
+
+        let windows = try modelContext.fetch(FetchDescriptor<Window>())
+        XCTAssertEqual(windows.map(\.id), [firstWindowID])
+        let pageManagers = try modelContext.fetch(FetchDescriptor<PageManager>())
+        XCTAssertEqual(pageManagers.map(\.id), [firstWindowID])
+        let historyItems = try modelContext.fetch(FetchDescriptor<HistoryItem>())
+        XCTAssertEqual(historyItems.count, 1)
+        XCTAssertEqual(historyItems.first?.document, "KJV")
+    }
+
+    /**
+     Verifies that older Android workspace patch rows are skipped without mutating local workspace state or recording applied-patch bookkeeping.
+     */
+    func testRemoteSyncWorkspacePatchApplySkipsOlderRows() throws {
+        let container = try makeWorkspaceRestoreModelContainer()
+        let modelContext = ModelContext(container)
+        let settingsStore = SettingsStore(modelContext: modelContext)
+        let restoreService = RemoteSyncWorkspaceRestoreService()
+        let patchService = RemoteSyncWorkspacePatchApplyService()
+        let logEntryStore = RemoteSyncLogEntryStore(settingsStore: settingsStore)
+        let patchStatusStore = RemoteSyncPatchStatusStore(settingsStore: settingsStore)
+
+        let workspaceID = UUID(uuidString: "c6200000-0000-0000-0000-000000000001")!
+
+        let initialDatabaseURL = try makeAndroidWorkspacesDatabase(
+            workspaces: [
+                .init(id: workspaceID, name: "Local", orderNumber: 0)
+            ],
+            windows: [],
+            pageManagers: [],
+            historyItems: []
+        )
+        defer { try? FileManager.default.removeItem(at: initialDatabaseURL) }
+
+        let initialSnapshot = try restoreService.readSnapshot(from: initialDatabaseURL)
+        _ = try restoreService.replaceLocalWorkspaces(
+            from: initialSnapshot,
+            modelContext: modelContext,
+            settingsStore: settingsStore
+        )
+
+        logEntryStore.replaceEntries([
+            .init(
+                tableName: "Workspace",
+                entityID1: .blob(uuidBlob(workspaceID)),
+                entityID2: .text(""),
+                type: .upsert,
+                lastUpdated: 5_000,
+                sourceDevice: "ios-local"
+            )
+        ], for: .workspaces)
+
+        let patchDatabaseURL = try makeAndroidWorkspacesDatabase(
+            workspaces: [
+                .init(id: workspaceID, name: "Remote Older", orderNumber: 1)
+            ],
+            windows: [],
+            pageManagers: [],
+            historyItems: [],
+            logEntries: [
+                .init(tableName: "Workspace", entityID1: .blob(uuidBlob(workspaceID)), entityID2: .text(""), type: "UPSERT", lastUpdated: 4_000, sourceDevice: "pixel")
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: patchDatabaseURL) }
+
+        let stagedArchive = try makeWorkspacePatchArchive(
+            patchDatabaseURL: patchDatabaseURL,
+            sourceDevice: "pixel",
+            patchNumber: 9,
+            fileTimestamp: 4_500
+        )
+        defer { try? FileManager.default.removeItem(at: stagedArchive.archiveFileURL) }
+
+        let report = try patchService.applyPatchArchives(
+            [stagedArchive],
+            modelContext: modelContext,
+            settingsStore: settingsStore
+        )
+
+        XCTAssertEqual(report.appliedPatchCount, 0)
+        XCTAssertEqual(report.appliedLogEntryCount, 0)
+        XCTAssertEqual(report.skippedLogEntryCount, 1)
+
+        let workspaces = try modelContext.fetch(FetchDescriptor<Workspace>())
+        XCTAssertEqual(workspaces.count, 1)
+        XCTAssertEqual(workspaces[0].name, "Local")
+        XCTAssertNil(patchStatusStore.status(for: .workspaces, sourceDevice: "pixel", patchNumber: 9))
+        XCTAssertEqual(
+            logEntryStore.entry(
+                for: .workspaces,
+                tableName: "Workspace",
+                entityID1: .blob(uuidBlob(workspaceID)),
+                entityID2: .text("")
+            )?.lastUpdated,
+            5_000
+        )
+    }
+
+    /**
+     Verifies that deleting one Android workspace prunes its descendant windows, page managers, and history rows even when the patch batch carries no child-table rows.
+     */
+    func testRemoteSyncWorkspacePatchApplyPrunesChildrenAfterWorkspaceDeletionWithoutChildRows() throws {
+        let container = try makeWorkspaceRestoreModelContainer()
+        let modelContext = ModelContext(container)
+        let settingsStore = SettingsStore(modelContext: modelContext)
+        let restoreService = RemoteSyncWorkspaceRestoreService()
+        let patchService = RemoteSyncWorkspacePatchApplyService()
+
+        let workspaceID = UUID(uuidString: "c6300000-0000-0000-0000-000000000001")!
+        let windowID = UUID(uuidString: "c6300000-0000-0000-0000-000000000002")!
+
+        let initialDatabaseURL = try makeAndroidWorkspacesDatabase(
+            workspaces: [
+                .init(id: workspaceID, name: "Delete Me", orderNumber: 0)
+            ],
+            windows: [
+                .init(id: windowID, workspaceID: workspaceID, isSynchronized: true, isPinMode: false, isLinksWindow: false, orderNumber: 0, syncGroup: 0, layoutState: "split", layoutWeight: 1.0)
+            ],
+            pageManagers: [
+                .init(windowID: windowID, bibleDocument: "KJV", bibleVersification: "KJVA", bibleBook: 0, bibleChapterNo: 1, bibleVerseNo: 1, currentCategoryName: "BIBLE")
+            ],
+            historyItems: [
+                .init(remoteID: 801, windowID: windowID, createdAt: Date(timeIntervalSince1970: 1_735_820_000), document: "KJV", key: "Gen.1.1", anchorOrdinal: 10)
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: initialDatabaseURL) }
+
+        let initialSnapshot = try restoreService.readSnapshot(from: initialDatabaseURL)
+        _ = try restoreService.replaceLocalWorkspaces(
+            from: initialSnapshot,
+            modelContext: modelContext,
+            settingsStore: settingsStore
+        )
+
+        settingsStore.activeWorkspaceId = workspaceID
+
+        let patchDatabaseURL = try makeAndroidWorkspacesDatabase(
+            workspaces: [],
+            windows: [],
+            pageManagers: [],
+            historyItems: [],
+            logEntries: [
+                .init(tableName: "Workspace", entityID1: .blob(uuidBlob(workspaceID)), entityID2: .text(""), type: "DELETE", lastUpdated: 2_000, sourceDevice: "pixel")
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: patchDatabaseURL) }
+
+        let stagedArchive = try makeWorkspacePatchArchive(
+            patchDatabaseURL: patchDatabaseURL,
+            sourceDevice: "pixel",
+            patchNumber: 10,
+            fileTimestamp: 2_500
+        )
+        defer { try? FileManager.default.removeItem(at: stagedArchive.archiveFileURL) }
+
+        let report = try patchService.applyPatchArchives(
+            [stagedArchive],
+            modelContext: modelContext,
+            settingsStore: settingsStore
+        )
+
+        XCTAssertEqual(report.appliedPatchCount, 1)
+        XCTAssertEqual(report.appliedLogEntryCount, 1)
+        XCTAssertEqual(report.skippedLogEntryCount, 0)
+        XCTAssertEqual(
+            report.restoreReport,
+            .init(
+                restoredWorkspaceCount: 0,
+                restoredWindowCount: 0,
+                restoredHistoryItemCount: 0,
+                preservedWorkspaceFidelityCount: 0,
+                preservedPageManagerFidelityCount: 0,
+                preservedHistoryItemAliasCount: 0
+            )
+        )
+        XCTAssertTrue(try modelContext.fetch(FetchDescriptor<Workspace>()).isEmpty)
+        XCTAssertTrue(try modelContext.fetch(FetchDescriptor<Window>()).isEmpty)
+        XCTAssertTrue(try modelContext.fetch(FetchDescriptor<PageManager>()).isEmpty)
+        XCTAssertTrue(try modelContext.fetch(FetchDescriptor<HistoryItem>()).isEmpty)
+        XCTAssertNil(settingsStore.activeWorkspaceId)
+    }
+
+    /**
      Minimal Android `TextDisplaySettings` fixture projected onto SQLite columns.
      */
     private struct AndroidTextDisplayFixture {
@@ -1141,6 +1722,51 @@ final class WorkspaceSyncRestoreTests: XCTestCase {
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: [configuration])
+    }
+
+    /**
+     Builds one staged patch-archive fixture for workspace replay tests.
+
+     - Parameters:
+       - patchDatabaseURL: Local SQLite database containing Android workspace patch rows.
+       - sourceDevice: Android source-device name owning the patch stream.
+       - patchNumber: Monotonic patch number within the source-device stream.
+       - fileTimestamp: Remote millisecond timestamp that should be recorded on the staged archive.
+     - Returns: Staged patch archive pointing at a temporary gzip file.
+     - Side effects:
+       - reads the supplied SQLite database
+       - writes one temporary gzip archive beneath the process temporary directory
+     - Failure modes:
+       - rethrows filesystem read and write errors
+       - rethrows gzip-compression failures from `RemoteSyncArchiveStagingService`
+     */
+    private func makeWorkspacePatchArchive(
+        patchDatabaseURL: URL,
+        sourceDevice: String,
+        patchNumber: Int64,
+        fileTimestamp: Int64
+    ) throws -> RemoteSyncStagedPatchArchive {
+        let archiveData = try RemoteSyncArchiveStagingService.gzip(Data(contentsOf: patchDatabaseURL))
+        let archiveURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("android-workspaces-patch-\(UUID().uuidString).sqlite3.gz")
+        try archiveData.write(to: archiveURL, options: .atomic)
+
+        return RemoteSyncStagedPatchArchive(
+            patch: RemoteSyncDiscoveredPatch(
+                sourceDevice: sourceDevice,
+                patchNumber: patchNumber,
+                schemaVersion: 1,
+                file: RemoteSyncFile(
+                    id: "/org.andbible.ios-sync-workspaces/\(sourceDevice)/\(patchNumber).sqlite3.gz",
+                    name: "\(patchNumber).sqlite3.gz",
+                    size: Int64(archiveData.count),
+                    timestamp: fileTimestamp,
+                    parentID: "/org.andbible.ios-sync-workspaces/\(sourceDevice)",
+                    mimeType: "application/gzip"
+                )
+            ),
+            archiveFileURL: archiveURL
+        )
     }
 
     /**

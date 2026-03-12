@@ -151,9 +151,36 @@ If this scheme is missing from `CFBundleURLTypes`, `GoogleDriveAuthService` will
 
 ## Where To Set The Values
 
-Set the values in the `AndBible` app target build settings.
+The recommended local path is an ignored xcconfig file, not hand-editing the project file.
 
-In Xcode:
+### Recommended: local xcconfig override
+
+1. Copy:
+
+- `Config/Secrets.example.xcconfig`
+
+to:
+
+- `Config/Secrets.xcconfig.local`
+
+2. Fill in:
+
+- `GOOGLE_DRIVE_CLIENT_ID`
+- `GOOGLE_DRIVE_SERVER_CLIENT_ID`
+- `GOOGLE_DRIVE_REVERSED_CLIENT_ID`
+
+3. Build the `AndBible` app target normally.
+
+The app target now includes `Config/Secrets.xcconfig.local` automatically for both Debug and Release builds through:
+
+- `Config/AndBible-Debug.xcconfig`
+- `Config/AndBible-Release.xcconfig`
+
+The local file is ignored by git, so real credentials stay out of the repo.
+
+### Alternative: override in Xcode build settings
+
+If you need a one-off manual override, you can still set the values directly in Xcode:
 
 1. Open `AndBible.xcodeproj`
 2. Select the `AndBible` target

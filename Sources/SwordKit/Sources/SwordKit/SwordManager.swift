@@ -3,23 +3,25 @@
 import Foundation
 import CLibSword
 
-/// Swift wrapper around SWORD's SWMgr (module manager).
-///
-/// Manages the SWORD module installation directory, provides access to
-/// installed modules, and controls global rendering options.
-///
-/// All libsword operations are serialized on an internal queue since
-/// the library is not thread-safe.
-///
-/// Usage:
-/// ```swift
-/// let manager = SwordManager(modulePath: "/path/to/sword/modules")
-/// let modules = manager.installedModules()
-/// if let kjv = manager.module(named: "KJV") {
-///     kjv.setKey("Gen 1:1")
-///     let text = kjv.renderText()
-/// }
-/// ```
+/**
+ Swift wrapper around SWORD's SWMgr (module manager).
+
+ Manages the SWORD module installation directory, provides access to
+ installed modules, and controls global rendering options.
+
+ All libsword operations are serialized on an internal queue since
+ the library is not thread-safe.
+
+ Usage:
+ ```swift
+ let manager = SwordManager(modulePath: "/path/to/sword/modules")
+ let modules = manager.installedModules()
+ if let kjv = manager.module(named: "KJV") {
+     kjv.setKey("Gen 1:1")
+     let text = kjv.renderText()
+ }
+ ```
+ */
 public final class SwordManager: @unchecked Sendable {
     private let handle: UnsafeMutableRawPointer
     private let queue = DispatchQueue(label: "org.andbible.SwordManager", qos: .userInitiated)
@@ -31,9 +33,11 @@ public final class SwordManager: @unchecked Sendable {
     /// The filesystem path where SWORD modules are installed.
     public let modulePath: String
 
-    /// Initialize a SwordManager with the given module path.
-    /// - Parameter modulePath: Path to the SWORD modules directory.
-    ///   Pass nil to use the default system path.
+    /**
+     Initialize a SwordManager with the given module path.
+     - Parameter modulePath: Path to the SWORD modules directory.
+       Pass nil to use the default system path.
+     */
     public init?(modulePath: String? = nil) {
         let path = modulePath ?? SwordManager.defaultModulePath()
         self.modulePath = path
@@ -92,9 +96,11 @@ public final class SwordManager: @unchecked Sendable {
         installedModules().filter { $0.category == category }
     }
 
-    /// Get a module by name.
-    /// - Parameter name: The module abbreviation (e.g., "KJV").
-    /// - Returns: The module, or nil if not installed.
+    /**
+     Get a module by name.
+     - Parameter name: The module abbreviation (e.g., "KJV").
+     - Returns: The module, or nil if not installed.
+     */
     public func module(named name: String) -> SwordModule? {
         queue.sync {
             if let cached = moduleCache[name] { return cached }
@@ -124,19 +130,23 @@ public final class SwordManager: @unchecked Sendable {
         case morphSegmentation = "Morpheme Segmentation"
     }
 
-    /// Set a global rendering option.
-    /// - Parameters:
-    ///   - option: The option to set.
-    ///   - enabled: Whether the option should be enabled.
+    /**
+     Set a global rendering option.
+     - Parameters:
+       - option: The option to set.
+       - enabled: Whether the option should be enabled.
+     */
     public func setGlobalOption(_ option: GlobalOption, enabled: Bool) {
         queue.sync {
             SWMgr_setGlobalOption(handle, option.rawValue, enabled ? "On" : "Off")
         }
     }
 
-    /// Get the current value of a global rendering option.
-    /// - Parameter option: The option to query.
-    /// - Returns: Whether the option is currently enabled.
+    /**
+     Get the current value of a global rendering option.
+     - Parameter option: The option to query.
+     - Returns: Whether the option is currently enabled.
+     */
     public func isGlobalOptionEnabled(_ option: GlobalOption) -> Bool {
         queue.sync {
             guard let value = SWMgr_getGlobalOption(handle, option.rawValue) else { return false }
@@ -164,8 +174,10 @@ public final class SwordManager: @unchecked Sendable {
 
     // MARK: - Module Refresh
 
-    /// Re-scan the module directory for changes.
-    /// Call after installing or uninstalling modules.
+    /**
+     Re-scan the module directory for changes.
+     Call after installing or uninstalling modules.
+     */
     public func refresh() {
         queue.sync {
             moduleCache.removeAll()

@@ -10,9 +10,11 @@ import UIKit
 import Network
 #endif
 
-/// AndBible iOS — Powerful offline Bible study app.
-///
-/// Universal SwiftUI app for iPhone, iPad, and Mac.
+/**
+ AndBible iOS — Powerful offline Bible study app.
+
+ Universal SwiftUI app for iPhone, iPad, and Mac.
+ */
 /**
  Tracks best-effort network availability for lifecycle-driven remote sync.
 
@@ -160,8 +162,10 @@ struct AndBibleApp: App {
     /// Temporary unlock for the current session — does NOT change the persisted setting.
     @State private var isUnlocked = false
 
-    /// UserDefaults key for the iCloud sync toggle.
-    /// Read from UserDefaults (not SwiftData) because we need it before the container is created.
+    /**
+     UserDefaults key for the iCloud sync toggle.
+     Read from UserDefaults (not SwiftData) because we need it before the container is created.
+     */
     static let iCloudSyncEnabledKey = "icloud_sync_enabled"
 
     init() {

@@ -24,17 +24,19 @@ public struct DownloadProgress: Sendable {
     }
 }
 
-/// Manages remote module catalog refresh, installation, and uninstall flows.
-///
-/// This service is a thin BibleCore wrapper over SwordKit's `InstallManager`.
-/// Its responsibilities are:
-/// - expose remote sources and remote module catalogs to the UI
-/// - track coarse in-memory install state in `activeDownloads`
-/// - refresh the active `SwordManager` after successful installs/uninstalls so future module
-///   lookups see the new module set
-///
-/// Detailed download transport, catalog caching, and lower-level install behavior remain in
-/// `InstallManager` and SwordKit's repository layer.
+/**
+ Manages remote module catalog refresh, installation, and uninstall flows.
+
+ This service is a thin BibleCore wrapper over SwordKit's `InstallManager`.
+ Its responsibilities are:
+ - expose remote sources and remote module catalogs to the UI
+ - track coarse in-memory install state in `activeDownloads`
+ - refresh the active `SwordManager` after successful installs/uninstalls so future module
+   lookups see the new module set
+
+ Detailed download transport, catalog caching, and lower-level install behavior remain in
+ `InstallManager` and SwordKit's repository layer.
+ */
 @Observable
 public final class DownloadService {
     private let swordManager: SwordManager
@@ -43,18 +45,22 @@ public final class DownloadService {
     /// Currently known download/install states keyed by module abbreviation.
     public private(set) var activeDownloads: [String: DownloadProgress] = [:]
 
-    /// Creates a download service.
-    /// - Parameters:
-    ///   - swordManager: Active SWORD manager whose module list should be refreshed after changes.
-    ///   - installManager: SwordKit installer used for catalog and install operations.
+    /**
+     Creates a download service.
+     - Parameters:
+       - swordManager: Active SWORD manager whose module list should be refreshed after changes.
+       - installManager: SwordKit installer used for catalog and install operations.
+     */
     public init(swordManager: SwordManager, installManager: InstallManager) {
         self.swordManager = swordManager
         self.installManager = installManager
     }
 
-    /// Refreshes the remote catalog for a configured source.
-    /// - Parameter sourceName: Source/repository name such as `CrossWire`.
-    /// - Returns: `true` on success, otherwise `false`.
+    /**
+     Refreshes the remote catalog for a configured source.
+     - Parameter sourceName: Source/repository name such as `CrossWire`.
+     - Returns: `true` on success, otherwise `false`.
+     */
     public func refreshSource(_ sourceName: String) async -> Bool {
         await withCheckedContinuation { continuation in
             let result = installManager.refreshSource(sourceName)
@@ -62,12 +68,14 @@ public final class DownloadService {
         }
     }
 
-    /// Lists modules available from a remote source with optional category/language filters.
-    /// - Parameters:
-    ///   - sourceName: Source/repository name to query.
-    ///   - category: Optional module-category filter.
-    ///   - language: Optional language-code filter.
-    /// - Returns: Matching remote modules.
+    /**
+     Lists modules available from a remote source with optional category/language filters.
+     - Parameters:
+       - sourceName: Source/repository name to query.
+       - category: Optional module-category filter.
+       - language: Optional language-code filter.
+     - Returns: Matching remote modules.
+     */
     public func availableModules(
         from sourceName: String,
         category: ModuleCategory? = nil,
@@ -85,13 +93,15 @@ public final class DownloadService {
         return modules
     }
 
-    /// Installs a module from a remote source into the active `SwordManager`.
-    /// - Parameters:
-    ///   - moduleName: Module abbreviation to install.
-    ///   - sourceName: Remote source to install from.
-    /// - Returns: `true` when installation succeeds, otherwise `false`.
-    /// - Note: Progress reporting is currently coarse-grained. `activeDownloads` records queued and
-    ///   completed states, but byte-level updates are not yet surfaced through this service.
+    /**
+     Installs a module from a remote source into the active `SwordManager`.
+     - Parameters:
+       - moduleName: Module abbreviation to install.
+       - sourceName: Remote source to install from.
+     - Returns: `true` when installation succeeds, otherwise `false`.
+     - Note: Progress reporting is currently coarse-grained. `activeDownloads` records queued and
+       completed states, but byte-level updates are not yet surfaced through this service.
+     */
     public func install(moduleName: String, from sourceName: String) async -> Bool {
         activeDownloads[moduleName] = DownloadProgress(
             moduleName: moduleName,
@@ -125,9 +135,11 @@ public final class DownloadService {
         return success
     }
 
-    /// Uninstalls a module from the active `SwordManager`.
-    /// - Parameter moduleName: Module abbreviation to uninstall.
-    /// - Returns: `true` when uninstallation succeeds, otherwise `false`.
+    /**
+     Uninstalls a module from the active `SwordManager`.
+     - Parameter moduleName: Module abbreviation to uninstall.
+     - Returns: `true` when uninstallation succeeds, otherwise `false`.
+     */
     public func uninstall(moduleName: String) -> Bool {
         let success = installManager.uninstall(moduleName: moduleName, from: swordManager)
         if success {
@@ -136,8 +148,10 @@ public final class DownloadService {
         return success
     }
 
-    /// Lists configured remote sources exposed by the underlying installer.
-    /// - Returns: Remote repository metadata rows.
+    /**
+     Lists configured remote sources exposed by the underlying installer.
+     - Returns: Remote repository metadata rows.
+     */
     public func remoteSources() -> [RemoteSource] {
         installManager.remoteSources()
     }

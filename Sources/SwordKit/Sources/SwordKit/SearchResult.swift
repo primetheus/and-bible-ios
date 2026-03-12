@@ -17,10 +17,12 @@ public enum SearchWordMode: String, CaseIterable, Sendable {
     case anyWord = "Any Word"
     case phrase = "Phrase"
 
-    /// The underlying SWORD search type.
-    /// - allWords: multiWord (-1) — SWORD's multiWord already requires ALL words
-    /// - anyWord: regex (0) — we build a "word1|word2" regex for OR matching
-    /// - phrase: phrase (1) — exact phrase match
+    /**
+     The underlying SWORD search type.
+     - allWords: multiWord (-1) — SWORD's multiWord already requires ALL words
+     - anyWord: regex (0) — we build a "word1|word2" regex for OR matching
+     - phrase: phrase (1) — exact phrase match
+     */
     public var searchType: SearchType {
         switch self {
         case .allWords: return .multiWord
@@ -29,10 +31,12 @@ public enum SearchWordMode: String, CaseIterable, Sendable {
         }
     }
 
-    /// Decorate a query string for this search mode.
-    /// - All Words: pass as-is (SWORD multiWord -1 already requires all words)
-    /// - Any Word: build regex "word1|word2|word3" for OR matching
-    /// - Phrase: pass as-is (SearchType.phrase handles it)
+    /**
+     Decorate a query string for this search mode.
+     - All Words: pass as-is (SWORD multiWord -1 already requires all words)
+     - Any Word: build regex "word1|word2|word3" for OR matching
+     - Phrase: pass as-is (SearchType.phrase handles it)
+     */
     public func decorateQuery(_ query: String) -> String {
         switch self {
         case .allWords:
@@ -85,8 +89,10 @@ public struct SearchOptions: Sendable {
     /// Whether the search is case-insensitive.
     public let caseInsensitive: Bool
 
-    /// Optional scope key to limit search (e.g., "Gen-Rev" for whole Bible,
-    /// "Gen-Mal" for OT, "Matt-Rev" for NT).
+    /**
+     Optional scope key to limit search (e.g., "Gen-Rev" for whole Bible,
+     "Gen-Mal" for OT, "Matt-Rev" for NT).
+     */
     public let scope: String?
 
     public init(
@@ -149,8 +155,10 @@ public struct MultiSearchResults: Sendable {
     /// Per-module result sets.
     public let moduleResults: [SearchResults]
 
-    /// All results grouped by normalized verse key (e.g. "Genesis 1:1").
-    /// Each group contains results from different modules for the same verse.
+    /**
+     All results grouped by normalized verse key (e.g. "Genesis 1:1").
+     Each group contains results from different modules for the same verse.
+     */
     public let groupedResults: [GroupedVerseResult]
 
     /// Total hits across all modules.

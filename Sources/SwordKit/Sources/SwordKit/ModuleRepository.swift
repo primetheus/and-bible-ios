@@ -52,21 +52,23 @@ public struct CatalogModule: Sendable, Identifiable {
     }
 }
 
-/// Pure Swift implementation of SWORD catalog browsing and module installation.
-///
-/// Bypasses libsword's InstallMgr (which requires curl, not compiled for iOS)
-/// and uses URLSession for all HTTP operations.
-///
-/// Usage:
-/// ```swift
-/// let repo = ModuleRepository()
-/// let sources = repo.loadSources()
-/// for source in sources {
-///     let modules = try await repo.refreshCatalog(for: source)
-///     // display modules...
-/// }
-/// try await repo.installModule(named: "KJV", from: sources[0])
-/// ```
+/**
+ Pure Swift implementation of SWORD catalog browsing and module installation.
+
+ Bypasses libsword's InstallMgr (which requires curl, not compiled for iOS)
+ and uses URLSession for all HTTP operations.
+
+ Usage:
+ ```swift
+ let repo = ModuleRepository()
+ let sources = repo.loadSources()
+ for source in sources {
+     let modules = try await repo.refreshCatalog(for: source)
+     // display modules...
+ }
+ try await repo.installModule(named: "KJV", from: sources[0])
+ ```
+ */
 public final class ModuleRepository: @unchecked Sendable {
     private let basePath: String
     private let swordPath: String
@@ -238,8 +240,10 @@ public final class ModuleRepository: @unchecked Sendable {
 
     // MARK: - Catalog Refresh
 
-    /// Download and parse the module catalog for a source.
-    /// - Returns: List of available modules from this source.
+    /**
+     Download and parse the module catalog for a source.
+     - Returns: List of available modules from this source.
+     */
     public func refreshCatalog(for source: SourceConfig) async throws -> [RemoteModuleInfo] {
         guard source.type == "HTTP" else {
             logger.info("Skipping FTP source '\(source.name)' — FTP is not supported on iOS")
@@ -292,11 +296,13 @@ public final class ModuleRepository: @unchecked Sendable {
 
     // MARK: - Module Installation
 
-    /// Install a module by downloading its data files.
-    /// - Parameters:
-    ///   - moduleName: Module abbreviation (e.g., "KJV").
-    ///   - source: The remote source to download from.
-    ///   - progress: Optional progress callback (0.0 to 1.0).
+    /**
+     Install a module by downloading its data files.
+     - Parameters:
+       - moduleName: Module abbreviation (e.g., "KJV").
+       - source: The remote source to download from.
+       - progress: Optional progress callback (0.0 to 1.0).
+     */
     public func installModule(named moduleName: String, from source: SourceConfig,
                               progress: ((Double) -> Void)? = nil) async throws {
         guard let entries = catalogCache[source.name],
@@ -425,9 +431,22 @@ public final class ModuleRepository: @unchecked Sendable {
 
     // MARK: - Install from ZIP
 
-    /// Install a SWORD module from a local .zip file.
-    /// The ZIP must contain `mods.d/*.conf` and a data directory (e.g., `modules/`).
-    /// Returns the name of the installed module.
+    /**
+     Install a SWORD module from a local `.zip` file.
+
+     The archive must contain one or more module config files under `mods.d/` plus the
+     corresponding module data directory, such as `modules/`.
+
+     - Parameter url: Local archive URL to install.
+     - Returns: The installed module identifier derived from the config filename.
+     - Side effects:
+       - extracts archive entries into the configured SWORD home directory
+       - invalidates the SWORD module cache after extraction completes
+     - Failure modes:
+       - throws `ModuleRepositoryError.invalidZip` when the file cannot be read, parsed, or does
+         not contain a valid module layout
+       - rethrows filesystem failures while creating directories or writing extracted files
+     */
     public func installFromZip(at url: URL) throws -> String {
         let fm = FileManager.default
 
@@ -495,8 +514,10 @@ public final class ModuleRepository: @unchecked Sendable {
         let data: Data
     }
 
-    /// Parse ZIP file data and extract all entries.
-    /// Supports stored (method 0) and deflated (method 8) entries.
+    /**
+     Parse ZIP file data and extract all entries.
+     Supports stored (method 0) and deflated (method 8) entries.
+     */
     private func parseZip(_ data: Data) throws -> [ZipEntry] {
         var entries: [ZipEntry] = []
         var offset = 0

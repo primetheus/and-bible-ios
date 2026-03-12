@@ -7,10 +7,12 @@ import os.log
 
 private let logger = Logger(subsystem: "org.andbible", category: "BibleBridge")
 
-/// Direction reported by native `UISwipeGestureRecognizer` handlers installed on the web view.
-///
-/// `BibleReaderView` maps these values onto Android-style chapter or page navigation depending
-/// on the current `bible_view_swipe_mode` setting.
+/**
+ Direction reported by native `UISwipeGestureRecognizer` handlers installed on the web view.
+
+ `BibleReaderView` maps these values onto Android-style chapter or page navigation depending
+ on the current `bible_view_swipe_mode` setting.
+ */
 public enum NativeHorizontalSwipeDirection: Sendable {
     case left
     case right
@@ -19,26 +21,34 @@ public enum NativeHorizontalSwipeDirection: Sendable {
 /// Protocol for handling bridge events from the Vue.js WebView.
 public protocol BibleBridgeDelegate: AnyObject {
     // MARK: - Navigation & Scroll
-    /// Reports the verse ordinal currently nearest the top of the rendered document.
-    ///
-    /// Vue.js sends this when scrolling so native code can persist reading position and history.
-    /// Android equivalent: `BibleJavascriptInterface.scrolledToOrdinal(...)`.
+    /**
+     Reports the verse ordinal currently nearest the top of the rendered document.
+
+     Vue.js sends this when scrolling so native code can persist reading position and history.
+     Android equivalent: `BibleJavascriptInterface.scrolledToOrdinal(...)`.
+     */
     func bridge(_ bridge: BibleBridge, didScrollToOrdinal ordinal: Int, key: String)
-    /// Requests additional content before the currently rendered range.
-    ///
-    /// Used by infinite-scroll style chapter expansion. The delegate should respond with
-    /// `sendResponse(callId:value:)` once more content has been loaded.
+    /**
+     Requests additional content before the currently rendered range.
+
+     Used by infinite-scroll style chapter expansion. The delegate should respond with
+     `sendResponse(callId:value:)` once more content has been loaded.
+     */
     func bridge(_ bridge: BibleBridge, requestMoreToBeginning callId: Int)
-    /// Requests additional content after the currently rendered range.
-    ///
-    /// Used by infinite-scroll style chapter expansion. The delegate should respond with
-    /// `sendResponse(callId:value:)` once more content has been loaded.
+    /**
+     Requests additional content after the currently rendered range.
+
+     Used by infinite-scroll style chapter expansion. The delegate should respond with
+     `sendResponse(callId:value:)` once more content has been loaded.
+     */
     func bridge(_ bridge: BibleBridge, requestMoreToEnd callId: Int)
 
     // MARK: - Bookmarks
-    /// Creates or edits a verse bookmark for the current Bible document selection.
-    ///
-    /// Android equivalent: `BibleJavascriptInterface.addBookmark(...)`.
+    /**
+     Creates or edits a verse bookmark for the current Bible document selection.
+
+     Android equivalent: `BibleJavascriptInterface.addBookmark(...)`.
+     */
     func bridge(_ bridge: BibleBridge, addBookmark bookInitials: String, startOrdinal: Int, endOrdinal: Int, addNote: Bool)
     /// Creates or edits a bookmark for non-Bible content such as dictionaries or general books.
     func bridge(_ bridge: BibleBridge, addGenericBookmark bookInitials: String, osisRef: String, startOrdinal: Int, endOrdinal: Int, addNote: Bool)
@@ -146,18 +156,20 @@ public protocol BibleBridgeDelegate: AnyObject {
     func bridgeDidRequestToggleFullScreen(_ bridge: BibleBridge)
 }
 
-/// WKScriptMessageHandler that bridges all 56+ methods between Vue.js and Swift.
-///
-/// Receives messages from JavaScript via:
-/// ```javascript
-/// window.webkit.messageHandlers.bibleView.postMessage({ method, args })
-/// ```
-///
-/// Sends responses/events to JavaScript via:
-/// ```swift
-/// webView.evaluateJavaScript("bibleView.response(\(callId), \(jsonData))")
-/// webView.evaluateJavaScript("bibleView.emit('\(event)', \(jsonData))")
-/// ```
+/**
+ WKScriptMessageHandler that bridges all 56+ methods between Vue.js and Swift.
+
+ Receives messages from JavaScript via:
+ ```javascript
+ window.webkit.messageHandlers.bibleView.postMessage({ method, args })
+ ```
+
+ Sends responses/events to JavaScript via:
+ ```swift
+ webView.evaluateJavaScript("bibleView.response(\(callId), \(jsonData))")
+ webView.evaluateJavaScript("bibleView.emit('\(event)', \(jsonData))")
+ ```
+ */
 public final class BibleBridge: NSObject, WKScriptMessageHandler {
     /// The message handler name registered with WKWebView.
     public static let handlerName = "bibleView"
@@ -187,11 +199,13 @@ public final class BibleBridge: NSObject, WKScriptMessageHandler {
 
     // MARK: - WKScriptMessageHandler
 
-    /// Dispatches a message posted by the Vue.js client into typed native delegate callbacks.
-    ///
-    /// Messages arrive as `{ method, args }` dictionaries through the registered
-    /// `window.webkit.messageHandlers.bibleView` handler. This method is the central routing point
-    /// for all client-originated actions.
+    /**
+     Dispatches a message posted by the Vue.js client into typed native delegate callbacks.
+
+     Messages arrive as `{ method, args }` dictionaries through the registered
+     `window.webkit.messageHandlers.bibleView` handler. This method is the central routing point
+     for all client-originated actions.
+     */
     public func userContentController(
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
@@ -480,10 +494,12 @@ public final class BibleBridge: NSObject, WKScriptMessageHandler {
 
     // MARK: - Send to JavaScript
 
-    /// Sends a raw JSON response payload back to a pending JavaScript bridge call.
-    ///
-    /// JavaScript Promise-based bridge methods include a numeric `callId`; native code must answer
-    /// with `bibleView.response(callId, value)` once the async work completes.
+    /**
+     Sends a raw JSON response payload back to a pending JavaScript bridge call.
+
+     JavaScript Promise-based bridge methods include a numeric `callId`; native code must answer
+     with `bibleView.response(callId, value)` once the async work completes.
+     */
     public func sendResponse(callId: Int, value: String) {
         let js = "bibleView.response(\(callId), \(value));"
         evaluateJavaScript(js)
@@ -496,10 +512,12 @@ public final class BibleBridge: NSObject, WKScriptMessageHandler {
         sendResponse(callId: callId, value: json)
     }
 
-    /// Emits an event into the Vue.js client without waiting for a response.
-    ///
-    /// Native code uses events such as `set_config`, `set_document`, and `update_bookmarks` to push
-    /// refreshed state into the already-loaded client.
+    /**
+     Emits an event into the Vue.js client without waiting for a response.
+
+     Native code uses events such as `set_config`, `set_document`, and `update_bookmarks` to push
+     refreshed state into the already-loaded client.
+     */
     public func emit(event: String, data: String = "null") {
         let js = "try { bibleView.emit('\(event)', \(data)); } catch(e) { window.webkit.messageHandlers.bibleView.postMessage({method:'console',args:['BRIDGE','JS EMIT ERROR in \(event): ' + e.message + ' ' + e.stack]}); }"
         evaluateJavaScript(js)
@@ -512,14 +530,16 @@ public final class BibleBridge: NSObject, WKScriptMessageHandler {
         emit(event: event, data: json)
     }
 
-    /// Queries the current DOM selection directly from the web view.
-    ///
-    /// This is the lightweight fallback path used when native code only needs plain text and verse
-    /// ordinals. For richer selection details including offsets, callers should use a higher-level
-    /// bridge API exposed by the web client.
-    ///
-    /// - Returns: The selected text and optional start/end ordinals, or `nil` if no usable
-    ///   selection is active.
+    /**
+     Queries the current DOM selection directly from the web view.
+
+     This is the lightweight fallback path used when native code only needs plain text and verse
+     ordinals. For richer selection details including offsets, callers should use a higher-level
+     bridge API exposed by the web client.
+
+     - Returns: The selected text and optional start/end ordinals, or `nil` if no usable
+       selection is active.
+     */
     @MainActor
     public func querySelection() async -> (text: String, startOrdinal: Int?, endOrdinal: Int?)? {
         guard let webView else { return nil }
@@ -566,10 +586,12 @@ public final class BibleBridge: NSObject, WKScriptMessageHandler {
         evaluateJavaScript("window.getSelection().removeAllRanges();")
     }
 
-    /// Updates the cached active-language list stored in the JavaScript bootstrap shim.
-    ///
-    /// The web client reads this synchronously through `window.android.getActiveLanguages()` during
-    /// rendering, so native code refreshes it whenever installed modules change.
+    /**
+     Updates the cached active-language list stored in the JavaScript bootstrap shim.
+
+     The web client reads this synchronously through `window.android.getActiveLanguages()` during
+     rendering, so native code refreshes it whenever installed modules change.
+     */
     public func updateActiveLanguages(_ languages: [String]) {
         guard let data = try? JSONSerialization.data(withJSONObject: languages),
               let json = String(data: data, encoding: .utf8) else { return }

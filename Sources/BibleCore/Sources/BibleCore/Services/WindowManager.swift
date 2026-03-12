@@ -20,14 +20,18 @@ public final class WindowManager {
     /// The currently focused (active) window.
     public var activeWindow: Window?
 
-    /// Controller registry — maps window IDs to their BibleReaderController instances.
-    /// Uses AnyObject to avoid circular dependency (BibleCore can't import BibleUI).
-    /// BibleReaderView casts to BibleReaderController.
+    /**
+     Controller registry — maps window IDs to their BibleReaderController instances.
+     Uses AnyObject to avoid circular dependency (BibleCore can't import BibleUI).
+     BibleReaderView casts to BibleReaderController.
+     */
     public var controllers: [UUID: AnyObject] = [:]
 
-    /// Incremented on every controller register/unregister to guarantee SwiftUI
-    /// re-evaluates views that depend on the controller registry. Dictionary
-    /// subscript mutations may not always trigger @Observable notifications.
+    /**
+     Incremented on every controller register/unregister to guarantee SwiftUI
+     re-evaluates views that depend on the controller registry. Dictionary
+     subscript mutations may not always trigger @Observable notifications.
+     */
     public private(set) var controllerVersion: Int = 0
 
     /// ID of the currently maximized window, if any.
@@ -41,12 +45,16 @@ public final class WindowManager {
     /// Debounce work item for scroll sync (200ms matching Android WindowSync.kt:71).
     private var syncWorkItem: DispatchWorkItem?
 
-    /// Callback to perform sync — set by the coordinator (BibleReaderView).
-    /// Parameters: (sourceWindow, ordinal, key)
+    /**
+     Callback to perform sync — set by the coordinator (BibleReaderView).
+     Parameters: (sourceWindow, ordinal, key)
+     */
     public var onSyncVerseChanged: ((Window, Int, String) -> Void)?
 
-    /// Creates a window manager for a workspace-backed window set.
-    /// - Parameter workspaceStore: Store used to load, mutate, and persist workspace windows.
+    /**
+     Creates a window manager for a workspace-backed window set.
+     - Parameter workspaceStore: Store used to load, mutate, and persist workspace windows.
+     */
     public init(workspaceStore: WorkspaceStore) {
         self.workspaceStore = workspaceStore
     }
@@ -75,8 +83,10 @@ public final class WindowManager {
         refreshWindows()
     }
 
-    /// Refresh the visible windows list from the active workspace.
-    /// Respects maximized state and filters minimized windows.
+    /**
+     Refresh the visible windows list from the active workspace.
+     Respects maximized state and filters minimized windows.
+     */
     public func refreshWindows() {
         guard let workspace = activeWorkspace else {
             visibleWindows = []
@@ -116,13 +126,15 @@ public final class WindowManager {
         activeWindow = window
     }
 
-    /// Adds a new window to the active workspace, optionally copying state from an existing window.
-    /// - Parameters:
-    ///   - document: Explicit document/module to open. When `nil`, the source window's Bible document is reused.
-    ///   - category: Category to use when no eligible source category is inherited.
-    ///   - sourceWindow: Existing window whose sync state, layout weight, and reading position should be cloned.
-    /// - Returns: The newly created window, or `nil` when no workspace is active.
-    /// - Note: Non-Bible categories such as dictionary or EPUB are intentionally not inherited; new windows fall back to Bible/commentary semantics.
+    /**
+     Adds a new window to the active workspace, optionally copying state from an existing window.
+     - Parameters:
+       - document: Explicit document/module to open. When `nil`, the source window's Bible document is reused.
+       - category: Category to use when no eligible source category is inherited.
+       - sourceWindow: Existing window whose sync state, layout weight, and reading position should be cloned.
+     - Returns: The newly created window, or `nil` when no workspace is active.
+     - Note: Non-Bible categories such as dictionary or EPUB are intentionally not inherited; new windows fall back to Bible/commentary semantics.
+     */
     @discardableResult
     public func addWindow(document: String? = nil, category: String = "bible", from sourceWindow: Window? = nil) -> Window? {
         guard let workspace = activeWorkspace else { return nil }

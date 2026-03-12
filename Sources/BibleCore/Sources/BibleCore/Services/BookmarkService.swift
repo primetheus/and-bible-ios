@@ -3,14 +3,18 @@
 import Foundation
 import Observation
 
-/// Business logic for bookmark operations, coordinating between
-/// BookmarkStore and the bridge layer.
+/**
+ Business logic for bookmark operations, coordinating between
+ BookmarkStore and the bridge layer.
+ */
 @Observable
 public final class BookmarkService {
     private let store: BookmarkStore
 
-    /// Creates a bookmark service backed by the given persistence store.
-    /// - Parameter store: Store responsible for all bookmark, label, and StudyPad persistence.
+    /**
+     Creates a bookmark service backed by the given persistence store.
+     - Parameter store: Store responsible for all bookmark, label, and StudyPad persistence.
+     */
     public init(store: BookmarkStore) {
         self.store = store
     }
@@ -82,8 +86,10 @@ public final class BookmarkService {
         store.deleteBibleBookmark(id: id)
     }
 
-    /// Get bookmarks overlapping a verse range (for rendering highlights).
-    /// Pass `book` to prevent cross-book ordinal collisions.
+    /**
+     Get bookmarks overlapping a verse range (for rendering highlights).
+     Pass `book` to prevent cross-book ordinal collisions.
+     */
     public func bookmarks(for startOrdinal: Int, endOrdinal: Int, book: String? = nil) -> [BibleBookmark] {
         store.bibleBookmarks(overlapping: startOrdinal, endOrdinal: endOrdinal, book: book)
     }
@@ -129,8 +135,10 @@ public final class BookmarkService {
 
     // MARK: - Labels
 
-    /// Toggle a label on a bookmark (Bible or generic).
-    /// Returns "bible" or "generic" to indicate which type was toggled, or nil on failure.
+    /**
+     Toggle a label on a bookmark (Bible or generic).
+     Returns "bible" or "generic" to indicate which type was toggled, or nil on failure.
+     */
     @discardableResult
     public func toggleLabel(bookmarkId: UUID, labelId: UUID) -> String? {
         guard let label = store.label(id: labelId) else { return nil }
@@ -214,9 +222,11 @@ public final class BookmarkService {
 
     // MARK: - Labels CRUD
 
-    /// Ensure system labels exist with deterministic UUIDs for CloudKit cross-device dedup.
-    /// If a system label already exists with a different UUID, update it to the canonical UUID.
-    /// If it doesn't exist, create it. System labels are invisible to users.
+    /**
+     Ensure system labels exist with deterministic UUIDs for CloudKit cross-device dedup.
+     If a system label already exists with a different UUID, update it to the canonical UUID.
+     If it doesn't exist, create it. System labels are invisible to users.
+     */
     public func ensureSystemLabels() {
         let systemLabels: [(name: String, id: UUID)] = [
             (Label.speakLabelName, Label.speakLabelId),
@@ -240,8 +250,10 @@ public final class BookmarkService {
         }
     }
 
-    /// Seed default highlight labels on first launch (matches Android).
-    /// Only creates labels if no user labels exist yet.
+    /**
+     Seed default highlight labels on first launch (matches Android).
+     Only creates labels if no user labels exist yet.
+     */
     public func prepareDefaultLabels() {
         let existingLabels = store.labels()  // already filters to isRealLabel
         guard existingLabels.isEmpty else { return }
@@ -364,8 +376,10 @@ public final class BookmarkService {
         store.label(id: id)
     }
 
-    /// Create a new StudyPad text entry for a label, inserted after the given order number.
-    /// Returns (newEntry, bumpedBibleBtls, bumpedGenericBtls, bumpedEntries).
+    /**
+     Create a new StudyPad text entry for a label, inserted after the given order number.
+     Returns (newEntry, bumpedBibleBtls, bumpedGenericBtls, bumpedEntries).
+     */
     @discardableResult
     public func createStudyPadEntry(
         labelId: UUID,
@@ -389,8 +403,10 @@ public final class BookmarkService {
         return (entry, bumped.bibleBtls, bumped.genericBtls, bumped.entries)
     }
 
-    /// Delete a StudyPad text entry. Re-sanitizes order numbers.
-    /// Returns (deletedId, labelId, changedBibleBtls, changedGenericBtls, changedEntries).
+    /**
+     Delete a StudyPad text entry. Re-sanitizes order numbers.
+     Returns (deletedId, labelId, changedBibleBtls, changedGenericBtls, changedEntries).
+     */
     public func deleteStudyPadEntry(
         id: UUID
     ) -> (UUID, UUID, [BibleBookmarkToLabel], [GenericBookmarkToLabel], [StudyPadTextEntry])? {

@@ -5,10 +5,12 @@ import SwiftData
 import BibleUI
 import BibleCore
 
-/// Root content view managing the app's navigation structure.
-///
-/// On iPhone: Single-column navigation
-/// On iPad/Mac: Sidebar navigation with split view
+/**
+ Root content view managing the app's navigation structure.
+
+ On iPhone: Single-column navigation
+ On iPad/Mac: Sidebar navigation with split view
+ */
 struct ContentView: View {
     @State private var selectedTab: Tab? = .bible
     @State private var showSettings = false

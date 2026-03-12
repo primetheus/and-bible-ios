@@ -9,8 +9,10 @@ private let logger = Logger(subsystem: "org.andbible", category: "SwordSetup")
 /// Manages SWORD module directory setup and initialization.
 enum SwordSetup {
 
-    /// Ensure the SWORD modules directory exists and copy bundled modules if needed.
-    /// Call this once at app startup before creating a SwordManager.
+    /**
+     Ensure the SWORD modules directory exists and copy bundled modules if needed.
+     Call this once at app startup before creating a SwordManager.
+     */
     static func ensureModulesReady() {
         let swordDir = SwordManager.defaultModulePath()
         let fm = FileManager.default

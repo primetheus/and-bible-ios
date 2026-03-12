@@ -38,11 +38,13 @@ public struct ModuleFeatures: OptionSet, Sendable {
     public static let dailyDevotion = ModuleFeatures(rawValue: 1 << 9)
 }
 
-/// Information about a single book in a Bible module's versification.
-///
-/// Contains the book name, OSIS abbreviation, display abbreviation,
-/// chapter count, and testament (OT/NT). Used by the book chooser and
-/// chapter navigation to dynamically adapt to the active module's canon.
+/**
+ Information about a single book in a Bible module's versification.
+
+ Contains the book name, OSIS abbreviation, display abbreviation,
+ chapter count, and testament (OT/NT). Used by the book chooser and
+ chapter navigation to dynamically adapt to the active module's canon.
+ */
 public struct BookInfo: Sendable, Identifiable, Equatable {
     /// Unique identifier (uses the OSIS book ID).
     public var id: String { osisId }

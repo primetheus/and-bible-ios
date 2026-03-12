@@ -2,22 +2,26 @@
 
 import Foundation
 
-/// Handles data migration for the dual-store layout used for CloudKit sync.
-///
-/// The main store keeps its original name "AndBible" (→ AndBible.store) to preserve
-/// existing PersistentIdentifiers. A separate "LocalStore" (→ LocalStore.store) is
-/// created for device-local models (Repository, Setting).
-///
-/// On upgrade from single-store to dual-store:
-/// - AndBible.store: continues to work unchanged (now only holds cloud-eligible models)
-/// - LocalStore.store: created fresh by SwiftData. Repository and Setting start empty,
-///   which is handled gracefully (repos re-seed from SWORD defaults, active workspace
-///   falls through to first available).
+/**
+ Handles data migration for the dual-store layout used for CloudKit sync.
+
+ The main store keeps its original name "AndBible" (→ AndBible.store) to preserve
+ existing PersistentIdentifiers. A separate "LocalStore" (→ LocalStore.store) is
+ created for device-local models (Repository, Setting).
+
+ On upgrade from single-store to dual-store:
+ - AndBible.store: continues to work unchanged (now only holds cloud-eligible models)
+ - LocalStore.store: created fresh by SwiftData. Repository and Setting start empty,
+   which is handled gracefully (repos re-seed from SWORD defaults, active workspace
+   falls through to first available).
+ */
 public enum DataMigration {
 
-    /// Repair any state left by earlier migration attempts, then ensure
-    /// the canonical "AndBible.store" exists for the main configuration.
-    /// Call this BEFORE creating the ModelContainer.
+    /**
+     Repair any state left by earlier migration attempts, then ensure
+     the canonical "AndBible.store" exists for the main configuration.
+     Call this BEFORE creating the ModelContainer.
+     */
     public static func migrateIfNeeded() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let fm = FileManager.default

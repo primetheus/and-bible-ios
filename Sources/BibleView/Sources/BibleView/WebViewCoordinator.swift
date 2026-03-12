@@ -9,11 +9,13 @@ import UIKit
 
 private let logger = Logger(subsystem: "org.andbible", category: "WebViewCoordinator")
 
-/// Coordinator for the WKWebView, handling navigation, logging, and native gesture callbacks.
-///
-/// `BibleWebView` uses this coordinator as the `WKNavigationDelegate` on both platforms and, on
-/// iOS, also as the `UIScrollViewDelegate`/`UIGestureRecognizerDelegate` to translate native scroll
-/// and swipe input into Android-parity bridge callbacks.
+/**
+ Coordinator for the WKWebView, handling navigation, logging, and native gesture callbacks.
+
+ `BibleWebView` uses this coordinator as the `WKNavigationDelegate` on both platforms and, on
+ iOS, also as the `UIScrollViewDelegate`/`UIGestureRecognizerDelegate` to translate native scroll
+ and swipe input into Android-parity bridge callbacks.
+ */
 public class WebViewCoordinator: NSObject, WKNavigationDelegate {
     let bridge: BibleBridge
     weak var webView: WKWebView?
@@ -43,12 +45,14 @@ public class WebViewCoordinator: NSObject, WKNavigationDelegate {
         logger.error("BibleView navigation failed: \(error.localizedDescription)")
     }
 
-    /// Intercepts app-internal links and forwards them to the native bridge delegate.
-    ///
-    /// Local `file://` navigation is allowed so the packaged Vue.js bundle can load assets.
-    /// `osis://`, `multi://`, `ab-w://`, `ab-find-all://`, and standard HTTP(S) links are routed
-    /// back to native code so `BibleReaderController` can decide whether to navigate internally,
-    /// open a Strong's sheet, or hand off to the system browser.
+    /**
+     Intercepts app-internal links and forwards them to the native bridge delegate.
+
+     Local `file://` navigation is allowed so the packaged Vue.js bundle can load assets.
+     `osis://`, `multi://`, `ab-w://`, `ab-find-all://`, and standard HTTP(S) links are routed
+     back to native code so `BibleReaderController` can decide whether to navigate internally,
+     open a Strong's sheet, or hand off to the system browser.
+     */
     public func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationAction: WKNavigationAction,
@@ -137,10 +141,12 @@ extension WebViewCoordinator: UIScrollViewDelegate, UIGestureRecognizerDelegate 
         lastUserScrollOffsetY = scrollView.contentOffset.y
     }
 
-    /// Reports native user-driven vertical scrolling back to the bridge.
-    ///
-    /// Only tracking, dragging, and decelerating states are forwarded so programmatic web view
-    /// scrolls do not trigger fullscreen auto-hide or similar native behaviors.
+    /**
+     Reports native user-driven vertical scrolling back to the bridge.
+
+     Only tracking, dragging, and decelerating states are forwarded so programmatic web view
+     scrolls do not trigger fullscreen auto-hide or similar native behaviors.
+     */
     public func scrollViewDidScroll(_ scrollView: UIScrollView) {
         let offsetY = scrollView.contentOffset.y
         guard scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating else {

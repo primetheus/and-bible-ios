@@ -51,18 +51,20 @@ public struct RemoteModuleInfo: Sendable, Identifiable {
     }
 }
 
-/// Swift wrapper around SWORD's InstallMgr for downloading and installing modules.
-///
-/// All operations are serialized since libsword is not thread-safe.
-///
-/// Usage:
-/// ```swift
-/// let installMgr = InstallManager(basePath: swordPath)
-/// let sources = installMgr.remoteSources()
-/// installMgr.refreshSource("CrossWire")
-/// let modules = installMgr.availableModules(from: "CrossWire")
-/// installMgr.install(moduleName: "KJV", from: "CrossWire", into: swordManager)
-/// ```
+/**
+ Swift wrapper around SWORD's InstallMgr for downloading and installing modules.
+
+ All operations are serialized since libsword is not thread-safe.
+
+ Usage:
+ ```swift
+ let installMgr = InstallManager(basePath: swordPath)
+ let sources = installMgr.remoteSources()
+ installMgr.refreshSource("CrossWire")
+ let modules = installMgr.availableModules(from: "CrossWire")
+ installMgr.install(moduleName: "KJV", from: "CrossWire", into: swordManager)
+ ```
+ */
 public final class InstallManager: @unchecked Sendable {
     private let handle: UnsafeMutableRawPointer
     private let queue = DispatchQueue(label: "org.andbible.InstallManager", qos: .userInitiated)
@@ -70,8 +72,10 @@ public final class InstallManager: @unchecked Sendable {
     /// The base path for install manager data.
     public let basePath: String
 
-    /// Initialize an InstallManager.
-    /// - Parameter basePath: Path for install manager data (catalog cache, etc.).
+    /**
+     Initialize an InstallManager.
+     - Parameter basePath: Path for install manager data (catalog cache, etc.).
+     */
     public init?(basePath: String? = nil) {
         let path = basePath ?? InstallManager.defaultBasePath()
         self.basePath = path
@@ -98,15 +102,19 @@ public final class InstallManager: @unchecked Sendable {
         return installDir.path
     }
 
-    /// Write default InstallMgr.conf with sources matching Android AndBible.
-    /// Sources are from and-bible/app/src/main/res/raw/repositories.txt
-    /// Public entry point for ModuleRepository to use.
+    /**
+     Write default InstallMgr.conf with sources matching Android AndBible.
+     Sources are from and-bible/app/src/main/res/raw/repositories.txt
+     Public entry point for ModuleRepository to use.
+     */
     public static func ensureDefaultConfigPublic(at basePath: String) {
         ensureDefaultConfig(at: basePath)
     }
 
-    /// Write default InstallMgr.conf with sources matching Android AndBible.
-    /// Sources are from and-bible/app/src/main/res/raw/repositories.txt
+    /**
+     Write default InstallMgr.conf with sources matching Android AndBible.
+     Sources are from and-bible/app/src/main/res/raw/repositories.txt
+     */
     static func ensureDefaultConfig(at basePath: String) {
         let configPath = (basePath as NSString).appendingPathComponent("InstallMgr.conf")
         let fm = FileManager.default
@@ -152,9 +160,11 @@ public final class InstallManager: @unchecked Sendable {
         }
     }
 
-    /// Refresh the module catalog for a remote source.
-    /// - Parameter sourceName: The source to refresh.
-    /// - Returns: `true` if the refresh succeeded.
+    /**
+     Refresh the module catalog for a remote source.
+     - Parameter sourceName: The source to refresh.
+     - Returns: `true` if the refresh succeeded.
+     */
     @discardableResult
     public func refreshSource(_ sourceName: String) -> Bool {
         queue.sync {
@@ -164,9 +174,11 @@ public final class InstallManager: @unchecked Sendable {
 
     // MARK: - Available Modules
 
-    /// List modules available from a remote source.
-    /// - Parameter sourceName: The source to query.
-    /// - Returns: List of available modules.
+    /**
+     List modules available from a remote source.
+     - Parameter sourceName: The source to query.
+     - Returns: List of available modules.
+     */
     public func availableModules(from sourceName: String) -> [RemoteModuleInfo] {
         queue.sync {
             let count = InstallMgr_getRemoteModuleCount(handle, sourceName)
@@ -210,12 +222,14 @@ public final class InstallManager: @unchecked Sendable {
 
     // MARK: - Install / Uninstall
 
-    /// Install a module from a remote source.
-    /// - Parameters:
-    ///   - moduleName: The module abbreviation to install.
-    ///   - sourceName: The remote source to download from.
-    ///   - manager: The SwordManager to install into.
-    /// - Returns: `true` if installation succeeded.
+    /**
+     Install a module from a remote source.
+     - Parameters:
+       - moduleName: The module abbreviation to install.
+       - sourceName: The remote source to download from.
+       - manager: The SwordManager to install into.
+     - Returns: `true` if installation succeeded.
+     */
     @discardableResult
     public func install(moduleName: String, from sourceName: String, into manager: SwordManager) -> Bool {
         // Note: This blocks until download completes. Call from a background task.
@@ -225,11 +239,13 @@ public final class InstallManager: @unchecked Sendable {
         }
     }
 
-    /// Uninstall a module.
-    /// - Parameters:
-    ///   - moduleName: The module abbreviation to uninstall.
-    ///   - manager: The SwordManager the module is installed in.
-    /// - Returns: `true` if uninstallation succeeded.
+    /**
+     Uninstall a module.
+     - Parameters:
+       - moduleName: The module abbreviation to uninstall.
+       - manager: The SwordManager the module is installed in.
+     - Returns: `true` if uninstallation succeeded.
+     */
     @discardableResult
     public func uninstall(moduleName: String, from manager: SwordManager) -> Bool {
         let mgrHandle = manager.rawHandle

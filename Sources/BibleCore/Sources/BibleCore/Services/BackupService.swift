@@ -3,13 +3,15 @@
 import Foundation
 import SwiftData
 
-/// Full JSON backup payload for app data export/import.
-///
-/// Version `1` currently contains:
-/// - Bible bookmarks and their label assignments
-/// - user-visible labels
-/// - reading plans and their completed day numbers
-/// - StudyPad text entries
+/**
+ Full JSON backup payload for app data export/import.
+
+ Version `1` currently contains:
+ - Bible bookmarks and their label assignments
+ - user-visible labels
+ - reading plans and their completed day numbers
+ - StudyPad text entries
+ */
 public struct AppBackup: Codable {
     /// Backup schema version.
     public var version: Int = 1
@@ -107,41 +109,47 @@ public struct StudyPadEntryBackup: Codable {
     public var text: String
 }
 
-/// Manages export and import of app data.
-///
-/// Export shapes:
-/// - CSV: Bible bookmarks only, with quoted note text for spreadsheet-friendly interchange
-/// - JSON: full app backup including labels, reading plans, and StudyPad entries
-///
-/// Import order matters because later records depend on earlier ones:
-/// 1. labels
-/// 2. Bible bookmarks and label junctions
-/// 3. StudyPad entries
-/// 4. reading plans and reconstructed day rows
-///
-/// Error handling is intentionally soft-fail:
-/// - export methods return `nil` on encoding failures
-/// - import methods return the count of successfully inserted items and skip malformed rows
+/**
+ Manages export and import of app data.
+
+ Export shapes:
+ - CSV: Bible bookmarks only, with quoted note text for spreadsheet-friendly interchange
+ - JSON: full app backup including labels, reading plans, and StudyPad entries
+
+ Import order matters because later records depend on earlier ones:
+ 1. labels
+ 2. Bible bookmarks and label junctions
+ 3. StudyPad entries
+ 4. reading plans and reconstructed day rows
+
+ Error handling is intentionally soft-fail:
+ - export methods return `nil` on encoding failures
+ - import methods return the count of successfully inserted items and skip malformed rows
+ */
 @Observable
 public final class BackupService {
     private let modelContext: ModelContext
 
-    /// Creates a backup service bound to the caller's SwiftData context.
-    /// - Parameter modelContext: Context used for all export/import reads and writes.
+    /**
+     Creates a backup service bound to the caller's SwiftData context.
+     - Parameter modelContext: Context used for all export/import reads and writes.
+     */
     public init(modelContext: ModelContext) {
         self.modelContext = modelContext
     }
 
     // MARK: - CSV Export (Bookmarks)
 
-    /// Exports Bible bookmarks as UTF-8 CSV data.
-    ///
-    /// Current column order:
-    /// `id,kjvOrdinalStart,kjvOrdinalEnd,v11n,createdAt,wholeVerse,primaryLabelId,notes`
-    ///
-    /// Notes are wrapped in quotes and embedded quotes are doubled for CSV compatibility.
-    ///
-    /// - Returns: CSV data on success, otherwise `nil`.
+    /**
+     Exports Bible bookmarks as UTF-8 CSV data.
+
+     Current column order:
+     `id,kjvOrdinalStart,kjvOrdinalEnd,v11n,createdAt,wholeVerse,primaryLabelId,notes`
+
+     Notes are wrapped in quotes and embedded quotes are doubled for CSV compatibility.
+
+     - Returns: CSV data on success, otherwise `nil`.
+     */
     public func exportBookmarksCSV() -> Data? {
         let store = BookmarkStore(modelContext: modelContext)
         let bookmarks = store.bibleBookmarks()
@@ -161,8 +169,10 @@ public final class BackupService {
 
     // MARK: - Full JSON Backup
 
-    /// Exports a full JSON backup of bookmarks, labels, reading plans, and StudyPad entries.
-    /// - Returns: Pretty-printed, sorted-key JSON data on success, otherwise `nil`.
+    /**
+     Exports a full JSON backup of bookmarks, labels, reading plans, and StudyPad entries.
+     - Returns: Pretty-printed, sorted-key JSON data on success, otherwise `nil`.
+     */
     public func exportFullBackup() -> Data? {
         let store = BookmarkStore(modelContext: modelContext)
         let planStore = ReadingPlanStore(modelContext: modelContext)
@@ -248,12 +258,14 @@ public final class BackupService {
 
     // MARK: - Full JSON Restore
 
-    /// Imports app data from a full JSON backup payload.
-    /// - Parameter data: JSON backup data previously produced by `exportFullBackup()`.
-    /// - Returns: Count of successfully inserted top-level rows.
-    /// - Note: The import recreates reading-plan day rows from the matching built-in
-    ///   `ReadingPlanService.availablePlans` template and restores completion state from
-    ///   `completedDays`.
+    /**
+     Imports app data from a full JSON backup payload.
+     - Parameter data: JSON backup data previously produced by `exportFullBackup()`.
+     - Returns: Count of successfully inserted top-level rows.
+     - Note: The import recreates reading-plan day rows from the matching built-in
+       `ReadingPlanService.availablePlans` template and restores completion state from
+       `completedDays`.
+     */
     public func importFullBackup(_ data: Data) -> Int {
         guard let backup = try? JSONDecoder().decode(AppBackup.self, from: data) else {
             return 0
@@ -376,11 +388,13 @@ public final class BackupService {
 
     // MARK: - CSV Import
 
-    /// Imports Bible bookmarks from CSV data.
-    /// - Parameter data: UTF-8 CSV data in the column order emitted by `exportBookmarksCSV()`.
-    /// - Returns: Count of successfully inserted bookmark rows.
-    /// - Note: CSV import restores primary-label IDs and note text when those optional columns are
-    ///   present.
+    /**
+     Imports Bible bookmarks from CSV data.
+     - Parameter data: UTF-8 CSV data in the column order emitted by `exportBookmarksCSV()`.
+     - Returns: Count of successfully inserted bookmark rows.
+     - Note: CSV import restores primary-label IDs and note text when those optional columns are
+       present.
+     */
     public func importBookmarksCSV(_ data: Data) -> Int {
         guard let csv = String(data: data, encoding: .utf8) else { return 0 }
         let lines = csv.components(separatedBy: .newlines).dropFirst() // Skip header

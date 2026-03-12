@@ -20,19 +20,23 @@ public struct ReadingPlanTemplate: Identifiable, Sendable {
     public var id: String { code }
 }
 
-/// Provides built-in reading plan templates and plan lifecycle helpers.
-///
-/// The service has two plan sources:
-/// - Android-parity `.properties` plans loaded from bundled resources
-/// - a small set of iOS-specific algorithmic plans
-///
-/// Day numbering is intentionally 1-based for plan templates and day rows. The persisted
-/// `ReadingPlan.currentDay` field is still stored separately and currently starts at `0` when a
-/// plan is created.
+/**
+ Provides built-in reading plan templates and plan lifecycle helpers.
+
+ The service has two plan sources:
+ - Android-parity `.properties` plans loaded from bundled resources
+ - a small set of iOS-specific algorithmic plans
+
+ Day numbering is intentionally 1-based for plan templates and day rows. The persisted
+ `ReadingPlan.currentDay` field is still stored separately and currently starts at `0` when a
+ plan is created.
+ */
 public final class ReadingPlanService {
 
-    /// All available built-in plans. Data-driven plans are loaded from bundled .properties files
-    /// matching the Android AndBible reading plan format.
+    /**
+     All available built-in plans. Data-driven plans are loaded from bundled .properties files
+     matching the Android AndBible reading plan format.
+     */
     public static let availablePlans: [ReadingPlanTemplate] = {
         var plans: [ReadingPlanTemplate] = []
 
@@ -99,8 +103,10 @@ public final class ReadingPlanService {
 
     // MARK: - .properties File Parser
 
-    /// Load a reading plan from a bundled .properties file.
-    /// Returns a dictionary mapping 1-based day number to the readings string.
+    /**
+     Load a reading plan from a bundled .properties file.
+     Returns a dictionary mapping 1-based day number to the readings string.
+     */
     private static func loadPropertiesPlan(code: String) -> [Int: String]? {
         guard let url = Bundle.module.url(
             forResource: code,
@@ -113,9 +119,11 @@ public final class ReadingPlanService {
         return parseProperties(contents)
     }
 
-    /// Parse .properties file content into a day→readings dictionary.
-    /// Format: `dayNumber=OsisRef1,OsisRef2,...`
-    /// Lines starting with # are comments. Blank lines are ignored.
+    /**
+     Parse .properties file content into a day→readings dictionary.
+     Format: `dayNumber=OsisRef1,OsisRef2,...`
+     Lines starting with # are comments. Blank lines are ignored.
+     */
     public static func parseProperties(_ text: String) -> [Int: String] {
         var readings: [Int: String] = [:]
         for line in text.components(separatedBy: .newlines) {
@@ -186,11 +194,13 @@ public final class ReadingPlanService {
 
     // MARK: - Custom Plan Import
 
-    /// Imports a custom reading plan from `.properties` file content.
-    /// - Parameters:
-    ///   - name: User-visible plan name.
-    ///   - propertiesText: Raw `.properties` file content using Android plan syntax.
-    /// - Returns: A transient template when parsing succeeds, otherwise `nil`.
+    /**
+     Imports a custom reading plan from `.properties` file content.
+     - Parameters:
+       - name: User-visible plan name.
+       - propertiesText: Raw `.properties` file content using Android plan syntax.
+     - Returns: A transient template when parsing succeeds, otherwise `nil`.
+     */
     public static func importCustomPlan(name: String, propertiesText: String) -> ReadingPlanTemplate? {
         let readings = parseProperties(propertiesText)
         guard !readings.isEmpty else { return nil }
@@ -211,12 +221,14 @@ public final class ReadingPlanService {
 
     // MARK: - Plan Management
 
-    /// Starts a new persisted reading plan from a template.
-    /// - Parameters:
-    ///   - template: Template defining day count and daily readings.
-    ///   - modelContext: Context used to insert the plan and all child day rows.
-    /// - Returns: The newly created persisted plan.
-    /// - Note: This pre-generates all `ReadingPlanDay` rows up front with 1-based day numbers.
+    /**
+     Starts a new persisted reading plan from a template.
+     - Parameters:
+       - template: Template defining day count and daily readings.
+       - modelContext: Context used to insert the plan and all child day rows.
+     - Returns: The newly created persisted plan.
+     - Note: This pre-generates all `ReadingPlanDay` rows up front with 1-based day numbers.
+     */
     public static func startPlan(
         template: ReadingPlanTemplate,
         modelContext: ModelContext
@@ -245,18 +257,22 @@ public final class ReadingPlanService {
         return plan
     }
 
-    /// Calculates which 1-based day the user should be on based on the plan start date.
-    /// - Parameter plan: Persisted reading plan.
-    /// - Returns: Clamped expected day number in the range `1...plan.totalDays`.
+    /**
+     Calculates which 1-based day the user should be on based on the plan start date.
+     - Parameter plan: Persisted reading plan.
+     - Returns: Clamped expected day number in the range `1...plan.totalDays`.
+     */
     public static func expectedDay(for plan: ReadingPlan) -> Int {
         let calendar = Calendar.current
         let days = calendar.dateComponents([.day], from: plan.startDate, to: Date()).day ?? 0
         return min(max(days + 1, 1), plan.totalDays)
     }
 
-    /// Calculates completion percentage from the number of completed day rows.
-    /// - Parameter plan: Persisted reading plan.
-    /// - Returns: Completion percentage as a value between `0` and `1`.
+    /**
+     Calculates completion percentage from the number of completed day rows.
+     - Parameter plan: Persisted reading plan.
+     - Returns: Completion percentage as a value between `0` and `1`.
+     */
     public static func completionPercentage(for plan: ReadingPlan) -> Double {
         let completedDays = plan.days?.filter(\.isCompleted).count ?? 0
         return plan.totalDays > 0 ? Double(completedDays) / Double(plan.totalDays) : 0

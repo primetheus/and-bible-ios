@@ -319,10 +319,12 @@ public struct SelectionQuery: Codable, Sendable {
 
 // MARK: - JSON Helpers
 
-/// JSON encoder configured for bridge communication.
-///
-/// The bridge uses millisecond timestamps to stay aligned with Android and the web client's
-/// existing expectations.
+/**
+ JSON encoder configured for bridge communication.
+
+ The bridge uses millisecond timestamps to stay aligned with Android and the web client's
+ existing expectations.
+ */
 public let bridgeEncoder: JSONEncoder = {
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .millisecondsSince1970

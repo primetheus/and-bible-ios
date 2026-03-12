@@ -7,13 +7,15 @@ import SwordKit
 /// Maximum number of results per module (matches Android SearchControl.MAX_SEARCH_RESULTS).
 private let maxSearchResults = 5000
 
-/// Provides full-text search across SWORD modules.
-///
-/// `SearchService` is the direct-search path used when the app searches through
-/// SWORD itself rather than the SQLite FTS index. It is responsible for:
-/// - converting UI-facing word-mode and scope selections into `SearchOptions`
-/// - preserving Strong's and lemma searches so SWORD can run entry-attribute lookups
-/// - caching the most recent single-module and multi-module result sets for UI reuse
+/**
+ Provides full-text search across SWORD modules.
+
+ `SearchService` is the direct-search path used when the app searches through
+ SWORD itself rather than the SQLite FTS index. It is responsible for:
+ - converting UI-facing word-mode and scope selections into `SearchOptions`
+ - preserving Strong's and lemma searches so SWORD can run entry-attribute lookups
+ - caching the most recent single-module and multi-module result sets for UI reuse
+ */
 @Observable
 public final class SearchService {
     private let swordManager: SwordManager
@@ -27,20 +29,24 @@ public final class SearchService {
     /// The most recent multi-module search results.
     public private(set) var lastMultiResults: MultiSearchResults?
 
-    /// Creates a search service backed by the active `SwordManager`.
-    /// - Parameter swordManager: Module manager used to resolve target modules and execute SWORD searches.
+    /**
+     Creates a search service backed by the active `SwordManager`.
+     - Parameter swordManager: Module manager used to resolve target modules and execute SWORD searches.
+     */
     public init(swordManager: SwordManager) {
         self.swordManager = swordManager
     }
 
-    /// Searches one module using raw SWORD search options.
-    /// - Parameters:
-    ///   - moduleName: Module abbreviation to search.
-    ///   - query: Raw query string passed through to SWORD.
-    ///   - searchType: Search algorithm to use, such as multi-word, phrase, or entry attribute.
-    ///   - scope: Optional SWORD scope string limiting the search range.
-    /// - Returns: Capped search results for the module, or `nil` when the module cannot be resolved.
-    /// - Note: Results are truncated to `maxSearchResults` to match Android's result cap.
+    /**
+     Searches one module using raw SWORD search options.
+     - Parameters:
+       - moduleName: Module abbreviation to search.
+       - query: Raw query string passed through to SWORD.
+       - searchType: Search algorithm to use, such as multi-word, phrase, or entry attribute.
+       - scope: Optional SWORD scope string limiting the search range.
+     - Returns: Capped search results for the module, or `nil` when the module cannot be resolved.
+     - Note: Results are truncated to `maxSearchResults` to match Android's result cap.
+     */
     public func search(
         moduleName: String,
         query: String,
@@ -64,14 +70,16 @@ public final class SearchService {
         return capped
     }
 
-    /// Searches one module using Android-style word-mode and scope selections.
-    /// - Parameters:
-    ///   - moduleName: Module abbreviation to search.
-    ///   - query: User-entered search text.
-    ///   - wordMode: Query mode describing whether all words, any word, or an exact phrase should match.
-    ///   - scopeOption: Scope selection to convert into a SWORD scope string.
-    /// - Returns: Capped search results for the module, or `nil` when the module cannot be resolved.
-    /// - Note: Strong's-style queries bypass word-mode decoration so SWORD can resolve them as tag searches.
+    /**
+     Searches one module using Android-style word-mode and scope selections.
+     - Parameters:
+       - moduleName: Module abbreviation to search.
+       - query: User-entered search text.
+       - wordMode: Query mode describing whether all words, any word, or an exact phrase should match.
+       - scopeOption: Scope selection to convert into a SWORD scope string.
+     - Returns: Capped search results for the module, or `nil` when the module cannot be resolved.
+     - Note: Strong's-style queries bypass word-mode decoration so SWORD can resolve them as tag searches.
+     */
     public func search(
         moduleName: String,
         query: String,
@@ -87,14 +95,16 @@ public final class SearchService {
         )
     }
 
-    /// Searches multiple modules and groups the results by verse.
-    /// - Parameters:
-    ///   - moduleNames: Module abbreviations to search. Missing modules are skipped.
-    ///   - query: User-entered search text.
-    ///   - wordMode: Query mode describing whether all words, any word, or an exact phrase should match.
-    ///   - scopeOption: Scope selection to convert into a SWORD scope string.
-    /// - Returns: Combined multi-module results preserving each module's capped result set.
-    /// - Note: This path shares one `SearchOptions` instance across all resolved modules so word mode and scope stay aligned.
+    /**
+     Searches multiple modules and groups the results by verse.
+     - Parameters:
+       - moduleNames: Module abbreviations to search. Missing modules are skipped.
+       - query: User-entered search text.
+       - wordMode: Query mode describing whether all words, any word, or an exact phrase should match.
+       - scopeOption: Scope selection to convert into a SWORD scope string.
+     - Returns: Combined multi-module results preserving each module's capped result set.
+     - Note: This path shares one `SearchOptions` instance across all resolved modules so word mode and scope stay aligned.
+     */
     public func searchMultiple(
         moduleNames: [String],
         query: String,
@@ -140,10 +150,12 @@ public final class SearchService {
         return wordMode.decorateQuery(query)
     }
 
-    /// Returns whether a query looks like a Strong's or lemma lookup.
-    /// - Parameter query: Raw user-entered query.
-    /// - Returns: `true` for supported `strong:`, `lemma:`, `H1234`, or `G5620`-style searches.
-    /// - Note: This intentionally accepts shorthand Hebrew/Greek keys because those must not be quoted or decorated as normal full-text queries.
+    /**
+     Returns whether a query looks like a Strong's or lemma lookup.
+     - Parameter query: Raw user-entered query.
+     - Returns: `true` for supported `strong:`, `lemma:`, `H1234`, or `G5620`-style searches.
+     - Note: This intentionally accepts shorthand Hebrew/Greek keys because those must not be quoted or decorated as normal full-text queries.
+     */
     public func isStrongsQuery(_ query: String) -> Bool {
         let trimmed = query.trimmingCharacters(in: .whitespaces).lowercased()
         return trimmed.hasPrefix("strong:") ||
@@ -152,10 +164,12 @@ public final class SearchService {
                 trimmed.dropFirst().allSatisfy(\.isNumber))
     }
 
-    /// Normalize a Strong's query for SWORD entry attribute search.
-    /// - Parameter query: Raw user-entered query.
-    /// - Returns: A normalized query plus the `SearchType` that should be used with SWORD.
-    /// - Note: Shorthand values such as `H1234` or `G5620` are expanded to `lemma:strong:<value>` so entry-attribute lookup behaves like Android.
+    /**
+     Normalize a Strong's query for SWORD entry attribute search.
+     - Parameter query: Raw user-entered query.
+     - Returns: A normalized query plus the `SearchType` that should be used with SWORD.
+     - Note: Shorthand values such as `H1234` or `G5620` are expanded to `lemma:strong:<value>` so entry-attribute lookup behaves like Android.
+     */
     public func normalizeStrongsQuery(_ query: String) -> (query: String, searchType: SearchType) {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         if trimmed.lowercased().hasPrefix("strong:") || trimmed.lowercased().hasPrefix("lemma:") {

@@ -16,17 +16,19 @@ public enum SyncState: Sendable, Equatable {
     case pendingRestart
 }
 
-/// Manages iCloud/CloudKit sync status monitoring.
-///
-/// SwiftData handles actual data sync automatically when configured with
-/// `cloudKitDatabase: .private(...)`. This service monitors account status,
-/// observes remote change notifications, and exposes state to the UI.
-///
-/// ## Conflict Resolution
-/// SwiftData's CloudKit integration uses NSPersistentCloudKitContainer under
-/// the hood, which applies **last-writer-wins** conflict resolution automatically.
-/// When the same record is modified on two devices, the most recent write wins
-/// after CloudKit reconciles. No explicit merge policy code is needed.
+/**
+ Manages iCloud/CloudKit sync status monitoring.
+
+ SwiftData handles actual data sync automatically when configured with
+ `cloudKitDatabase: .private(...)`. This service monitors account status,
+ observes remote change notifications, and exposes state to the UI.
+
+ ## Conflict Resolution
+ SwiftData's CloudKit integration uses NSPersistentCloudKitContainer under
+ the hood, which applies **last-writer-wins** conflict resolution automatically.
+ When the same record is modified on two devices, the most recent write wins
+ after CloudKit reconciles. No explicit merge policy code is needed.
+ */
 @Observable
 public final class SyncService {
     /// Current sync state.
@@ -35,9 +37,11 @@ public final class SyncService {
     /// Last time a remote change notification was received.
     public private(set) var lastSyncDate: Date?
 
-    /// Whether iCloud sync is enabled (persisted in UserDefaults).
-    /// This reflects the *persisted* preference. The actual CloudKit mode
-    /// is determined at app startup and cannot change mid-session.
+    /**
+     Whether iCloud sync is enabled (persisted in UserDefaults).
+     This reflects the *persisted* preference. The actual CloudKit mode
+     is determined at app startup and cannot change mid-session.
+     */
     public private(set) var isEnabled: Bool = false
 
     /// Whether a restart is required to apply sync changes.
@@ -46,8 +50,10 @@ public final class SyncService {
     /// The iCloud account display name, if available.
     public private(set) var accountDescription: String?
 
-    /// The sync mode that is actually active for this session
-    /// (set at startup, does not change until restart).
+    /**
+     The sync mode that is actually active for this session
+     (set at startup, does not change until restart).
+     */
     private var activeMode: Bool = false
 
     private var notificationObserver: NSObjectProtocol?
@@ -60,8 +66,10 @@ public final class SyncService {
         stopMonitoring()
     }
 
-    /// Set the enabled state without triggering side effects.
-    /// Called during app init before monitoring starts.
+    /**
+     Set the enabled state without triggering side effects.
+     Called during app init before monitoring starts.
+     */
     public func setInitialState(enabled: Bool) {
         isEnabled = enabled
         activeMode = enabled
@@ -70,8 +78,10 @@ public final class SyncService {
 
     // MARK: - Monitoring
 
-    /// Start monitoring iCloud account status and remote change notifications.
-    /// Call after ModelContainer is created.
+    /**
+     Start monitoring iCloud account status and remote change notifications.
+     Call after ModelContainer is created.
+     */
     public func startMonitoring(container: ModelContainer) {
         guard activeMode else {
             state = .disabled
@@ -170,8 +180,10 @@ public final class SyncService {
 
     // MARK: - Toggle
 
-    /// Toggle sync on/off. Sets `requiresRestart` and moves to `.pendingRestart`
-    /// state because the ModelContainer must be reconstructed.
+    /**
+     Toggle sync on/off. Sets `requiresRestart` and moves to `.pendingRestart`
+     state because the ModelContainer must be reconstructed.
+     */
     public func toggleSync() {
         isEnabled.toggle()
         UserDefaults.standard.set(isEnabled, forKey: "icloud_sync_enabled")

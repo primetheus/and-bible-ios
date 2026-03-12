@@ -9,16 +9,18 @@ import SQLite3
 import SwordKit
 import Observation
 
-/// Manages FTS5 search indexes for SWORD modules.
-///
-/// Before a module can be searched, it must be indexed. The service extracts
-/// all verse/entry text from the SWORD module and inserts it into an FTS5
-/// virtual table. Subsequent searches query this table for near-instant results.
-///
-/// Threading model:
-/// - the SQLite handle is opened with `SQLITE_OPEN_FULLMUTEX`
-/// - long-running indexing work happens on a background queue
-/// - observable UI state is pushed back to the main queue
+/**
+ Manages FTS5 search indexes for SWORD modules.
+
+ Before a module can be searched, it must be indexed. The service extracts
+ all verse/entry text from the SWORD module and inserts it into an FTS5
+ virtual table. Subsequent searches query this table for near-instant results.
+
+ Threading model:
+ - the SQLite handle is opened with `SQLITE_OPEN_FULLMUTEX`
+ - long-running indexing work happens on a background queue
+ - observable UI state is pushed back to the main queue
+ */
 @Observable
 public final class SearchIndexService: @unchecked Sendable {
     private var db: OpaquePointer?
@@ -37,10 +39,12 @@ public final class SearchIndexService: @unchecked Sendable {
     /// Current key being processed during indexing (e.g. "Genesis 12:4").
     public var indexingKey: String = ""
 
-    /// Creates the shared FTS5 index database in the app documents directory if needed.
-    ///
-    /// The initializer opens `search_indexes.sqlite`, enables WAL mode, creates the
-    /// required tables, and invalidates metadata for indexes built against older schemas.
+    /**
+     Creates the shared FTS5 index database in the app documents directory if needed.
+
+     The initializer opens `search_indexes.sqlite`, enables WAL mode, creates the
+     required tables, and invalidates metadata for indexes built against older schemas.
+     */
     public init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         dbPath = docs.appendingPathComponent("search_indexes.sqlite").path
@@ -106,11 +110,13 @@ public final class SearchIndexService: @unchecked Sendable {
         moduleNames.filter { !hasIndex(for: $0) }
     }
 
-    /// Build an FTS5 search index for a SWORD module.
-    ///
-    /// Iterates all entries in the module and inserts their text into the FTS5 table.
-    /// Updates `isIndexing`, `indexProgress`, `indexingModule`, and `indexingKey`
-    /// on the main thread for progress UI.
+    /**
+     Build an FTS5 search index for a SWORD module.
+
+     Iterates all entries in the module and inserts their text into the FTS5 table.
+     Updates `isIndexing`, `indexProgress`, `indexingModule`, and `indexingKey`
+     on the main thread for progress UI.
+     */
     public func createIndex(module: SwordModule) async {
         let moduleName = module.info.name
         let moduleDesc = module.info.description
@@ -355,9 +361,11 @@ public final class SearchIndexService: @unchecked Sendable {
 
     // MARK: - Text Cleaning
 
-    /// Strip Strong's number tags like `<H01732>`, `<G2424>` and other inline
-    /// markup from SWORD strip text. Some modules (e.g., KJV with Strongs)
-    /// embed these in the text data and `stripText()` doesn't remove them.
+    /**
+     Strip Strong's number tags like `<H01732>`, `<G2424>` and other inline
+     markup from SWORD strip text. Some modules (e.g., KJV with Strongs)
+     embed these in the text data and `stripText()` doesn't remove them.
+     */
     public static func cleanText(_ text: String) -> String {
         // Remove <Hxxxxx>, <Gxxxxx>, <hxxxxx>, <gxxxxx> patterns (Strong's Hebrew/Greek)
         // Also remove <Wxxxxx> (morphology) patterns

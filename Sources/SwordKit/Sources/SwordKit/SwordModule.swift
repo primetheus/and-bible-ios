@@ -3,12 +3,14 @@
 import Foundation
 import CLibSword
 
-/// Swift wrapper around a SWORD SWModule instance.
-///
-/// Provides verse key navigation, text retrieval, and search capabilities.
-/// All operations are serialized on an internal queue since libsword is not thread-safe.
-///
-/// Do not create instances directly — obtain them from `SwordManager.module(named:)`.
+/**
+ Swift wrapper around a SWORD SWModule instance.
+
+ Provides verse key navigation, text retrieval, and search capabilities.
+ All operations are serialized on an internal queue since libsword is not thread-safe.
+
+ Do not create instances directly — obtain them from `SwordManager.module(named:)`.
+ */
 public final class SwordModule: @unchecked Sendable {
     let handle: UnsafeMutableRawPointer
     private let queue: DispatchQueue
@@ -57,8 +59,10 @@ public final class SwordModule: @unchecked Sendable {
 
     // MARK: - Key Navigation
 
-    /// Set the current verse/key position.
-    /// - Parameter keyText: A verse reference like "Gen 1:1" or a dictionary key.
+    /**
+     Set the current verse/key position.
+     - Parameter keyText: A verse reference like "Gen 1:1" or a dictionary key.
+     */
     public func setKey(_ keyText: String) {
         queue.sync {
             SWModule_setKeyText(handle, keyText)
@@ -72,8 +76,10 @@ public final class SwordModule: @unchecked Sendable {
         }
     }
 
-    /// Navigate to the next entry/verse.
-    /// - Returns: `true` if navigation succeeded (not at end).
+    /**
+     Navigate to the next entry/verse.
+     - Returns: `true` if navigation succeeded (not at end).
+     */
     @discardableResult
     public func next() -> Bool {
         queue.sync {
@@ -81,8 +87,10 @@ public final class SwordModule: @unchecked Sendable {
         }
     }
 
-    /// Navigate to the previous entry/verse.
-    /// - Returns: `true` if navigation succeeded (not at beginning).
+    /**
+     Navigate to the previous entry/verse.
+     - Returns: `true` if navigation succeeded (not at beginning).
+     */
     @discardableResult
     public func previous() -> Bool {
         queue.sync {
@@ -106,9 +114,11 @@ public final class SwordModule: @unchecked Sendable {
 
     // MARK: - Text Retrieval
 
-    /// Atomically set key, read back actual key, and render text in one queue.sync block.
-    /// This prevents interleaving with other SWORD operations between setKey/currentKey/renderText.
-    /// Returns (actualKey, renderedText).
+    /**
+     Atomically set key, read back actual key, and render text in one queue.sync block.
+     This prevents interleaving with other SWORD operations between setKey/currentKey/renderText.
+     Returns (actualKey, renderedText).
+     */
     public func setKeyAndRender(_ keyText: String) -> (actualKey: String, text: String) {
         queue.sync {
             SWModule_setKeyText(handle, keyText)
@@ -148,9 +158,11 @@ public final class SwordModule: @unchecked Sendable {
 
     // MARK: - Configuration
 
-    /// Get a module configuration entry value.
-    /// - Parameter key: The config key (e.g., "About", "LCSH", "DistributionLicense").
-    /// - Returns: The value, or nil if not found.
+    /**
+     Get a module configuration entry value.
+     - Parameter key: The config key (e.g., "About", "LCSH", "DistributionLicense").
+     - Returns: The value, or nil if not found.
+     */
     public func configEntry(_ key: String) -> String? {
         queue.sync {
             guard let cStr = SWModule_getConfigEntry(handle, key) else { return nil }
@@ -158,8 +170,10 @@ public final class SwordModule: @unchecked Sendable {
         }
     }
 
-    /// Set the cipher key for encrypted modules.
-    /// - Parameter key: The decryption key.
+    /**
+     Set the cipher key for encrypted modules.
+     - Parameter key: The decryption key.
+     */
     public func setCipherKey(_ key: String) {
         queue.sync {
             SWModule_setCipherKey(handle, key)
@@ -168,15 +182,17 @@ public final class SwordModule: @unchecked Sendable {
 
     // MARK: - Versification / Book List
 
-    /// Get the list of all books in this Bible module's versification.
-    ///
-    /// Iterates through the module's verse key positions using `getKeyChildren()`,
-    /// collecting book metadata (name, OSIS ID, abbreviation, chapter count, testament).
-    /// Jumps between books efficiently by setting the key to the last chapter of each book
-    /// and advancing to the next.
-    ///
-    /// - Returns: Ordered array of `BookInfo` for each book in the module's canon.
-    ///   Returns empty array for non-Bible modules or if the module has no verse key.
+    /**
+     Get the list of all books in this Bible module's versification.
+
+     Iterates through the module's verse key positions using `getKeyChildren()`,
+     collecting book metadata (name, OSIS ID, abbreviation, chapter count, testament).
+     Jumps between books efficiently by setting the key to the last chapter of each book
+     and advancing to the next.
+
+     - Returns: Ordered array of `BookInfo` for each book in the module's canon.
+       Returns empty array for non-Bible modules or if the module has no verse key.
+     */
     public func getBookList() -> [BookInfo] {
         guard info.category == .bible || info.category == .commentary else { return [] }
         return queue.sync {
@@ -236,9 +252,11 @@ public final class SwordModule: @unchecked Sendable {
 
     // MARK: - Key Browsing
 
-    /// Collect all entry keys in the module (for dictionary/genbook key browsing).
-    /// Uses begin()/next() iteration, returns array of key strings.
-    /// Faster than `iterateAllEntries` since it skips text retrieval.
+    /**
+     Collect all entry keys in the module (for dictionary/genbook key browsing).
+     Uses begin()/next() iteration, returns array of key strings.
+     Faster than `iterateAllEntries` since it skips text retrieval.
+     */
     public func allKeys() -> [String] {
         queue.sync {
             let savedKey = String(cString: SWModule_getKeyText(handle))
@@ -257,8 +275,10 @@ public final class SwordModule: @unchecked Sendable {
         }
     }
 
-    /// Get child keys at the current position (for tree-key modules like general books).
-    /// Returns the NULL-terminated string array from SWORD's getKeyChildren.
+    /**
+     Get child keys at the current position (for tree-key modules like general books).
+     Returns the NULL-terminated string array from SWORD's getKeyChildren.
+     */
     public func keyChildren() -> [String] {
         queue.sync {
             guard let children = SWModule_getKeyChildren(handle) else { return [] }
@@ -274,13 +294,15 @@ public final class SwordModule: @unchecked Sendable {
 
     // MARK: - Bulk Iteration
 
-    /// Iterate through all entries in the module, calling the callback for each.
-    ///
-    /// The callback receives `(key, plainText, index)` and should return `true` to continue.
-    /// All SWORD operations run in a single queue.sync block for efficiency.
-    /// The module's current key position is saved and restored after iteration.
-    ///
-    /// - Parameter callback: Called for each entry. Return `false` to stop early.
+    /**
+     Iterate through all entries in the module, calling the callback for each.
+
+     The callback receives `(key, plainText, index)` and should return `true` to continue.
+     All SWORD operations run in a single queue.sync block for efficiency.
+     The module's current key position is saved and restored after iteration.
+
+     - Parameter callback: Called for each entry. Return `false` to stop early.
+     */
     public func iterateAllEntries(_ callback: (String, String, Int) -> Bool) {
         queue.sync {
             // Save current position
@@ -308,9 +330,11 @@ public final class SwordModule: @unchecked Sendable {
 
     // MARK: - Search
 
-    /// Search the module for the given query.
-    /// - Parameter options: Search configuration.
-    /// - Returns: Search results.
+    /**
+     Search the module for the given query.
+     - Parameter options: Search configuration.
+     - Returns: Search results.
+     */
     public func search(_ options: SearchOptions) -> SearchResults {
         queue.sync {
             let flags: Int32 = options.caseInsensitive ? 2 : 0 // REG_ICASE = 2
@@ -350,14 +374,16 @@ public final class SwordModule: @unchecked Sendable {
 
     // MARK: - Feature Detection
 
-    /// Detect module features by parsing the .conf file directly from disk.
-    ///
-    /// SWORD's flat API `getConfigEntry()` only returns the first value for
-    /// multi-value keys like `Feature` and `GlobalOptionFilter`. This causes
-    /// modules where `StrongsNumbers` isn't the first entry (e.g., KJV) to
-    /// be missed. Parsing the .conf file catches all entries.
-    ///
-    /// Falls back to the C API if the conf file can't be read.
+    /**
+     Detect module features by parsing the .conf file directly from disk.
+
+     SWORD's flat API `getConfigEntry()` only returns the first value for
+     multi-value keys like `Feature` and `GlobalOptionFilter`. This causes
+     modules where `StrongsNumbers` isn't the first entry (e.g., KJV) to
+     be missed. Parsing the .conf file catches all entries.
+
+     Falls back to the C API if the conf file can't be read.
+     */
     private static func detectFeatures(
         name: String,
         handle: UnsafeMutableRawPointer,

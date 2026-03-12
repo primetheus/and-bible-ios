@@ -3,18 +3,22 @@
 import SwiftUI
 import WebKit
 
-/// SwiftUI wrapper around WKWebView that loads the Vue.js Bible frontend.
-///
-/// Usage:
-/// ```swift
-/// BibleWebView(bridge: bridge)
-///     .onAppear { bridge.emit(event: "loadDocument", data: documentJson) }
-/// ```
+/**
+ SwiftUI wrapper around WKWebView that loads the Vue.js Bible frontend.
+
+ Usage:
+ ```swift
+ BibleWebView(bridge: bridge)
+     .onAppear { bridge.emit(event: "loadDocument", data: documentJson) }
+ ```
+ */
 #if os(iOS)
-/// UIViewController that hosts the WKWebView.
-/// Using a view controller (instead of bare UIViewRepresentable) ensures the
-/// WKWebView participates in the full UIKit responder chain and receives
-/// touch/click events reliably inside SwiftUI.
+/**
+ UIViewController that hosts the WKWebView.
+ Using a view controller (instead of bare UIViewRepresentable) ensures the
+ WKWebView participates in the full UIKit responder chain and receives
+ touch/click events reliably inside SwiftUI.
+ */
 public class BibleWebViewController: UIViewController {
     let webView: WKWebView
     let bridge: BibleBridge
@@ -56,10 +60,12 @@ public class BibleWebViewController: UIViewController {
     }
 }
 
-/// SwiftUI wrapper that hosts the Vue.js Bible client inside `WKWebView`.
-///
-/// The native bridge/controller layer owns this view and uses `BibleBridge.emit(event:data:)`
-/// to push documents, config, and bookmark updates into the already loaded client bundle.
+/**
+ SwiftUI wrapper that hosts the Vue.js Bible client inside `WKWebView`.
+
+ The native bridge/controller layer owns this view and uses `BibleBridge.emit(event:data:)`
+ to push documents, config, and bookmark updates into the already loaded client bundle.
+ */
 public struct BibleWebView: UIViewControllerRepresentable {
     public typealias UIViewControllerType = BibleWebViewController
 
@@ -139,11 +145,13 @@ public struct BibleWebView: NSViewRepresentable {
 // MARK: - Shared WebView Creation
 
 extension BibleWebView {
-    /// Creates and configures the shared `WKWebView` used on both iOS and macOS.
-    ///
-    /// This method installs the native bridge handler, injects the Android compatibility shim
-    /// used by the Vue.js client, attaches coordinator delegates, and loads the packaged
-    /// `bibleview-js` bundle from SwiftPM resources.
+    /**
+     Creates and configures the shared `WKWebView` used on both iOS and macOS.
+
+     This method installs the native bridge handler, injects the Android compatibility shim
+     used by the Vue.js client, attaches coordinator delegates, and loads the packaged
+     `bibleview-js` bundle from SwiftPM resources.
+     */
     func createWebView(coordinator: WebViewCoordinator) -> WKWebView {
         let config = WKWebViewConfiguration()
 

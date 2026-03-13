@@ -262,10 +262,59 @@ final class AndBibleUITests: XCTestCase {
         let app = makeApp(settingsTarget: "settingsLabelsLink")
         app.launch()
 
-        openSettings(in: app, launchedDirectly: true)
-        tapSettingsElement("settingsLabelsLink", in: app)
+        XCTAssertTrue(openLabelManager(in: app).exists)
+    }
 
-        XCTAssertTrue(requireElement("labelManagerScreen", in: app, timeout: 10).exists)
+    /**
+     Verifies that labels can be created, renamed, and deleted from the label manager.
+     *
+     * - Side effects:
+     *   - launches the app directly into the label manager
+     *   - creates one new label, renames it through the edit sheet, and deletes it via swipe
+     *     actions
+     * - Failure modes:
+     *   - fails if the create alert, edit sheet, or delete swipe action cannot be reached through
+     *     the label manager UI
+     *   - fails if the created or renamed label row never appears, or if the deleted row remains
+     *     visible after deletion
+     */
+    func testLabelManagerCreateRenameDeleteFlow() {
+        let app = makeApp(openLabelManagerOnLaunch: true)
+        let originalName = uniqueLabelName(prefix: "UITest Label")
+        let renamedName = uniqueLabelName(prefix: "UITest Renamed Label")
+        app.launch()
+
+        XCTAssertTrue(openLabelManager(in: app, launchedDirectly: true).exists)
+
+        requireElement("labelManagerAddButton", in: app, timeout: 10).tap()
+        let newLabelAlert = app.alerts.firstMatch
+        XCTAssertTrue(newLabelAlert.waitForExistence(timeout: 10))
+        let newLabelField = newLabelAlert.textFields.firstMatch
+        XCTAssertTrue(newLabelField.waitForExistence(timeout: 10))
+        newLabelField.tap()
+        newLabelField.typeText(originalName)
+        let createButton = newLabelAlert.buttons["Create"].firstMatch
+        XCTAssertTrue(createButton.waitForExistence(timeout: 10))
+        createButton.tap()
+
+        let originalRow = requireLabelRow(named: originalName, in: app, timeout: 10)
+        originalRow.tap()
+
+        XCTAssertTrue(requireElement("labelEditScreen", in: app, timeout: 10).exists)
+        let labelEditNameField = requireElement("labelEditNameField", in: app, timeout: 10)
+        replaceText(in: labelEditNameField, with: renamedName)
+        requireElement("labelEditDoneButton", in: app, timeout: 10).tap()
+
+        let renamedRow = requireLabelRow(named: renamedName, in: app, timeout: 10)
+        XCTAssertTrue(renamedRow.exists)
+        XCTAssertFalse(labelRow(named: originalName, in: app).exists)
+
+        renamedRow.swipeLeft()
+        requireElement("labelManagerDeleteAction", in: app, timeout: 10).tap()
+
+        let deletedPredicate = NSPredicate(format: "exists == false")
+        expectation(for: deletedPredicate, evaluatedWith: labelRow(named: renamedName, in: app))
+        waitForExpectations(timeout: 10)
     }
 
     /**
@@ -336,6 +385,8 @@ final class AndBibleUITests: XCTestCase {
      *     into view on launch.
      *   - openImportExportOnLaunch: Whether the app should present Import and Export immediately on
      *     launch.
+     *   - openLabelManagerOnLaunch: Whether the app should present Label Manager immediately on
+     *     launch.
      * - Returns: App handle configured with deterministic launch arguments for the smoke suite.
      * - Side effects:
      *   - appends a launch argument that disables the discrete-mode calculator gate during UI tests
@@ -343,11 +394,14 @@ final class AndBibleUITests: XCTestCase {
      *     scroll the requested row into view
      *   - when `openImportExportOnLaunch` is `true`, configures the app to present Import and
      *     Export immediately after the reader hydrates
+     *   - when `openLabelManagerOnLaunch` is `true`, configures the app to present Label Manager
+     *     immediately after the reader hydrates
      * - Failure modes: This helper cannot fail.
      */
     private func makeApp(
         settingsTarget: String? = nil,
-        openImportExportOnLaunch: Bool = false
+        openImportExportOnLaunch: Bool = false,
+        openLabelManagerOnLaunch: Bool = false
     ) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["UITEST_DISABLE_CALCULATOR_GATE"]
@@ -358,7 +412,38 @@ final class AndBibleUITests: XCTestCase {
         if openImportExportOnLaunch {
             app.launchArguments += ["UITEST_OPEN_IMPORT_EXPORT"]
         }
+        if openLabelManagerOnLaunch {
+            app.launchArguments += ["UITEST_OPEN_LABEL_MANAGER"]
+        }
         return app
+    }
+
+    /**
+     Opens Label Manager either from Settings navigation or from a direct test-only launch path.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - launchedDirectly: Whether the app was launched straight into the Label Manager sheet.
+     * - Returns: The root accessibility-identified Label Manager screen element.
+     * - Side effects:
+     *   - when `launchedDirectly` is `false`, opens Settings and pushes the Label Manager screen
+     *   - when `launchedDirectly` is `true`, waits for the direct-launch Label Manager sheet to
+     *     render
+     * - Failure modes:
+     *   - fails when the Label Manager screen never appears
+     */
+    private func openLabelManager(
+        in app: XCUIApplication,
+        launchedDirectly: Bool = false
+    ) -> XCUIElement {
+        if !launchedDirectly {
+            openSettings(
+                in: app,
+                launchedDirectly: app.launchArguments.contains("UITEST_OPEN_SETTINGS")
+            )
+            tapSettingsElement("settingsLabelsLink", in: app)
+        }
+        return requireElement("labelManagerScreen", in: app, timeout: 10)
     }
 
     /**
@@ -483,5 +568,94 @@ final class AndBibleUITests: XCTestCase {
             line: line
         )
         element.tap()
+    }
+
+    /**
+     Resolves one label row by its accessibility label.
+     *
+     * - Parameters:
+     *   - name: User-visible label name expected on the row.
+     *   - app: Running application under test.
+     * - Returns: The first matching Label Manager row button for the requested label name.
+     * - Side effects:
+     *   - queries the live accessibility hierarchy for a label-manager row whose label matches
+     *     `name`
+     * - Failure modes:
+     *   - returns an unresolved query when no matching row currently exists
+     */
+    private func labelRow(named name: String, in app: XCUIApplication) -> XCUIElement {
+        let predicate = NSPredicate(format: "label == %@", name)
+        return app.buttons
+            .matching(identifier: "labelManagerRowButton")
+            .matching(predicate)
+            .firstMatch
+    }
+
+    /**
+     Waits for a label row to appear and records a precise failure if it does not.
+     *
+     * - Parameters:
+     *   - name: User-visible label name expected on the row.
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to wait before failing.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Returns: The resolved label-row UI element.
+     * - Side effects:
+     *   - polls the live accessibility hierarchy until the requested row exists or the timeout
+     *     expires
+     * - Failure modes:
+     *   - records an XCTest failure if the row never appears within the requested timeout
+     */
+    private func requireLabelRow(
+        named name: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement {
+        let element = labelRow(named: name, in: app)
+        XCTAssertTrue(
+            element.waitForExistence(timeout: timeout),
+            "Expected label row '\(name)' to exist within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+        return element
+    }
+
+    /**
+     Replaces the entire contents of one text field with a new string.
+     *
+     * - Parameters:
+     *   - element: Text field to overwrite.
+     *   - text: Replacement text that should become the field's entire value.
+     * - Side effects:
+     *   - focuses the field, emits delete keystrokes for the current value, and types the
+     *     replacement text through XCTest's software keyboard bridge
+     * - Failure modes:
+     *   - if the field reports a non-string value, the helper falls back to appending `text`
+     *     instead of first deleting existing content
+     */
+    private func replaceText(in element: XCUIElement, with text: String) {
+        element.tap()
+        if let existingText = element.value as? String {
+            let deleteSequence = String(repeating: XCUIKeyboardKey.delete.rawValue, count: existingText.count)
+            element.typeText(deleteSequence + text)
+        } else {
+            element.typeText(text)
+        }
+    }
+
+    /**
+     Builds a unique label name for tests that create and later remove labels.
+     *
+     * - Parameter prefix: Human-readable prefix to keep XCTest failures understandable.
+     * - Returns: One unique label name derived from `prefix` plus a short UUID suffix.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func uniqueLabelName(prefix: String) -> String {
+        "\(prefix) \(String(UUID().uuidString.prefix(8)))"
     }
 }

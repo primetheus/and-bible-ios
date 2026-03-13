@@ -82,11 +82,14 @@ public struct LabelManagerView: View {
                 Button(String(localized: "add"), systemImage: "plus") {
                     showNewLabel = true
                 }
+                .accessibilityIdentifier("labelManagerAddButton")
             }
         }
         .alert(String(localized: "new_label"), isPresented: $showNewLabel) {
             TextField(String(localized: "label_name"), text: $newLabelName)
+                .accessibilityIdentifier("labelManagerNewLabelNameField")
             Button(String(localized: "create")) { createLabel() }
+                .accessibilityIdentifier("labelManagerCreateButton")
             Button(String(localized: "cancel"), role: .cancel) { newLabelName = "" }
         }
         .sheet(item: $editingLabel) { label in
@@ -140,10 +143,13 @@ public struct LabelManagerView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("labelManagerRowButton")
+                .accessibilityLabel(label.name)
                 .swipeActions(edge: .trailing) {
                     Button(String(localized: "delete"), role: .destructive) {
                         deleteLabel(label)
                     }
+                    .accessibilityIdentifier("labelManagerDeleteAction")
                 }
                 .swipeActions(edge: .leading) {
                     if onOpenStudyPad != nil {
@@ -285,6 +291,7 @@ private struct LabelEditView: View {
         Form {
             Section(String(localized: "label_edit_name")) {
                 TextField(String(localized: "label_name"), text: $label.name)
+                    .accessibilityIdentifier("labelEditNameField")
             }
 
             Section(String(localized: "label_edit_color")) {
@@ -358,6 +365,7 @@ private struct LabelEditView: View {
                 }
             }
         }
+        .accessibilityIdentifier("labelEditScreen")
         .navigationTitle(String(localized: "edit_label"))
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -368,6 +376,7 @@ private struct LabelEditView: View {
                     save()
                     dismiss()
                 }
+                .accessibilityIdentifier("labelEditDoneButton")
             }
         }
         .onDisappear { save() }

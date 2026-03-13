@@ -236,6 +236,7 @@ public struct ModuleBrowserView: View {
                 }
             }
         }
+        .accessibilityIdentifier("moduleBrowserScreen")
         .searchable(text: $searchText, prompt: String(localized: "search_modules"))
         .navigationTitle(String(localized: "downloads"))
         .toolbar {

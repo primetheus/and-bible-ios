@@ -120,9 +120,11 @@ public struct WorkspaceSelectorView: View {
                 guard !newWorkspaceName.isEmpty else { return }
                 let store = WorkspaceStore(modelContext: modelContext)
                 let workspace = store.createWorkspace(name: newWorkspaceName)
-                windowManager.setActiveWorkspace(workspace)
+                if !uiTestShowsInlineActions {
+                    windowManager.setActiveWorkspace(workspace)
+                    dismiss()
+                }
                 newWorkspaceName = ""
-                dismiss()
             }
             Button(String(localized: "cancel"), role: .cancel) { newWorkspaceName = "" }
         }

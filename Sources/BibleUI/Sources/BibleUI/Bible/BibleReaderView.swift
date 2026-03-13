@@ -527,6 +527,7 @@ public struct BibleReaderView: View {
                     showImportExport = true
                 } else if uiTestOpensLabelManagerOnLaunch {
                     hasAppliedUITestInitialPresentation = true
+                    resetLabelsForUITests()
                     showLabelManager = true
                 } else if uiTestOpensReadingPlansOnLaunch {
                     hasAppliedUITestInitialPresentation = true
@@ -534,6 +535,7 @@ public struct BibleReaderView: View {
                     showReadingPlans = true
                 } else if uiTestOpensWorkspacesOnLaunch {
                     hasAppliedUITestInitialPresentation = true
+                    resetWorkspacesForUITests()
                     showWorkspaces = true
                 } else if uiTestOpensSettingsOnLaunch {
                     hasAppliedUITestInitialPresentation = true
@@ -2101,6 +2103,57 @@ public struct BibleReaderView: View {
             modelContext.delete(plan)
         }
         try? modelContext.save()
+    }
+
+    /**
+     Clears user-created labels before a direct XCUITest label-manager workflow.
+     *
+     * Side effects:
+     * - fetches persisted `Label` rows from SwiftData
+     * - deletes only real user labels, preserving system labels required by the app
+     * - inserts one benign seed label so the label manager stays on its normal list code path
+     * - saves the reset label state back to SwiftData
+     *
+     * Failure modes:
+     * - returns without mutation when the fetch fails
+     * - silently discards save failures because the reset is only used for test setup
+     */
+    private func resetLabelsForUITests() {
+        let descriptor = FetchDescriptor<BibleCore.Label>()
+        guard let labels = try? modelContext.fetch(descriptor) else { return }
+        for label in labels where label.isRealLabel {
+            modelContext.delete(label)
+        }
+        modelContext.insert(BibleCore.Label(name: "UI Test Seed"))
+        try? modelContext.save()
+    }
+
+    /**
+     Clears persisted workspaces and recreates one default workspace for direct XCUITest workspace
+     workflows.
+     *
+     * Side effects:
+     * - fetches and deletes every persisted `Workspace` graph from SwiftData
+     * - recreates one fresh default workspace through `WorkspaceStore`
+     * - updates `WindowManager` and `SettingsStore` so the recreated workspace is active
+     *
+     * Failure modes:
+     * - returns without mutation when the workspace fetch fails
+     * - silently discards save failures because the reset is only used for test setup
+     */
+    private func resetWorkspacesForUITests() {
+        let descriptor = FetchDescriptor<Workspace>()
+        guard let workspaces = try? modelContext.fetch(descriptor) else { return }
+        for workspace in workspaces {
+            modelContext.delete(workspace)
+        }
+        try? modelContext.save()
+
+        let workspaceStore = WorkspaceStore(modelContext: modelContext)
+        let workspace = workspaceStore.createWorkspace(name: "UI Test Workspace")
+        let settingsStore = SettingsStore(modelContext: modelContext)
+        settingsStore.activeWorkspaceId = workspace.id
+        windowManager.setActiveWorkspace(workspace)
     }
 
     #if os(iOS)

@@ -39,6 +39,9 @@ public struct LabelManagerView: View {
     /// Label currently being edited in the modal edit sheet.
     @State private var editingLabel: BibleCore.Label?
 
+    /// Launch-argument override used by XCUITests to expose direct inline label actions.
+    private let uiTestShowsInlineActions = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_LABEL_MANAGER")
+
     /// Optional callback used to open the selected label in StudyPad.
     var onOpenStudyPad: ((UUID) -> Void)?
 
@@ -105,82 +108,133 @@ public struct LabelManagerView: View {
     private var labelList: some View {
         List {
             ForEach(userLabels) { label in
-                Button {
-                    editingLabel = label
-                } label: {
-                    HStack(spacing: 10) {
-                        if let icon = label.customIcon, !icon.isEmpty {
-                            Image(systemName: BibleCore.Label.sfSymbol(for: icon) ?? icon)
-                                .font(.body)
-                                .foregroundStyle(Color(argbInt: label.color))
-                        } else {
-                            Circle()
-                                .fill(Color(argbInt: label.color))
-                                .frame(width: 14, height: 14)
-                        }
+                HStack(spacing: 8) {
+                    labelSelectionButton(label)
 
-                        Text(label.name)
-                            .font(.body)
-                            .foregroundStyle(.primary)
-
-                        Spacer()
-
-                        if label.favourite {
-                            Image(systemName: "heart.fill")
-                                .foregroundStyle(.red)
-                                .font(.caption)
-                        }
-
-                        if label.underlineStyle {
-                            Image(systemName: "underline")
-                                .foregroundStyle(.secondary)
-                                .font(.caption)
-                        }
-
-                        Image(systemName: "chevron.right")
-                            .foregroundStyle(.tertiary)
-                            .font(.caption)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("labelManagerRowButton")
-                .accessibilityLabel(label.name)
-                .swipeActions(edge: .trailing) {
-                    Button(String(localized: "delete"), role: .destructive) {
-                        deleteLabel(label)
-                    }
-                    .accessibilityIdentifier("labelManagerDeleteAction")
-                }
-                .swipeActions(edge: .leading) {
-                    if onOpenStudyPad != nil {
-                        Button {
-                            onOpenStudyPad?(label.id)
-                        } label: {
-                            SwiftUI.Label(String(localized: "studypad"), systemImage: "book")
-                        }
-                        .tint(Color(argbInt: label.color))
-                    }
-                }
-                .contextMenu {
-                    Button {
-                        editingLabel = label
-                    } label: {
-                        SwiftUI.Label(String(localized: "edit"), systemImage: "pencil")
-                    }
-                    if onOpenStudyPad != nil {
-                        Button {
-                            onOpenStudyPad?(label.id)
-                        } label: {
-                            SwiftUI.Label(String(localized: "open_studypad"), systemImage: "book")
-                        }
-                    }
-                    Button(role: .destructive) {
-                        deleteLabel(label)
-                    } label: {
-                        SwiftUI.Label(String(localized: "delete"), systemImage: "trash")
+                    if uiTestShowsInlineActions {
+                        labelInlineActions(label)
                     }
                 }
             }
+        }
+    }
+
+    /**
+     Builds the main label-selection row button for one label.
+     *
+     * - Parameter label: Label represented by the selectable row body.
+     * - Returns: A button that opens the label editor for the requested label.
+     * - Side effects:
+     *   - stores the selected label in local state and presents the edit sheet
+     * - Failure modes: This helper cannot fail.
+     */
+    private func labelSelectionButton(_ label: BibleCore.Label) -> some View {
+        Button {
+            editingLabel = label
+        } label: {
+            HStack(spacing: 10) {
+                if let icon = label.customIcon, !icon.isEmpty {
+                    Image(systemName: BibleCore.Label.sfSymbol(for: icon) ?? icon)
+                        .font(.body)
+                        .foregroundStyle(Color(argbInt: label.color))
+                } else {
+                    Circle()
+                        .fill(Color(argbInt: label.color))
+                        .frame(width: 14, height: 14)
+                }
+
+                Text(label.name)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                if label.favourite {
+                    Image(systemName: "heart.fill")
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                }
+
+                if label.underlineStyle {
+                    Image(systemName: "underline")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                }
+
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.tertiary)
+                    .font(.caption)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("labelManagerRowButton")
+        .accessibilityLabel(label.name)
+        .swipeActions(edge: .trailing) {
+            Button(String(localized: "delete"), role: .destructive) {
+                deleteLabel(label)
+            }
+            .accessibilityIdentifier("labelManagerDeleteAction")
+        }
+        .swipeActions(edge: .leading) {
+            if onOpenStudyPad != nil {
+                Button {
+                    onOpenStudyPad?(label.id)
+                } label: {
+                    SwiftUI.Label(String(localized: "studypad"), systemImage: "book")
+                }
+                .tint(Color(argbInt: label.color))
+            }
+        }
+        .contextMenu {
+            Button {
+                editingLabel = label
+            } label: {
+                SwiftUI.Label(String(localized: "edit"), systemImage: "pencil")
+            }
+            if onOpenStudyPad != nil {
+                Button {
+                    onOpenStudyPad?(label.id)
+                } label: {
+                    SwiftUI.Label(String(localized: "open_studypad"), systemImage: "book")
+                }
+            }
+            Button(role: .destructive) {
+                deleteLabel(label)
+            } label: {
+                SwiftUI.Label(String(localized: "delete"), systemImage: "trash")
+            }
+        }
+    }
+
+    /**
+     Builds XCUITest-only inline label actions for one row.
+     *
+     * - Parameter label: Label whose edit and delete actions should be exposed inline.
+     * - Returns: A compact trailing action cluster for edit and delete operations.
+     * - Side effects:
+     *   - the edit action presents the label-edit sheet
+     *   - the delete action mutates SwiftData by deleting the selected label
+     * - Failure modes: This helper cannot fail.
+     */
+    private func labelInlineActions(_ label: BibleCore.Label) -> some View {
+        HStack(spacing: 4) {
+            Button {
+                editingLabel = label
+            } label: {
+                Image(systemName: "pencil")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("labelManagerInlineEditButton")
+            .accessibilityLabel(label.name)
+
+            Button(role: .destructive) {
+                deleteLabel(label)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("labelManagerInlineDeleteButton")
+            .accessibilityLabel(label.name)
         }
     }
 

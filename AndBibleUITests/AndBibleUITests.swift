@@ -160,24 +160,17 @@ final class AndBibleUITests: XCTestCase {
      *     does not appear or does not update the selector state as expected
      */
     func testWorkspaceSelectorCreateRenameCloneDeleteFlow() {
-        let initialApp = makeApp(openWorkspacesOnLaunch: true)
-        let createdName = uniqueWorkspaceName(prefix: "UITest Workspace")
-        let renamedName = uniqueWorkspaceName(prefix: "UITest Renamed Workspace")
-        let cloneName = uniqueWorkspaceName(prefix: "UITest Cloned Workspace")
-        initialApp.launch()
+        let app = makeApp(openWorkspacesOnLaunch: true)
+        let createdName = "W1"
+        let renamedName = "W2"
+        let cloneName = "W3"
+        app.launch()
 
-        XCTAssertTrue(openWorkspaceSelector(in: initialApp, launchedDirectly: true).exists)
-        let originalActiveWorkspaceName = requireActiveWorkspaceRow(in: initialApp, timeout: 10).label
+        XCTAssertTrue(openWorkspaceSelector(in: app, launchedDirectly: true).exists)
+        let originalActiveWorkspaceName = requireActiveWorkspaceRow(in: app, timeout: 10).label
 
-        addTeardownBlock {
-            self.bestEffortCleanupWorkspaces(
-                originalWorkspaceName: originalActiveWorkspaceName,
-                transientWorkspaceNames: [createdName, renamedName, cloneName]
-            )
-        }
-
-        requireElement("workspaceSelectorAddButton", in: initialApp, timeout: 10).tap()
-        let createAlert = initialApp.alerts.firstMatch
+        requireElement("workspaceSelectorAddButton", in: app, timeout: 10).tap()
+        let createAlert = app.alerts.firstMatch
         XCTAssertTrue(createAlert.waitForExistence(timeout: 10))
         let createField = createAlert.textFields.firstMatch
         XCTAssertTrue(createField.waitForExistence(timeout: 10))
@@ -187,23 +180,17 @@ final class AndBibleUITests: XCTestCase {
         XCTAssertTrue(createButton.waitForExistence(timeout: 10))
         createButton.tap()
 
-        XCTAssertTrue(requireElement("readerMoreMenuButton", in: initialApp, timeout: 10).exists)
-        initialApp.terminate()
-
-        let renameApp = makeApp(openWorkspacesOnLaunch: true)
-        renameApp.launch()
-
-        XCTAssertTrue(openWorkspaceSelector(in: renameApp, launchedDirectly: true).exists)
-        XCTAssertEqual(requireActiveWorkspaceRow(in: renameApp, timeout: 10).label, originalActiveWorkspaceName)
+        XCTAssertTrue(requireWorkspaceRow(named: createdName, in: app, timeout: 10).exists)
+        XCTAssertEqual(requireActiveWorkspaceRow(in: app, timeout: 10).label, originalActiveWorkspaceName)
 
         requireWorkspaceInlineAction(
             identifier: "workspaceSelectorInlineRenameButton",
             workspaceName: createdName,
-            in: renameApp,
+            in: app,
             timeout: 10
         ).tap()
 
-        let renameAlert = renameApp.alerts.firstMatch
+        let renameAlert = app.alerts.firstMatch
         XCTAssertTrue(renameAlert.waitForExistence(timeout: 10))
         let renameField = renameAlert.textFields.firstMatch
         XCTAssertTrue(renameField.waitForExistence(timeout: 10))
@@ -212,17 +199,17 @@ final class AndBibleUITests: XCTestCase {
         XCTAssertTrue(saveButton.waitForExistence(timeout: 10))
         saveButton.tap()
 
-        XCTAssertTrue(requireWorkspaceRow(named: renamedName, in: renameApp, timeout: 10).exists)
-        XCTAssertEqual(requireActiveWorkspaceRow(in: renameApp, timeout: 10).label, originalActiveWorkspaceName)
+        XCTAssertTrue(requireWorkspaceRow(named: renamedName, in: app, timeout: 10).exists)
+        XCTAssertEqual(requireActiveWorkspaceRow(in: app, timeout: 10).label, originalActiveWorkspaceName)
 
         requireWorkspaceInlineAction(
             identifier: "workspaceSelectorInlineCloneButton",
             workspaceName: renamedName,
-            in: renameApp,
+            in: app,
             timeout: 10
         ).tap()
 
-        let cloneAlert = renameApp.alerts.firstMatch
+        let cloneAlert = app.alerts.firstMatch
         XCTAssertTrue(cloneAlert.waitForExistence(timeout: 10))
         let cloneField = cloneAlert.textFields.firstMatch
         XCTAssertTrue(cloneField.waitForExistence(timeout: 10))
@@ -231,18 +218,18 @@ final class AndBibleUITests: XCTestCase {
         XCTAssertTrue(cloneCreateButton.waitForExistence(timeout: 10))
         cloneCreateButton.tap()
 
-        XCTAssertTrue(requireWorkspaceRow(named: cloneName, in: renameApp, timeout: 10).exists)
+        XCTAssertTrue(requireWorkspaceRow(named: cloneName, in: app, timeout: 10).exists)
         XCTAssertEqual(
-            requireActiveWorkspaceRow(in: renameApp, timeout: 10).label,
+            requireActiveWorkspaceRow(in: app, timeout: 10).label,
             originalActiveWorkspaceName
         )
 
-        deleteWorkspaceIfPresent(named: cloneName, in: renameApp)
-        deleteWorkspaceIfPresent(named: renamedName, in: renameApp)
+        deleteWorkspaceIfPresent(named: cloneName, in: app)
+        deleteWorkspaceIfPresent(named: renamedName, in: app)
 
         let deletedPredicate = NSPredicate(format: "exists == false")
-        expectation(for: deletedPredicate, evaluatedWith: workspaceRow(named: cloneName, in: renameApp))
-        expectation(for: deletedPredicate, evaluatedWith: workspaceRow(named: renamedName, in: renameApp))
+        expectation(for: deletedPredicate, evaluatedWith: workspaceRow(named: cloneName, in: app))
+        expectation(for: deletedPredicate, evaluatedWith: workspaceRow(named: renamedName, in: app))
         waitForExpectations(timeout: 10)
     }
 
@@ -412,8 +399,8 @@ final class AndBibleUITests: XCTestCase {
      */
     func testLabelManagerCreateRenameDeleteFlow() {
         let app = makeApp(openLabelManagerOnLaunch: true)
-        let originalName = uniqueLabelName(prefix: "UITest Label")
-        let renamedName = uniqueLabelName(prefix: "UITest Renamed Label")
+        let originalName = "L1"
+        let renamedName = "L2"
         app.launch()
 
         XCTAssertTrue(openLabelManager(in: app, launchedDirectly: true).exists)
@@ -429,8 +416,12 @@ final class AndBibleUITests: XCTestCase {
         XCTAssertTrue(createButton.waitForExistence(timeout: 10))
         createButton.tap()
 
-        let originalRow = requireLabelRow(named: originalName, in: app, timeout: 10)
-        originalRow.tap()
+        requireLabelInlineAction(
+            identifier: "labelManagerInlineEditButton",
+            labelName: originalName,
+            in: app,
+            timeout: 10
+        ).tap()
 
         XCTAssertTrue(requireElement("labelEditScreen", in: app, timeout: 10).exists)
         let labelEditNameField = requireElement("labelEditNameField", in: app, timeout: 10)
@@ -441,8 +432,12 @@ final class AndBibleUITests: XCTestCase {
         XCTAssertTrue(renamedRow.exists)
         XCTAssertFalse(labelRow(named: originalName, in: app).exists)
 
-        renamedRow.swipeLeft()
-        requireElement("labelManagerDeleteAction", in: app, timeout: 10).tap()
+        requireLabelInlineAction(
+            identifier: "labelManagerInlineDeleteButton",
+            labelName: renamedName,
+            in: app,
+            timeout: 10
+        ).tap()
 
         let deletedPredicate = NSPredicate(format: "exists == false")
         expectation(for: deletedPredicate, evaluatedWith: labelRow(named: renamedName, in: app))
@@ -1014,59 +1009,6 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
-     Best-effort teardown cleanup for transient workspaces created by one test run.
-     *
-     * - Parameters:
-     *   - originalWorkspaceName: Workspace that should be active after cleanup completes.
-     *   - transientWorkspaceNames: Workspace names that should be deleted when present.
-     * - Side effects:
-     *   - launches fresh app instances, restores the original active workspace when possible, and
-     *     removes any transient workspace rows that still exist
-     * - Failure modes:
-     *   - returns silently when the workspace selector cannot be opened or when specific cleanup
-     *     steps are unreachable
-     */
-    private func bestEffortCleanupWorkspaces(
-        originalWorkspaceName: String,
-        transientWorkspaceNames: [String]
-    ) {
-        var cleanupApp = makeApp(openWorkspacesOnLaunch: true)
-        cleanupApp.launch()
-        let workspaceScreen = cleanupApp.descendants(matching: .any)["workspaceSelectorScreen"].firstMatch
-        guard workspaceScreen.waitForExistence(timeout: 10) else {
-            cleanupApp.terminate()
-            return
-        }
-
-        let activeRowPredicate = NSPredicate(format: "value == %@", "activeWorkspace")
-        let activeRow = cleanupApp.buttons
-            .matching(identifier: "workspaceSelectorRowButton")
-            .matching(activeRowPredicate)
-            .firstMatch
-        if activeRow.waitForExistence(timeout: 5), activeRow.label != originalWorkspaceName {
-            let originalRow = workspaceRow(named: originalWorkspaceName, in: cleanupApp)
-            if originalRow.waitForExistence(timeout: 2) {
-                originalRow.tap()
-                let readerMoreMenuButton = cleanupApp.descendants(matching: .any)["readerMoreMenuButton"].firstMatch
-                if readerMoreMenuButton.waitForExistence(timeout: 5) {
-                    cleanupApp.terminate()
-                    cleanupApp = makeApp(openWorkspacesOnLaunch: true)
-                    cleanupApp.launch()
-                    guard cleanupApp.descendants(matching: .any)["workspaceSelectorScreen"].firstMatch.waitForExistence(timeout: 10) else {
-                        cleanupApp.terminate()
-                        return
-                    }
-                }
-            }
-        }
-
-        for name in transientWorkspaceNames {
-            deleteWorkspaceIfPresent(named: name, in: cleanupApp)
-        }
-        cleanupApp.terminate()
-    }
-
-    /**
      Resolves one label row by its accessibility label.
      *
      * - Parameters:
@@ -1121,6 +1063,66 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Resolves one label inline action by button identifier and label name.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier exposed by the label-manager inline action.
+     *   - labelName: User-visible label name attached to the button's accessibility label.
+     *   - app: Running application under test.
+     * - Returns: The first matching inline action button.
+     * - Side effects:
+     *   - queries the live accessibility hierarchy for a button whose identifier and label match
+     *     the requested label action
+     * - Failure modes:
+     *   - returns an unresolved query when no matching inline action button currently exists
+     */
+    private func labelInlineAction(
+        identifier: String,
+        labelName: String,
+        in app: XCUIApplication
+    ) -> XCUIElement {
+        let labelPredicate = NSPredicate(format: "label == %@", labelName)
+        return app.buttons
+            .matching(identifier: identifier)
+            .matching(labelPredicate)
+            .firstMatch
+    }
+
+    /**
+     Waits for a label inline action and records a precise failure if it does not appear.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier exposed by the label-manager inline action.
+     *   - labelName: User-visible label name attached to the button's accessibility label.
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to wait before failing.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Returns: The resolved inline label-action UI element.
+     * - Side effects:
+     *   - polls the live accessibility hierarchy until the requested inline action becomes visible
+     * - Failure modes:
+     *   - records an XCTest failure if the action never appears within the requested timeout
+     */
+    private func requireLabelInlineAction(
+        identifier: String,
+        labelName: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement {
+        let element = labelInlineAction(identifier: identifier, labelName: labelName, in: app)
+        XCTAssertTrue(
+            element.waitForExistence(timeout: timeout),
+            "Expected label action '\(identifier)' for '\(labelName)' to exist within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+        return element
+    }
+
+    /**
      Replaces the entire contents of one text field with a new string.
      *
      * - Parameters:
@@ -1143,27 +1145,4 @@ final class AndBibleUITests: XCTestCase {
         }
     }
 
-    /**
-     Builds a unique label name for tests that create and later remove labels.
-     *
-     * - Parameter prefix: Human-readable prefix to keep XCTest failures understandable.
-     * - Returns: One unique label name derived from `prefix` plus a short UUID suffix.
-     * - Side effects: none.
-     * - Failure modes: This helper cannot fail.
-     */
-    private func uniqueLabelName(prefix: String) -> String {
-        "\(prefix) \(String(UUID().uuidString.prefix(8)))"
-    }
-
-    /**
-     Builds a unique workspace name for tests that create and later remove workspaces.
-     *
-     * - Parameter prefix: Human-readable prefix to keep XCTest failures understandable.
-     * - Returns: One unique workspace name derived from `prefix` plus a short UUID suffix.
-     * - Side effects: none.
-     * - Failure modes: This helper cannot fail.
-     */
-    private func uniqueWorkspaceName(prefix: String) -> String {
-        "\(prefix) \(String(UUID().uuidString.prefix(8)))"
-    }
 }

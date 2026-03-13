@@ -358,6 +358,33 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that the font-family control presents the native font picker from Text Display.
+     *
+     * - Side effects:
+     *   - launches the app directly into the text-display editor
+     *   - taps the font-family control, which presents the iOS font picker sheet
+     * - Failure modes:
+     *   - fails if the direct-launch text-display editor never appears
+     *   - fails if the font-family control is missing or if the screen never reports
+     *     `fontPickerPresented` after the tap
+     */
+    func testTextDisplayFontFamilyButtonPresentsFontPicker() {
+        let app = makeApp(openTextDisplayOnLaunch: true)
+        app.launch()
+
+        let textDisplayScreen = openTextDisplaySettings(in: app, launchedDirectly: true)
+        XCTAssertTrue(textDisplayScreen.exists)
+        let fontFamilyButton = requireElement("textDisplayFontFamilyButton", in: app, timeout: 10)
+        fontFamilyButton.tap()
+
+        let valuePredicate = NSPredicate(format: "value CONTAINS %@", "fontPickerPresented")
+        expectation(for: valuePredicate, evaluatedWith: textDisplayScreen)
+        waitForExpectations(timeout: 10)
+
+        app.terminate()
+    }
+
+    /**
      Verifies that the color editor can be opened from Settings.
      *
      * - Side effects:
@@ -383,6 +410,8 @@ final class AndBibleUITests: XCTestCase {
      * - Parameters:
      *   - settingsTarget: Optional settings-row identifier that the app should open and pre-scroll
      *     into view on launch.
+     *   - openTextDisplayOnLaunch: Whether the app should present Text Display immediately on
+     *     launch.
      *   - openImportExportOnLaunch: Whether the app should present Import and Export immediately on
      *     launch.
      *   - openLabelManagerOnLaunch: Whether the app should present Label Manager immediately on
@@ -392,6 +421,8 @@ final class AndBibleUITests: XCTestCase {
      *   - appends a launch argument that disables the discrete-mode calculator gate during UI tests
      *   - when `settingsTarget` is supplied, configures the app to present Settings immediately and
      *     scroll the requested row into view
+     *   - when `openTextDisplayOnLaunch` is `true`, configures the app to present Text Display
+     *     immediately after the reader hydrates
      *   - when `openImportExportOnLaunch` is `true`, configures the app to present Import and
      *     Export immediately after the reader hydrates
      *   - when `openLabelManagerOnLaunch` is `true`, configures the app to present Label Manager
@@ -400,6 +431,7 @@ final class AndBibleUITests: XCTestCase {
      */
     private func makeApp(
         settingsTarget: String? = nil,
+        openTextDisplayOnLaunch: Bool = false,
         openImportExportOnLaunch: Bool = false,
         openLabelManagerOnLaunch: Bool = false
     ) -> XCUIApplication {
@@ -408,6 +440,9 @@ final class AndBibleUITests: XCTestCase {
         if let settingsTarget {
             app.launchArguments += ["UITEST_OPEN_SETTINGS"]
             app.launchEnvironment["UITEST_SETTINGS_SCROLL_TARGET"] = settingsTarget
+        }
+        if openTextDisplayOnLaunch {
+            app.launchArguments += ["UITEST_OPEN_TEXT_DISPLAY"]
         }
         if openImportExportOnLaunch {
             app.launchArguments += ["UITEST_OPEN_IMPORT_EXPORT"]
@@ -469,6 +504,34 @@ final class AndBibleUITests: XCTestCase {
             tapSettingsElement("settingsImportExportLink", in: app)
         }
         return requireElement("importExportScreen", in: app, timeout: 10)
+    }
+
+    /**
+     Opens Text Display either from Settings navigation or from a direct test-only launch path.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - launchedDirectly: Whether the app was launched straight into the Text Display sheet.
+     * - Returns: The root accessibility-identified Text Display screen element.
+     * - Side effects:
+     *   - when `launchedDirectly` is `false`, opens Settings and pushes the Text Display screen
+     *   - when `launchedDirectly` is `true`, waits for the direct-launch Text Display sheet to
+     *     render
+     * - Failure modes:
+     *   - fails when the Text Display screen never appears
+     */
+    private func openTextDisplaySettings(
+        in app: XCUIApplication,
+        launchedDirectly: Bool = false
+    ) -> XCUIElement {
+        if !launchedDirectly {
+            openSettings(
+                in: app,
+                launchedDirectly: app.launchArguments.contains("UITEST_OPEN_SETTINGS")
+            )
+            tapSettingsElement("settingsTextDisplayLink", in: app)
+        }
+        return requireElement("textDisplaySettingsScreen", in: app, timeout: 10)
     }
 
     /**

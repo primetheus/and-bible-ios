@@ -89,9 +89,9 @@ func presentCompareView(book: String, chapter: Int, currentModuleName: String, s
  Side effects:
  - `onAppear` loads persisted preferences, wires TTS callbacks, restores speech settings, and
    registers synchronized-scrolling callbacks on `WindowManager`
- - XCUITest launch arguments can present the settings, import/export sheet, or label manager
-   immediately after initial state hydration so automation can target nested flows without menu
-   traversal
+ - XCUITest launch arguments can present the settings, text-display editor, import/export sheet,
+   or label manager immediately after initial state hydration so automation can target nested
+   flows without menu traversal
  - iOS `onAppear` and `onDisappear` start and stop tilt-to-scroll based on workspace settings
  - sheet dismissals reload behavior preferences or refresh installed-module lists where needed
  - toolbar toggles and helper actions mutate SwiftData-backed workspace/settings state and push
@@ -121,6 +121,9 @@ public struct BibleReaderView: View {
 
     /// Presents the consolidated settings screen.
     @State private var showSettings = false
+
+    /// Presents the text-display editor directly for focused workflow testing.
+    @State private var showTextDisplaySettings = false
 
     /// Presents import and export management UI.
     @State private var showImportExport = false
@@ -191,6 +194,9 @@ public struct BibleReaderView: View {
 
     /// Launch-argument override used by XCUITests to present Settings immediately on launch.
     private let uiTestOpensSettingsOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_SETTINGS")
+
+    /// Launch-argument override used by XCUITests to present Text Display immediately on launch.
+    private let uiTestOpensTextDisplayOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_TEXT_DISPLAY")
 
     /// Launch-argument override used by XCUITests to present Import and Export immediately on launch.
     private let uiTestOpensImportExportOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_IMPORT_EXPORT")
@@ -507,7 +513,10 @@ public struct BibleReaderView: View {
             }
 
             if !hasAppliedUITestInitialPresentation {
-                if uiTestOpensImportExportOnLaunch {
+                if uiTestOpensTextDisplayOnLaunch {
+                    hasAppliedUITestInitialPresentation = true
+                    showTextDisplaySettings = true
+                } else if uiTestOpensImportExportOnLaunch {
                     hasAppliedUITestInitialPresentation = true
                     showImportExport = true
                 } else if uiTestOpensLabelManagerOnLaunch {
@@ -580,26 +589,23 @@ public struct BibleReaderView: View {
                     displaySettings: $displaySettings,
                     nightMode: $nightMode,
                     nightModeMode: $nightModeMode,
-                    onSettingsChanged: {
-                        // Persist display settings to workspace
-                        if let workspace = windowManager.activeWorkspace {
-                            workspace.textDisplaySettings = displaySettings
-                            try? modelContext.save()
-                        }
-                        // Push updated config to all visible windows' controllers
-                        for window in windowManager.visibleWindows {
-                            if let ctrl = windowManager.controllers[window.id] as? BibleReaderController {
-                                ctrl.updateDisplaySettings(displaySettings, nightMode: nightMode)
-                            }
-                        }
-                        reloadBehaviorPreferences()
-                    }
+                    onSettingsChanged: applyDisplaySettingsChange
                 )
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button(String(localized: "done")) { showSettings = false }
                     }
                 }
+            }
+        }
+        .sheet(isPresented: $showTextDisplaySettings) {
+            NavigationStack {
+                TextDisplaySettingsView(settings: $displaySettings, onChange: applyDisplaySettingsChange)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(String(localized: "done")) { showTextDisplaySettings = false }
+                        }
+                    }
             }
         }
         .sheet(isPresented: $showImportExport) {
@@ -1722,6 +1728,33 @@ public struct BibleReaderView: View {
                 ctrl.updateDisplaySettings(displaySettings, nightMode: nightMode)
             }
         }
+    }
+
+    /**
+     Persists text-display edits and refreshes visible reader controllers.
+
+     - Side effects:
+       - writes the current `displaySettings` value into the active workspace when available
+       - attempts to save the updated workspace through `modelContext`
+       - pushes refreshed display settings into every visible `BibleReaderController`
+       - reloads behavior preferences so dependent native toggles stay in sync with the latest
+         persisted values
+     - Failure modes:
+       - if no active workspace exists, persistence is skipped and only in-memory controller
+         refreshes occur
+       - SwiftData save failures are intentionally swallowed via `try?`
+     */
+    private func applyDisplaySettingsChange() {
+        if let workspace = windowManager.activeWorkspace {
+            workspace.textDisplaySettings = displaySettings
+            try? modelContext.save()
+        }
+        for window in windowManager.visibleWindows {
+            if let ctrl = windowManager.controllers[window.id] as? BibleReaderController {
+                ctrl.updateDisplaySettings(displaySettings, nightMode: nightMode)
+            }
+        }
+        reloadBehaviorPreferences()
     }
 
     /// Resolved toolbar gesture mode for the Bible and commentary buttons.

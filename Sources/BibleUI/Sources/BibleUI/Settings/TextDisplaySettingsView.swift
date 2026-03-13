@@ -92,6 +92,17 @@ public struct TextDisplaySettingsView: View {
         return family
     }
 
+    /// Accessibility-exported UI-test state for the currently edited justify-text preference.
+    private var accessibilityState: String {
+        let justifyState = (settings.justifyText ?? false) ? "justifyTextOn" : "justifyTextOff"
+        #if os(iOS)
+        let fontPickerState = showFontPicker ? "fontPickerPresented" : "fontPickerHidden"
+        return "\(justifyState)|\(fontPickerState)"
+        #else
+        return "\(justifyState)|fontPickerUnavailable"
+        #endif
+    }
+
     /**
      Builds the grouped typography, layout, content, and annotation settings form.
      */
@@ -117,6 +128,7 @@ public struct TextDisplaySettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .accessibilityIdentifier("textDisplayFontFamilyButton")
                 .sheet(isPresented: $showFontPicker) {
                     FontPickerView(selectedFamily: fontFamilyBinding)
                 }
@@ -139,6 +151,7 @@ public struct TextDisplaySettingsView: View {
                         .monospacedDigit()
                 }
                 Toggle(String(localized: "justify_text"), isOn: boolBinding(\.justifyText, default: false))
+                    .accessibilityIdentifier("textDisplayJustifyTextToggle")
                 Toggle(String(localized: "verse_per_line"), isOn: boolBinding(\.showVersePerLine, default: false))
                 Toggle(String(localized: "hyphenation"), isOn: boolBinding(\.hyphenation, default: true))
             }
@@ -169,6 +182,7 @@ public struct TextDisplaySettingsView: View {
             }
         }
         .accessibilityIdentifier("textDisplaySettingsScreen")
+        .accessibilityValue(accessibilityState)
         .navigationTitle(String(localized: "text_display"))
     }
 

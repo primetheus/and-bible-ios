@@ -143,6 +143,9 @@ public struct BibleReaderView: View {
     /// Presents reading-plan management UI.
     @State private var showReadingPlans = false
 
+    /// Test-only seeded plan identifier used to launch directly into one active daily-reading view.
+    @State private var uiTestDailyReadingPlanID: UUID?
+
     /// Presents the expanded speech controls sheet.
     @State private var showSpeakControls = false
 
@@ -206,6 +209,9 @@ public struct BibleReaderView: View {
 
     /// Launch-argument override used by XCUITests to present Reading Plans immediately on launch.
     private let uiTestOpensReadingPlansOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_READING_PLANS")
+
+    /// Launch-argument override used by XCUITests to present one seeded daily-reading view.
+    private let uiTestOpensDailyReadingOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_DAILY_READING")
 
     /// Launch-argument override used by XCUITests to present Workspaces immediately on launch.
     private let uiTestOpensWorkspacesOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_WORKSPACES")
@@ -533,6 +539,11 @@ public struct BibleReaderView: View {
                     hasAppliedUITestInitialPresentation = true
                     resetReadingPlansForUITests()
                     showReadingPlans = true
+                } else if uiTestOpensDailyReadingOnLaunch {
+                    hasAppliedUITestInitialPresentation = true
+                    resetReadingPlansForUITests()
+                    uiTestDailyReadingPlanID = seedReadingPlanForUITests()
+                    showReadingPlans = uiTestDailyReadingPlanID != nil
                 } else if uiTestOpensWorkspacesOnLaunch {
                     hasAppliedUITestInitialPresentation = true
                     resetWorkspacesForUITests()
@@ -691,12 +702,21 @@ public struct BibleReaderView: View {
         }
         .sheet(isPresented: $showReadingPlans) {
             NavigationStack {
-                ReadingPlanListView()
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button(String(localized: "done")) { showReadingPlans = false }
+                if let uiTestDailyReadingPlanID, uiTestOpensDailyReadingOnLaunch {
+                    DailyReadingView(planId: uiTestDailyReadingPlanID)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button(String(localized: "done")) { showReadingPlans = false }
+                            }
                         }
-                    }
+                } else {
+                    ReadingPlanListView()
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button(String(localized: "done")) { showReadingPlans = false }
+                            }
+                        }
+                }
             }
         }
         .sheet(isPresented: $showSpeakControls) {
@@ -2103,6 +2123,21 @@ public struct BibleReaderView: View {
             modelContext.delete(plan)
         }
         try? modelContext.save()
+    }
+
+    /**
+     Seeds one deterministic reading plan for XCUITest daily-reading workflows.
+     *
+     * - Returns: Identifier of the started plan, or `nil` when no built-in template is available.
+     * - Side effects:
+     *   - starts the first built-in reading-plan template through `ReadingPlanService`
+     *   - persists the seeded plan and its generated day rows into SwiftData
+     * - Failure modes:
+     *   - returns `nil` when the bundled template list is unexpectedly empty
+     */
+    private func seedReadingPlanForUITests() -> UUID? {
+        guard let template = ReadingPlanService.availablePlans.first else { return nil }
+        return ReadingPlanService.startPlan(template: template, modelContext: modelContext).id
     }
 
     /**

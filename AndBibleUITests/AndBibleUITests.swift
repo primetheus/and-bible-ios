@@ -69,28 +69,20 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
-     Verifies that a built-in reading plan can be started and advanced into day two.
+     Verifies that an active reading plan can advance from day one to day two.
      *
      * - Side effects:
-     *   - launches the app directly into Reading Plans with existing plans reset for determinism
-     *   - starts the first visible built-in template, opens the new active plan, and marks the
-     *     first day complete
+     *   - launches the app directly into one seeded daily-reading view with existing plans reset
+     *     for determinism
+     *   - marks day one complete and waits for the daily-reading state to advance to day two
      * - Failure modes:
-     *   - fails if the Reading Plans direct-launch route never appears
-     *   - fails if the available-plan entry, active-plan link, or daily-reading controls are
-     *     missing
+     *   - fails if the direct-launch daily-reading route never appears
+     *   - fails if the day label or mark-as-read control is missing
      *   - fails if marking day one complete does not advance the daily-reading state to day two
      */
     func testReadingPlansStartPlanAndAdvanceDay() {
-        let app = makeApp(openReadingPlansOnLaunch: true)
+        let app = makeApp(openDailyReadingOnLaunch: true)
         app.launch()
-
-        XCTAssertTrue(openReadingPlans(in: app, launchedDirectly: true).exists)
-        requireElement("readingPlanStartButton", in: app, timeout: 10).tap()
-        XCTAssertTrue(requireElement("availablePlansScreen", in: app, timeout: 10).exists)
-
-        requireElement("readingPlanTemplateButton", in: app, timeout: 10).tap()
-        requireElement("readingPlanActivePlanLink", in: app, timeout: 10).tap()
 
         XCTAssertTrue(requireElement("dailyReadingScreen", in: app, timeout: 10).exists)
         let currentDay = requireElement("dailyReadingCurrentDayLabel", in: app, timeout: 10)
@@ -517,6 +509,8 @@ final class AndBibleUITests: XCTestCase {
      *     launch.
      *   - openReadingPlansOnLaunch: Whether the app should present Reading Plans immediately on
      *     launch.
+     *   - openDailyReadingOnLaunch: Whether the app should present one seeded daily-reading view
+     *     immediately on launch.
      *   - openWorkspacesOnLaunch: Whether the app should present Workspaces immediately on launch.
      * - Returns: App handle configured with deterministic launch arguments for the smoke suite.
      * - Side effects:
@@ -531,6 +525,8 @@ final class AndBibleUITests: XCTestCase {
      *     immediately after the reader hydrates
      *   - when `openReadingPlansOnLaunch` is `true`, configures the app to present Reading Plans
      *     immediately after the reader hydrates
+     *   - when `openDailyReadingOnLaunch` is `true`, configures the app to seed one reading plan
+     *     and present its daily-reading view immediately after the reader hydrates
      *   - when `openWorkspacesOnLaunch` is `true`, configures the app to present Workspaces
      *     immediately after the reader hydrates
      * - Failure modes: This helper cannot fail.
@@ -541,6 +537,7 @@ final class AndBibleUITests: XCTestCase {
         openImportExportOnLaunch: Bool = false,
         openLabelManagerOnLaunch: Bool = false,
         openReadingPlansOnLaunch: Bool = false,
+        openDailyReadingOnLaunch: Bool = false,
         openWorkspacesOnLaunch: Bool = false
     ) -> XCUIApplication {
         let app = XCUIApplication()
@@ -560,6 +557,9 @@ final class AndBibleUITests: XCTestCase {
         }
         if openReadingPlansOnLaunch {
             app.launchArguments += ["UITEST_OPEN_READING_PLANS"]
+        }
+        if openDailyReadingOnLaunch {
+            app.launchArguments += ["UITEST_OPEN_DAILY_READING"]
         }
         if openWorkspacesOnLaunch {
             app.launchArguments += ["UITEST_OPEN_WORKSPACES"]

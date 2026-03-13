@@ -58,8 +58,10 @@ public struct ReadingPlanListView: View {
                     systemImage: "calendar",
                     description: Text(String(localized: "reading_plan_no_plans_description"))
                 )
+                .accessibilityIdentifier("readingPlanListScreen")
             } else {
                 planList
+                    .accessibilityIdentifier("readingPlanListScreen")
             }
         }
         .navigationTitle(String(localized: "reading_plans"))

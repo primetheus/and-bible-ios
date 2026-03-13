@@ -52,6 +52,27 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that reading plans can be opened from the reader shell.
+     *
+     * - Side effects:
+     *   - launches the app with the calculator gate disabled for test determinism
+     *   - opens the reader overflow menu and pushes the reading-plan screen
+     * - Failure modes:
+     *   - fails if the reading-plans action is missing from the reader menu
+     *   - fails if the reading-plan list screen does not render after navigation completes
+     */
+    func testReadingPlansScreenOpensFromReaderMenu() {
+        let app = makeApp()
+        app.launch()
+
+        let moreMenuButton = requireElement("readerMoreMenuButton", in: app)
+        moreMenuButton.tap()
+        requireElement("readerOpenReadingPlansAction", in: app, timeout: 5).tap()
+
+        XCTAssertTrue(requireElement("readingPlanListScreen", in: app, timeout: 10).exists)
+    }
+
+    /**
      Builds the configured XCUIApplication instance used by each smoke test.
      *
      * - Returns: App handle configured with deterministic launch arguments for the smoke suite.
@@ -97,5 +118,4 @@ final class AndBibleUITests: XCTestCase {
         )
         return element
     }
-
 }

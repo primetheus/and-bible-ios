@@ -177,6 +177,26 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that the import/export screen can be opened from Settings.
+     *
+     * - Side effects:
+     *   - launches the app with the calculator gate disabled for test determinism
+     *   - navigates from the reader shell into Settings and then into the import/export screen
+     * - Failure modes:
+     *   - fails if the Settings import/export link is missing or cannot be reached by scrolling
+     *   - fails if the import/export screen does not render after navigation completes
+     */
+    func testSettingsImportExportLinkOpensImportExportScreen() {
+        let app = makeApp()
+        app.launch()
+
+        openSettings(in: app)
+        tapScrollableElement("settingsImportExportLink", fallbackLabel: "Import & Export", in: app)
+
+        XCTAssertTrue(requireElement("importExportScreen", in: app, timeout: 10).exists)
+    }
+
+    /**
      Verifies that the sync settings screen can be opened from Settings.
      *
      * - Side effects:

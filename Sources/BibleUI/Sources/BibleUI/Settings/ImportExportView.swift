@@ -164,6 +164,7 @@ public struct ImportExportView: View {
                 }
             }
         }
+        .accessibilityIdentifier("importExportScreen")
         .navigationTitle(String(localized: "import_export"))
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)

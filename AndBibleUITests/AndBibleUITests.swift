@@ -197,6 +197,38 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that the full-backup export action drives Import and Export into share-sheet presentation.
+     *
+     * - Side effects:
+     *   - launches the app with the calculator gate disabled for test determinism
+     *   - navigates through Settings into Import and Export
+     *   - triggers a full-backup export, which writes a temporary file and requests share-sheet
+     *     presentation
+     * - Failure modes:
+     *   - fails if the Import and Export link cannot be reached from Settings
+     *   - fails if the full-backup action is missing from the Import and Export screen
+     *   - fails if the Import and Export screen never reports the share-sheet-presented state after
+     *     export completes
+     */
+    func testSettingsImportExportFullBackupPresentsShareSheet() {
+        let app = makeApp()
+        app.launch()
+
+        openSettings(in: app)
+        tapScrollableElement("settingsImportExportLink", fallbackLabel: "Import & Export", in: app)
+
+        let importExportScreen = requireElement("importExportScreen", in: app, timeout: 10)
+        XCTAssertTrue(importExportScreen.exists)
+
+        let fullBackupButton = requireElement("importExportFullBackupButton", in: app, timeout: 10)
+        fullBackupButton.tap()
+
+        let valuePredicate = NSPredicate(format: "value == %@", "shareSheetPresented")
+        expectation(for: valuePredicate, evaluatedWith: importExportScreen)
+        waitForExpectations(timeout: 15)
+    }
+
+    /**
      Verifies that the label manager can be opened from Settings.
      *
      * - Side effects:

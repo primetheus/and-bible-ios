@@ -81,6 +81,7 @@ public struct ImportExportView: View {
                         }
                     }
                 }
+                .accessibilityIdentifier("importExportFullBackupButton")
                 .disabled(isExporting)
 
                 Button {
@@ -165,6 +166,7 @@ public struct ImportExportView: View {
             }
         }
         .accessibilityIdentifier("importExportScreen")
+        .accessibilityValue(showExportSheet ? "shareSheetPresented" : "idle")
         .navigationTitle(String(localized: "import_export"))
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)

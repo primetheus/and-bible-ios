@@ -160,18 +160,18 @@ final class AndBibleUITests: XCTestCase {
      Verifies that the downloads browser can be opened from Settings.
      *
      * - Side effects:
-     *   - launches the app with the calculator gate disabled for test determinism
-     *   - navigates from the reader shell into Settings and then into the downloads browser
+     *   - launches the app directly into Settings with the downloads row pre-scrolled into view
+     *   - opens the downloads browser from the settings screen
      * - Failure modes:
-     *   - fails if the Settings downloads link is missing or cannot be reached by scrolling
+     *   - fails if the Settings downloads link is missing or never becomes hittable
      *   - fails if the downloads browser screen does not render after navigation completes
      */
     func testSettingsDownloadsLinkOpensDownloadsBrowser() {
-        let app = makeApp()
+        let app = makeApp(settingsTarget: "settingsDownloadsLink")
         app.launch()
 
-        openSettings(in: app)
-        tapScrollableElement("settingsDownloadsLink", fallbackLabel: "Downloads", in: app)
+        openSettings(in: app, launchedDirectly: true)
+        tapSettingsElement("settingsDownloadsLink", in: app)
 
         XCTAssertTrue(requireElement("moduleBrowserScreen", in: app, timeout: 10).exists)
     }
@@ -180,18 +180,18 @@ final class AndBibleUITests: XCTestCase {
      Verifies that the import/export screen can be opened from Settings.
      *
      * - Side effects:
-     *   - launches the app with the calculator gate disabled for test determinism
-     *   - navigates from the reader shell into Settings and then into the import/export screen
+     *   - launches the app directly into Settings with the import/export row pre-scrolled into view
+     *   - opens the import/export screen from Settings
      * - Failure modes:
-     *   - fails if the Settings import/export link is missing or cannot be reached by scrolling
+     *   - fails if the Settings import/export link is missing or never becomes hittable
      *   - fails if the import/export screen does not render after navigation completes
      */
     func testSettingsImportExportLinkOpensImportExportScreen() {
-        let app = makeApp()
+        let app = makeApp(settingsTarget: "settingsImportExportLink")
         app.launch()
 
-        openSettings(in: app)
-        tapScrollableElement("settingsImportExportLink", fallbackLabel: "Import & Export", in: app)
+        openSettings(in: app, launchedDirectly: true)
+        tapSettingsElement("settingsImportExportLink", in: app)
 
         XCTAssertTrue(requireElement("importExportScreen", in: app, timeout: 10).exists)
     }
@@ -200,22 +200,22 @@ final class AndBibleUITests: XCTestCase {
      Verifies that the full-backup export action drives Import and Export into share-sheet presentation.
      *
      * - Side effects:
-     *   - launches the app with the calculator gate disabled for test determinism
-     *   - navigates through Settings into Import and Export
+     *   - launches the app directly into Settings with the import/export row pre-scrolled into view
+     *   - navigates from Settings into Import and Export
      *   - triggers a full-backup export, which writes a temporary file and requests share-sheet
      *     presentation
      * - Failure modes:
-     *   - fails if the Import and Export link cannot be reached from Settings
+     *   - fails if the Import and Export link is missing or never becomes hittable
      *   - fails if the full-backup action is missing from the Import and Export screen
      *   - fails if the Import and Export screen never reports the share-sheet-presented state after
      *     export completes
      */
     func testSettingsImportExportFullBackupPresentsShareSheet() {
-        let app = makeApp()
+        let app = makeApp(settingsTarget: "settingsImportExportLink")
         app.launch()
 
-        openSettings(in: app)
-        tapScrollableElement("settingsImportExportLink", fallbackLabel: "Import & Export", in: app)
+        openSettings(in: app, launchedDirectly: true)
+        tapSettingsElement("settingsImportExportLink", in: app)
 
         let importExportScreen = requireElement("importExportScreen", in: app, timeout: 10)
         XCTAssertTrue(importExportScreen.exists)
@@ -232,20 +232,20 @@ final class AndBibleUITests: XCTestCase {
      Verifies that the import action drives Import and Export into file-picker presentation.
      *
      * - Side effects:
-     *   - launches the app with the calculator gate disabled for test determinism
-     *   - navigates through Settings into Import and Export
+     *   - launches the app directly into Settings with the import/export row pre-scrolled into view
+     *   - navigates from Settings into Import and Export
      *   - triggers the backup import action, which requests document-picker presentation
      * - Failure modes:
-     *   - fails if the Import and Export link cannot be reached from Settings
+     *   - fails if the Import and Export link is missing or never becomes hittable
      *   - fails if the import action is missing from the Import and Export screen
      *   - fails if the Import and Export screen never reports the import-picker-presented state
      */
     func testSettingsImportExportImportPresentsFilePickerState() {
-        let app = makeApp()
+        let app = makeApp(settingsTarget: "settingsImportExportLink")
         app.launch()
 
-        openSettings(in: app)
-        tapScrollableElement("settingsImportExportLink", fallbackLabel: "Import & Export", in: app)
+        openSettings(in: app, launchedDirectly: true)
+        tapSettingsElement("settingsImportExportLink", in: app)
 
         let importExportScreen = requireElement("importExportScreen", in: app, timeout: 10)
         XCTAssertTrue(importExportScreen.exists)
@@ -262,18 +262,18 @@ final class AndBibleUITests: XCTestCase {
      Verifies that the label manager can be opened from Settings.
      *
      * - Side effects:
-     *   - launches the app with the calculator gate disabled for test determinism
-     *   - navigates from the reader shell into Settings and then into the label manager
+     *   - launches the app directly into Settings with the labels row pre-scrolled into view
+     *   - opens the label manager from Settings
      * - Failure modes:
-     *   - fails if the Settings labels link is missing or cannot be reached by scrolling
+     *   - fails if the Settings labels link is missing or never becomes hittable
      *   - fails if the label manager screen does not render after navigation completes
      */
     func testSettingsLabelsLinkOpensLabelManager() {
-        let app = makeApp()
+        let app = makeApp(settingsTarget: "settingsLabelsLink")
         app.launch()
 
-        openSettings(in: app)
-        tapScrollableElement("settingsLabelsLink", fallbackLabel: "Labels", in: app)
+        openSettings(in: app, launchedDirectly: true)
+        tapSettingsElement("settingsLabelsLink", in: app)
 
         XCTAssertTrue(requireElement("labelManagerScreen", in: app, timeout: 10).exists)
     }
@@ -282,18 +282,18 @@ final class AndBibleUITests: XCTestCase {
      Verifies that the sync settings screen can be opened from Settings.
      *
      * - Side effects:
-     *   - launches the app with the calculator gate disabled for test determinism
-     *   - navigates from the reader shell into Settings and then into sync settings
+     *   - launches the app directly into Settings with the sync row pre-scrolled into view
+     *   - opens sync settings from the settings screen
      * - Failure modes:
-     *   - fails if the Settings sync link is missing or cannot be reached by scrolling
+     *   - fails if the Settings sync link is missing or never becomes hittable
      *   - fails if the sync settings screen does not render after navigation completes
      */
     func testSettingsSyncLinkOpensSyncSettings() {
-        let app = makeApp()
+        let app = makeApp(settingsTarget: "settingsSyncLink")
         app.launch()
 
-        openSettings(in: app)
-        tapScrollableElement("settingsSyncLink", fallbackLabel: "iCloud Sync", in: app)
+        openSettings(in: app, launchedDirectly: true)
+        tapSettingsElement("settingsSyncLink", in: app)
 
         XCTAssertTrue(requireElement("syncSettingsScreen", in: app, timeout: 10).exists)
     }
@@ -302,18 +302,18 @@ final class AndBibleUITests: XCTestCase {
      Verifies that the text-display editor can be opened from Settings.
      *
      * - Side effects:
-     *   - launches the app with the calculator gate disabled for test determinism
-     *   - navigates from the reader shell into Settings and then into text-display settings
+     *   - launches the app directly into Settings with the text-display row pre-scrolled into view
+     *   - opens text-display settings from the settings screen
      * - Failure modes:
-     *   - fails if the Settings text-display link is missing or cannot be reached by scrolling
+     *   - fails if the Settings text-display link is missing or never becomes hittable
      *   - fails if the text-display settings screen does not render after navigation completes
      */
     func testSettingsTextDisplayLinkOpensTextDisplayEditor() {
-        let app = makeApp()
+        let app = makeApp(settingsTarget: "settingsTextDisplayLink")
         app.launch()
 
-        openSettings(in: app)
-        tapScrollableElement("settingsTextDisplayLink", fallbackLabel: "Text Display", in: app)
+        openSettings(in: app, launchedDirectly: true)
+        tapSettingsElement("settingsTextDisplayLink", in: app)
 
         XCTAssertTrue(requireElement("textDisplaySettingsScreen", in: app, timeout: 10).exists)
     }
@@ -322,18 +322,18 @@ final class AndBibleUITests: XCTestCase {
      Verifies that the color editor can be opened from Settings.
      *
      * - Side effects:
-     *   - launches the app with the calculator gate disabled for test determinism
-     *   - navigates from the reader shell into Settings and then into color settings
+     *   - launches the app directly into Settings with the colors row pre-scrolled into view
+     *   - opens color settings from the settings screen
      * - Failure modes:
-     *   - fails if the Settings colors link is missing or cannot be reached by scrolling
+     *   - fails if the Settings colors link is missing or never becomes hittable
      *   - fails if the color settings screen does not render after navigation completes
      */
     func testSettingsColorsLinkOpensColorEditor() {
-        let app = makeApp()
+        let app = makeApp(settingsTarget: "settingsColorsLink")
         app.launch()
 
-        openSettings(in: app)
-        tapScrollableElement("settingsColorsLink", fallbackLabel: "Colors", in: app)
+        openSettings(in: app, launchedDirectly: true)
+        tapSettingsElement("settingsColorsLink", in: app)
 
         XCTAssertTrue(requireElement("colorSettingsScreen", in: app, timeout: 10).exists)
     }
@@ -341,36 +341,52 @@ final class AndBibleUITests: XCTestCase {
     /**
      Builds the configured XCUIApplication instance used by each smoke test.
      *
+     * - Parameter settingsTarget: Optional settings-row identifier that the app should open and
+     *   pre-scroll into view on launch.
      * - Returns: App handle configured with deterministic launch arguments for the smoke suite.
      * - Side effects:
      *   - appends a launch argument that disables the discrete-mode calculator gate during UI tests
+     *   - when `settingsTarget` is supplied, configures the app to present Settings immediately and
+     *     scroll the requested row into view
      * - Failure modes: This helper cannot fail.
      */
-    private func makeApp() -> XCUIApplication {
+    private func makeApp(settingsTarget: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["UITEST_DISABLE_CALCULATOR_GATE"]
+        if let settingsTarget {
+            app.launchArguments += ["UITEST_OPEN_SETTINGS"]
+            app.launchEnvironment["UITEST_SETTINGS_SCROLL_TARGET"] = settingsTarget
+        }
         return app
     }
 
     /**
      Opens Settings from the reader overflow menu.
      *
-     * - Parameter app: Running application under test.
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - launchedDirectly: Whether the app was launched straight into the settings sheet.
      * - Side effects:
-     *   - opens the reader overflow menu
-     *   - pushes the Settings screen onto the navigation stack
+     *   - when `launchedDirectly` is `false`, opens the reader overflow menu and pushes the
+     *     Settings screen onto the navigation stack
+     *   - dismisses the language restart alert when it appears over Settings
      * - Failure modes:
-     *   - fails when the reader overflow menu or Settings action cannot be found
+     *   - fails when the reader overflow menu or Settings action cannot be found for non-direct
+     *     launches
+     *   - fails when the settings form never appears
      */
-    private func openSettings(in app: XCUIApplication) {
-        let moreMenuButton = requireElement("readerMoreMenuButton", in: app)
-        moreMenuButton.tap()
-        requireElement("readerOpenSettingsAction", in: app, timeout: 5).tap()
+    private func openSettings(in app: XCUIApplication, launchedDirectly: Bool = false) {
+        if !launchedDirectly {
+            let moreMenuButton = requireElement("readerMoreMenuButton", in: app)
+            moreMenuButton.tap()
+            requireElement("readerOpenSettingsAction", in: app, timeout: 5).tap()
+        }
         XCTAssertTrue(requireElement("settingsForm", in: app, timeout: 10).exists)
         let okButton = app.buttons["OK"]
         if okButton.waitForExistence(timeout: 1) {
             okButton.tap()
         }
+        XCTAssertTrue(requireElement("settingsForm", in: app, timeout: 10).exists)
     }
 
     /**
@@ -407,68 +423,36 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
-     Scrolls the Settings form until an identified row becomes tappable, then taps it.
+     Waits for a pre-scrolled settings row to become hittable, then taps it.
      *
      * - Parameters:
      *   - identifier: Accessibility identifier of the target settings row.
-     *   - fallbackLabel: Visible row label used when SwiftUI does not surface the identifier directly.
      *   - app: Running application under test.
-     *   - maxSwipes: Maximum number of upward swipes to perform before failing.
+     *   - timeout: Maximum number of seconds to wait for the row to become hittable.
      *   - file: Source file used for XCTest failure attribution.
      *   - line: Source line used for XCTest failure attribution.
      * - Side effects:
-     *   - scrolls the settings form upward until the target row becomes hittable
-     *   - falls back to a visible label query when SwiftUI cell wrappers hide custom identifiers
+     *   - waits for the requested settings row to resolve and become hittable
      *   - taps the target row once it becomes hittable
      * - Failure modes:
-     *   - records an XCTest failure if the row never appears or never becomes hittable
+     *   - records an XCTest failure if the row never appears or never becomes hittable within the
+     *     allotted timeout
      */
-    private func tapScrollableElement(
+    private func tapSettingsElement(
         _ identifier: String,
-        fallbackLabel: String,
         in app: XCUIApplication,
-        maxSwipes: Int = 8,
+        timeout: TimeInterval = 10,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let settingsForm = requireElement("settingsForm", in: app, timeout: 10, file: file, line: line)
-        let identifierElement = app.descendants(matching: .any)[identifier].firstMatch
-        let buttonElement = app.buttons[fallbackLabel].firstMatch
-        let textElement = app.staticTexts[fallbackLabel].firstMatch
-        let cellElement = app.collectionViews.cells.containing(.staticText, identifier: fallbackLabel).firstMatch
-
-        func currentElement() -> XCUIElement {
-            if identifierElement.exists {
-                return identifierElement
-            }
-            if cellElement.exists {
-                return cellElement
-            }
-            if buttonElement.exists {
-                return buttonElement
-            }
-            return textElement
-        }
-
-        for _ in 0..<maxSwipes {
-            let element = currentElement()
-            if element.exists && element.isHittable {
-                element.tap()
-                return
-            }
-            settingsForm.swipeUp()
-        }
-
-        let element = currentElement()
-        XCTAssertTrue(
-            element.waitForExistence(timeout: 2),
-            "Expected element '\(identifier)' or label '\(fallbackLabel)' to exist after scrolling.",
-            file: file,
-            line: line
-        )
-        XCTAssertTrue(
-            element.isHittable,
-            "Expected element '\(identifier)' or label '\(fallbackLabel)' to become hittable after scrolling.",
+        let element = requireElement(identifier, in: app, timeout: timeout, file: file, line: line)
+        let hittablePredicate = NSPredicate(format: "hittable == true")
+        let expectation = XCTNSPredicateExpectation(predicate: hittablePredicate, object: element)
+        let result = XCTWaiter().wait(for: [expectation], timeout: timeout)
+        XCTAssertEqual(
+            result,
+            .completed,
+            "Expected element '\(identifier)' to become hittable within \(timeout) seconds.",
             file: file,
             line: line
         )

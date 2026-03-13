@@ -23,6 +23,8 @@ import UIKit
  Side effects:
  - `onAppear` discovers installed modules, hydrates persisted preferences, sanitizes stale selections,
    and applies keep-screen-on / locale side effects
+ - XCUITest launch environment can request an initial scroll to a specific settings row after the
+   form renders
  - many toggles and pickers persist changes immediately through `SettingsStore`
  - dictionary, modal-action, and experimental-feature selections propagate through `onChange`
  - security and advanced actions may update `AppStorage`, open system settings, or schedule a debug crash
@@ -176,6 +178,24 @@ public struct SettingsView: View {
 
     /// Tracks whether the debug crash action has already been scheduled.
     @State private var debugCrashScheduled = false
+
+    /**
+     Optional UI-test-only row identifier that should be scrolled into view on first render.
+
+     The production app never sets this value. UI automation uses it to avoid brute-force
+     `Form` scrolling when targeting deep settings rows that are otherwise virtualized until they
+     come on-screen.
+
+     - Note: Empty environment values are treated as absent.
+     */
+    private var uiTestScrollTargetIdentifier: String? {
+        let value = ProcessInfo.processInfo.environment["UITEST_SETTINGS_SCROLL_TARGET"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value, !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
 
     /**
      Locale option mirroring one Android `locale_pref` entry.
@@ -333,712 +353,710 @@ public struct SettingsView: View {
      Builds the full settings form, preference hydration, alerts, and settings-side effects.
      */
     public var body: some View {
-        Form {
-            if hasDictionaryPreferences {
-                Section(String(localized: "settings_dictionaries")) {
-                    if !strongsGreekDictionaries.isEmpty {
-                        NavigationLink {
-                            DictionaryMultiSelectView(
-                                title: String(
-                                    localized: "choose_strongs_greek_dictionary_title",
-                                    defaultValue: "Strongs Greek dictionary"
-                                ),
-                                dictionaries: strongsGreekDictionaries,
-                                selectedNames: $selectedStrongsGreekDictionaryNames
-                            )
-                        } label: {
-                            settingsSelectionRow(
-                                title: String(
-                                    localized: "choose_strongs_greek_dictionary_title",
-                                    defaultValue: "Strongs Greek dictionary"
-                                ),
-                                summary: String(
-                                    localized: "choose_strongs_greek_dictionary_summary",
-                                    defaultValue: "Choose Strongs dictionary for Greek word definitions"
-                                ),
-                                detail: selectionSummary(
-                                    selectedNames: selectedStrongsGreekDictionaryNames,
-                                    available: strongsGreekDictionaries
+        ScrollViewReader { proxy in
+            Form {
+                if hasDictionaryPreferences {
+                    Section(String(localized: "settings_dictionaries")) {
+                        if !strongsGreekDictionaries.isEmpty {
+                            NavigationLink {
+                                DictionaryMultiSelectView(
+                                    title: String(
+                                        localized: "choose_strongs_greek_dictionary_title",
+                                        defaultValue: "Strongs Greek dictionary"
+                                    ),
+                                    dictionaries: strongsGreekDictionaries,
+                                    selectedNames: $selectedStrongsGreekDictionaryNames
                                 )
-                            )
-                        }
-                        .accessibilityIdentifier("settingsStrongsGreekDictionaryLink")
-                    }
-
-                    if !strongsHebrewDictionaries.isEmpty {
-                        NavigationLink {
-                            DictionaryMultiSelectView(
-                                title: String(
-                                    localized: "choose_strongs_hebrew_dictionary_title",
-                                    defaultValue: "Strongs Hebrew dictionary"
-                                ),
-                                dictionaries: strongsHebrewDictionaries,
-                                selectedNames: $selectedStrongsHebrewDictionaryNames
-                            )
-                        } label: {
-                            settingsSelectionRow(
-                                title: String(
-                                    localized: "choose_strongs_hebrew_dictionary_title",
-                                    defaultValue: "Strongs Hebrew dictionary"
-                                ),
-                                summary: String(
-                                    localized: "choose_strongs_hebrew_dictionary_summary",
-                                    defaultValue: "Choose Strongs dictionary for Hebrew word definitions"
-                                ),
-                                detail: selectionSummary(
-                                    selectedNames: selectedStrongsHebrewDictionaryNames,
-                                    available: strongsHebrewDictionaries
+                            } label: {
+                                settingsSelectionRow(
+                                    title: String(
+                                        localized: "choose_strongs_greek_dictionary_title",
+                                        defaultValue: "Strongs Greek dictionary"
+                                    ),
+                                    summary: String(
+                                        localized: "choose_strongs_greek_dictionary_summary",
+                                        defaultValue: "Choose Strongs dictionary for Greek word definitions"
+                                    ),
+                                    detail: selectionSummary(
+                                        selectedNames: selectedStrongsGreekDictionaryNames,
+                                        available: strongsGreekDictionaries
+                                    )
                                 )
-                            )
+                            }
+                            .accessibilityIdentifier("settingsStrongsGreekDictionaryLink")
                         }
-                        .accessibilityIdentifier("settingsStrongsHebrewDictionaryLink")
-                    }
 
-                    if !robinsonMorphologyDictionaries.isEmpty {
-                        NavigationLink {
-                            DictionaryMultiSelectView(
-                                title: String(
-                                    localized: "choose_strongs_greek_morphology_title",
-                                    defaultValue: "Robinson Greek morphology"
-                                ),
-                                dictionaries: robinsonMorphologyDictionaries,
-                                selectedNames: $selectedRobinsonMorphologyDictionaryNames
-                            )
-                        } label: {
-                            settingsSelectionRow(
-                                title: String(
-                                    localized: "choose_strongs_greek_morphology_title",
-                                    defaultValue: "Robinson Greek morphology"
-                                ),
-                                summary: String(
-                                    localized: "choose_strongs_greek_morphology_summary",
-                                    defaultValue: "Choose dictionary for Robinson Greek morphology definitions"
-                                ),
-                                detail: selectionSummary(
-                                    selectedNames: selectedRobinsonMorphologyDictionaryNames,
-                                    available: robinsonMorphologyDictionaries
+                        if !strongsHebrewDictionaries.isEmpty {
+                            NavigationLink {
+                                DictionaryMultiSelectView(
+                                    title: String(
+                                        localized: "choose_strongs_hebrew_dictionary_title",
+                                        defaultValue: "Strongs Hebrew dictionary"
+                                    ),
+                                    dictionaries: strongsHebrewDictionaries,
+                                    selectedNames: $selectedStrongsHebrewDictionaryNames
                                 )
-                            )
-                        }
-                        .accessibilityIdentifier("settingsRobinsonMorphologyLink")
-                    }
-
-                    if !wordLookupDictionaries.isEmpty {
-                        NavigationLink {
-                            DictionaryInverseMultiSelectView(
-                                title: String(
-                                    localized: "choose_word_lookup_dictionary_title",
-                                    defaultValue: "Word lookup dictionaries"
-                                ),
-                                dictionaries: wordLookupDictionaries,
-                                disabledNames: $disabledWordLookupDictionaryNames
-                            )
-                        } label: {
-                            settingsSelectionRow(
-                                title: String(
-                                    localized: "choose_word_lookup_dictionary_title",
-                                    defaultValue: "Word lookup dictionaries"
-                                ),
-                                summary: String(
-                                    localized: "choose_word_lookup_dictionary_summary",
-                                    defaultValue: "Choose dictionaries for looking up words"
-                                ),
-                                detail: inverseSelectionSummary(
-                                    disabledNames: disabledWordLookupDictionaryNames,
-                                    available: wordLookupDictionaries
+                            } label: {
+                                settingsSelectionRow(
+                                    title: String(
+                                        localized: "choose_strongs_hebrew_dictionary_title",
+                                        defaultValue: "Strongs Hebrew dictionary"
+                                    ),
+                                    summary: String(
+                                        localized: "choose_strongs_hebrew_dictionary_summary",
+                                        defaultValue: "Choose Strongs dictionary for Hebrew word definitions"
+                                    ),
+                                    detail: selectionSummary(
+                                        selectedNames: selectedStrongsHebrewDictionaryNames,
+                                        available: strongsHebrewDictionaries
+                                    )
                                 )
-                            )
+                            }
+                            .accessibilityIdentifier("settingsStrongsHebrewDictionaryLink")
                         }
-                        .accessibilityIdentifier("settingsWordLookupDictionariesLink")
-                    }
-                }
-            }
 
-            Section(String(localized: "prefs_behavior_customization_cat", defaultValue: "Application behavior")) {
-                Toggle(
-                    String(
-                        localized: "prefs_navigate_to_verse_title",
-                        defaultValue: "Navigate to verse"
-                    ),
-                    isOn: Binding(
-                        get: { navigateToVerse },
-                        set: { newValue in
-                            navigateToVerse = newValue
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setBool(.navigateToVersePref, value: newValue)
+                        if !robinsonMorphologyDictionaries.isEmpty {
+                            NavigationLink {
+                                DictionaryMultiSelectView(
+                                    title: String(
+                                        localized: "choose_strongs_greek_morphology_title",
+                                        defaultValue: "Robinson Greek morphology"
+                                    ),
+                                    dictionaries: robinsonMorphologyDictionaries,
+                                    selectedNames: $selectedRobinsonMorphologyDictionaryNames
+                                )
+                            } label: {
+                                settingsSelectionRow(
+                                    title: String(
+                                        localized: "choose_strongs_greek_morphology_title",
+                                        defaultValue: "Robinson Greek morphology"
+                                    ),
+                                    summary: String(
+                                        localized: "choose_strongs_greek_morphology_summary",
+                                        defaultValue: "Choose dictionary for Robinson Greek morphology definitions"
+                                    ),
+                                    detail: selectionSummary(
+                                        selectedNames: selectedRobinsonMorphologyDictionaryNames,
+                                        available: robinsonMorphologyDictionaries
+                                    )
+                                )
+                            }
+                            .accessibilityIdentifier("settingsRobinsonMorphologyLink")
                         }
-                    )
-                )
-                Text(String(
-                    localized: "prefs_navigate_to_verse_summary",
-                    defaultValue: "Choose verse (and chapter) when selecting a passage"
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Toggle(
-                    String(localized: "prefs_screen_keep_on_title", defaultValue: "Keep screen on"),
-                    isOn: Binding(
-                        get: { screenKeepOn },
-                        set: { newValue in
-                            screenKeepOn = newValue
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setBool(.screenKeepOnPref, value: newValue)
-                            applyScreenKeepOn(newValue)
-                        }
-                    )
-                )
-                Text(String(
-                    localized: "prefs_screen_keep_on_summary",
-                    defaultValue: "Prevent screen sleeping while using this app"
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Toggle(
-                    String(
-                        localized: "prefs_double_tap_to_fullscreen_title",
-                        defaultValue: "Double-tap to Fullscreen"
-                    ),
-                    isOn: Binding(
-                        get: { doubleTapToFullscreen },
-                        set: { newValue in
-                            doubleTapToFullscreen = newValue
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setBool(.doubleTapToFullscreen, value: newValue)
-                        }
-                    )
-                )
-                Text(String(
-                    localized: "prefs_double_tap_to_fullscreen_summary",
-                    defaultValue: "Enter fullscreen mode by double-tapping window"
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Toggle(
-                    String(localized: "auto_fullscreen", defaultValue: "Fullscreen by scrolling"),
-                    isOn: Binding(
-                        get: { autoFullscreen },
-                        set: { newValue in
-                            autoFullscreen = newValue
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setBool(.autoFullscreenPref, value: newValue)
-                        }
-                    )
-                )
-                Text(String(
-                    localized: "auto_fullscreen_summary",
-                    defaultValue: "Switch automatically to fullscreen when scrolling text. Tip: you can always also switch to full screen by doubletapping screen."
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Picker(
-                    String(
-                        localized: "prefs_toolbar_button_action_title",
-                        defaultValue: "Bible/commentary toolbar button action"
-                    ),
-                    selection: Binding(
-                        get: { Self.normalizedToolbarButtonActionsMode(toolbarButtonActionsMode) },
-                        set: { newValue in
-                            toolbarButtonActionsMode = Self.normalizedToolbarButtonActionsMode(newValue)
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setString(.toolbarButtonActions, value: toolbarButtonActionsMode)
-                        }
-                    )
-                ) {
-                    Text(String(localized: "prefs_toolbar_button_action_default", defaultValue: "Default"))
-                        .tag("default")
-                    Text(String(localized: "prefs_toolbar_button_action_swap_menu", defaultValue: "Swap menu"))
-                        .tag("swap-menu")
-                    Text(String(localized: "prefs_toolbar_button_action_swap_activity", defaultValue: "Swap activity"))
-                        .tag("swap-activity")
-                }
-                Text(String(
-                    localized: "prefs_toolbar_button_action_summary",
-                    defaultValue: "Choose if one-tap of Bible/commentary toolbar buttons shows menu or activity directly."
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Toggle(
-                    String(
-                        localized: "prefs_disable_two_step_bookmarking_title",
-                        defaultValue: "One-step bookmarking"
-                    ),
-                    isOn: Binding(
-                        get: { disableTwoStepBookmarking },
-                        set: { newValue in
-                            disableTwoStepBookmarking = newValue
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setBool(.disableTwoStepBookmarking, value: newValue)
-                        }
-                    )
-                )
-                Text(String(
-                    localized: "prefs_disable_two_step_bookmarking_summary",
-                    defaultValue: "Show \"Selection\" and \"Verses\" items directly in Bible view Selection menu"
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Picker(
-                    String(
-                        localized: "prefs_bible_view_swipe_mode_title",
-                        defaultValue: "Action for swipe left / right gesture"
-                    ),
-                    selection: Binding(
-                        get: { Self.normalizedBibleViewSwipeMode(bibleViewSwipeMode) },
-                        set: { newValue in
-                            bibleViewSwipeMode = Self.normalizedBibleViewSwipeMode(newValue)
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setString(.bibleViewSwipeMode, value: bibleViewSwipeMode)
-                        }
-                    )
-                ) {
-                    Text(String(localized: "prefs_swipe_mode_chapter", defaultValue: "Chapter"))
-                        .tag("CHAPTER")
-                    Text(String(localized: "prefs_swipe_mode_page", defaultValue: "Page"))
-                        .tag("PAGE")
-                    Text(String(localized: "prefs_swipe_mode_none", defaultValue: "None"))
-                        .tag("NONE")
-                }
-                Text(String(
-                    localized: "prefs_bible_view_swipe_mode_summary",
-                    defaultValue: "Swipe left / right gesture can be used to go to next page / chapter."
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Toggle(
-                    String(
-                        localized: "prefs_volume_keys_scroll_title",
-                        defaultValue: "Volume buttons scroll"
-                    ),
-                    isOn: Binding(
-                        get: { volumeKeysScroll },
-                        set: { newValue in
-                            volumeKeysScroll = newValue
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setBool(.volumeKeysScroll, value: newValue)
-                        }
-                    )
-                )
-                Text(String(
-                    localized: "prefs_volume_keys_scroll_summary",
-                    defaultValue: "Use volume up/down to scroll Bible text"
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(String(
-                    localized: "prefs_volume_keys_scroll_ios_note",
-                    defaultValue: "iOS does not expose volume-button presses to apps. This setting is kept for Android parity and cross-device sync."
-                ))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                Toggle(String(localized: "verse_selection"), isOn: Binding(
-                    get: { displaySettings.enableVerseSelection ?? true },
-                    set: {
-                        displaySettings.enableVerseSelection = $0
-                        onSettingsChanged?()
-                    }
-                ))
-                Toggle(
-                    String(
-                        localized: "prefs_open_links_in_special_window_title",
-                        defaultValue: "Links window"
-                    ),
-                    isOn: Binding(
-                        get: { openLinksInSpecialWindow },
-                        set: { newValue in
-                            openLinksInSpecialWindow = newValue
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setBool(.openLinksInSpecialWindowPref, value: newValue)
-                        }
-                    )
-                )
-                Text(String(
-                    localized: "prefs_open_links_in_special_window_summary",
-                    defaultValue: "Open links in special window, for quicker display of cross-references and Strongs"
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
 
-            lookAndFeelSection
-
-            Section(String(localized: "settings_security")) {
-                Button {
-                    showDiscreteHelp = true
-                } label: {
-                    HStack {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                        VStack(alignment: .leading) {
-                            Text(String(localized: "discrete_help_title"))
-                                .foregroundStyle(.primary)
-                            Text(String(localized: "discrete_help_summary"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        if !wordLookupDictionaries.isEmpty {
+                            NavigationLink {
+                                DictionaryInverseMultiSelectView(
+                                    title: String(
+                                        localized: "choose_word_lookup_dictionary_title",
+                                        defaultValue: "Word lookup dictionaries"
+                                    ),
+                                    dictionaries: wordLookupDictionaries,
+                                    disabledNames: $disabledWordLookupDictionaryNames
+                                )
+                            } label: {
+                                settingsSelectionRow(
+                                    title: String(
+                                        localized: "choose_word_lookup_dictionary_title",
+                                        defaultValue: "Word lookup dictionaries"
+                                    ),
+                                    summary: String(
+                                        localized: "choose_word_lookup_dictionary_summary",
+                                        defaultValue: "Choose dictionaries for looking up words"
+                                    ),
+                                    detail: inverseSelectionSummary(
+                                        disabledNames: disabledWordLookupDictionaryNames,
+                                        available: wordLookupDictionaries
+                                    )
+                                )
+                            }
+                            .accessibilityIdentifier("settingsWordLookupDictionariesLink")
                         }
                     }
                 }
 
-                Toggle(String(localized: "discrete_mode"), isOn: $discreteMode)
-                Text(String(localized: "discrete_mode_description"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Toggle(String(localized: "show_calculator"), isOn: $showCalculator)
-                Text(String(localized: "show_calculator_description"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                HStack {
-                    Text(String(localized: "calculator_pin"))
-                    Spacer()
-                    TextField(String(localized: "calculator_pin_placeholder"), text: $calculatorPin)
-                        #if os(iOS)
-                        .keyboardType(.numberPad)
-                        #endif
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 100)
-                        .onChange(of: calculatorPin) { _, newValue in
-                            let filtered = newValue.filter { $0.isNumber }
-                            if filtered != newValue { calculatorPin = filtered }
-                        }
-                }
-                Text(String(localized: "calculator_pin_description"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section(String(localized: "prefs_advanced_settings_cat", defaultValue: "Advanced settings")) {
-                Toggle(
-                    String(
-                        localized: "prefs_enable_bluetooth_title",
-                        defaultValue: "Enable Bluetooth media buttons"
-                    ),
-                    isOn: Binding(
-                        get: { enableBluetoothMediaButtons },
-                        set: { newValue in
-                            enableBluetoothMediaButtons = newValue
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setBool(.enableBluetoothPref, value: newValue)
+                Section(String(localized: "prefs_behavior_customization_cat", defaultValue: "Application behavior")) {
+                    Toggle(
+                        String(
+                            localized: "prefs_navigate_to_verse_title",
+                            defaultValue: "Navigate to verse"
+                        ),
+                        isOn: Binding(
+                            get: { navigateToVerse },
+                            set: { newValue in
+                                navigateToVerse = newValue
+                                let store = SettingsStore(modelContext: modelContext)
+                                store.setBool(.navigateToVersePref, value: newValue)
+                            }
+                        )
+                    )
+                    Text(String(
+                        localized: "prefs_navigate_to_verse_summary",
+                        defaultValue: "Choose verse (and chapter) when selecting a passage"
+                    ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Toggle(
+                        String(localized: "prefs_screen_keep_on_title", defaultValue: "Keep screen on"),
+                        isOn: Binding(
+                            get: { screenKeepOn },
+                            set: { newValue in
+                                screenKeepOn = newValue
+                                let store = SettingsStore(modelContext: modelContext)
+                                store.setBool(.screenKeepOnPref, value: newValue)
+                                applyScreenKeepOn(newValue)
+                            }
+                        )
+                    )
+                    Text(String(
+                        localized: "prefs_screen_keep_on_summary",
+                        defaultValue: "Prevent screen sleeping while using this app"
+                    ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Toggle(
+                        String(
+                            localized: "prefs_double_tap_to_fullscreen_title",
+                            defaultValue: "Double-tap to Fullscreen"
+                        ),
+                        isOn: Binding(
+                            get: { doubleTapToFullscreen },
+                            set: { newValue in
+                                doubleTapToFullscreen = newValue
+                                let store = SettingsStore(modelContext: modelContext)
+                                store.setBool(.doubleTapToFullscreen, value: newValue)
+                            }
+                        )
+                    )
+                    Text(String(
+                        localized: "prefs_double_tap_to_fullscreen_summary",
+                        defaultValue: "Enter fullscreen mode by double-tapping window"
+                    ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Toggle(
+                        String(localized: "auto_fullscreen", defaultValue: "Fullscreen by scrolling"),
+                        isOn: Binding(
+                            get: { autoFullscreen },
+                            set: { newValue in
+                                autoFullscreen = newValue
+                                let store = SettingsStore(modelContext: modelContext)
+                                store.setBool(.autoFullscreenPref, value: newValue)
+                            }
+                        )
+                    )
+                    Text(String(
+                        localized: "auto_fullscreen_summary",
+                        defaultValue: "Switch automatically to fullscreen when scrolling text. Tip: you can always also switch to full screen by doubletapping screen."
+                    ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Picker(
+                        String(
+                            localized: "prefs_toolbar_button_action_title",
+                            defaultValue: "Bible/commentary toolbar button action"
+                        ),
+                        selection: Binding(
+                            get: { Self.normalizedToolbarButtonActionsMode(toolbarButtonActionsMode) },
+                            set: { newValue in
+                                toolbarButtonActionsMode = Self.normalizedToolbarButtonActionsMode(newValue)
+                                let store = SettingsStore(modelContext: modelContext)
+                                store.setString(.toolbarButtonActions, value: toolbarButtonActionsMode)
+                            }
+                        )
+                    ) {
+                        Text(String(localized: "prefs_toolbar_button_action_default", defaultValue: "Default"))
+                            .tag("default")
+                        Text(String(localized: "prefs_toolbar_button_action_swap_menu", defaultValue: "Swap menu"))
+                            .tag("swap-menu")
+                        Text(String(localized: "prefs_toolbar_button_action_swap_activity", defaultValue: "Swap activity"))
+                            .tag("swap-activity")
+                    }
+                    Text(String(
+                        localized: "prefs_toolbar_button_action_summary",
+                        defaultValue: "Choose if one-tap of Bible/commentary toolbar buttons shows menu or activity directly."
+                    ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Toggle(
+                        String(
+                            localized: "prefs_disable_two_step_bookmarking_title",
+                            defaultValue: "One-step bookmarking"
+                        ),
+                        isOn: Binding(
+                            get: { disableTwoStepBookmarking },
+                            set: { newValue in
+                                disableTwoStepBookmarking = newValue
+                                let store = SettingsStore(modelContext: modelContext)
+                                store.setBool(.disableTwoStepBookmarking, value: newValue)
+                            }
+                        )
+                    )
+                    Text(String(
+                        localized: "prefs_disable_two_step_bookmarking_summary",
+                        defaultValue: "Show \"Selection\" and \"Verses\" items directly in Bible view Selection menu"
+                    ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Picker(
+                        String(
+                            localized: "prefs_bible_view_swipe_mode_title",
+                            defaultValue: "Action for swipe left / right gesture"
+                        ),
+                        selection: Binding(
+                            get: { Self.normalizedBibleViewSwipeMode(bibleViewSwipeMode) },
+                            set: { newValue in
+                                bibleViewSwipeMode = Self.normalizedBibleViewSwipeMode(newValue)
+                                let store = SettingsStore(modelContext: modelContext)
+                                store.setString(.bibleViewSwipeMode, value: bibleViewSwipeMode)
+                            }
+                        )
+                    ) {
+                        Text(String(localized: "prefs_swipe_mode_chapter", defaultValue: "Chapter"))
+                            .tag("CHAPTER")
+                        Text(String(localized: "prefs_swipe_mode_page", defaultValue: "Page"))
+                            .tag("PAGE")
+                        Text(String(localized: "prefs_swipe_mode_none", defaultValue: "None"))
+                            .tag("NONE")
+                    }
+                    Text(String(
+                        localized: "prefs_bible_view_swipe_mode_summary",
+                        defaultValue: "Swipe left / right gesture can be used to go to next page / chapter."
+                    ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Toggle(
+                        String(
+                            localized: "prefs_volume_keys_scroll_title",
+                            defaultValue: "Volume buttons scroll"
+                        ),
+                        isOn: Binding(
+                            get: { volumeKeysScroll },
+                            set: { newValue in
+                                volumeKeysScroll = newValue
+                                let store = SettingsStore(modelContext: modelContext)
+                                store.setBool(.volumeKeysScroll, value: newValue)
+                            }
+                        )
+                    )
+                    Text(String(
+                        localized: "prefs_volume_keys_scroll_summary",
+                        defaultValue: "Use volume up/down to scroll Bible text"
+                    ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(String(
+                        localized: "prefs_volume_keys_scroll_ios_note",
+                        defaultValue: "iOS does not expose volume-button presses to apps. This setting is kept for Android parity and cross-device sync."
+                    ))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Toggle(String(localized: "verse_selection"), isOn: Binding(
+                        get: { displaySettings.enableVerseSelection ?? true },
+                        set: {
+                            displaySettings.enableVerseSelection = $0
                             onSettingsChanged?()
                         }
-                    )
-                )
-                Text(String(
-                    localized: "prefs_enable_bluetooth_summary",
-                    defaultValue: "Handle Bluetooth media buttons to start/stop speaking."
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                NavigationLink {
-                    ExperimentalFeaturesMultiSelectView(
-                        title: String(
-                            localized: "prefs_experimental_features_title",
-                            defaultValue: "Experimental features"
+                    ))
+                    Toggle(
+                        String(
+                            localized: "prefs_open_links_in_special_window_title",
+                            defaultValue: "Links window"
                         ),
-                        options: Self.experimentalFeatureOptions,
-                        selectedValues: $enabledExperimentalFeatures
+                        isOn: Binding(
+                            get: { openLinksInSpecialWindow },
+                            set: { newValue in
+                                openLinksInSpecialWindow = newValue
+                                let store = SettingsStore(modelContext: modelContext)
+                                store.setBool(.openLinksInSpecialWindowPref, value: newValue)
+                            }
+                        )
                     )
-                } label: {
-                    settingsSelectionRow(
-                        title: String(
-                            localized: "prefs_experimental_features_title",
-                            defaultValue: "Experimental features"
-                        ),
-                        summary: String(
-                            localized: "prefs_experimental_features_summary",
-                            defaultValue: "Select which experimental features to enable. These features are still in development and may change or be removed"
-                        ),
-                        detail: experimentalFeaturesSummary(selectedValues: enabledExperimentalFeatures)
-                    )
-                }
-                #if DEBUG
-                Toggle(
-                    String(
-                        localized: "prefs_show_error_box_title",
-                        defaultValue: "Show Javascript error box"
-                    ),
-                    isOn: Binding(
-                        get: { showErrorBox },
-                        set: { newValue in
-                            showErrorBox = newValue
-                            let store = SettingsStore(modelContext: modelContext)
-                            store.setBool(.showErrorBox, value: newValue)
-                            onSettingsChanged?()
-                        }
-                    )
-                )
-                Text(String(
-                    localized: "prefs_show_error_box_summary",
-                    defaultValue: "Useful for developers when debugging BibleView javascript side errors. This will make the app slower."
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                #endif
-
-                #if os(iOS)
-                Button {
-                    openBibleLinkSystemSettings()
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(String(
-                                localized: "open_bible_links_title",
-                                defaultValue: "Open Bible links in AndBible"
-                            ))
-                                .foregroundStyle(.primary)
-                            Text(String(
-                                localized: "open_bible_links_summary",
-                                defaultValue: "When clicking links that refer to AndBible supported Bible URL, open them in AndBible"
-                            ))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "arrow.up.right.square")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                #endif
-
-                #if DEBUG
-                Button(role: .destructive) {
-                    triggerDebugCrash()
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(String(
-                                localized: "crash_app",
-                                defaultValue: "Crash app!"
-                            ))
-                            .foregroundStyle(.red)
-                            Text(debugCrashScheduled
-                                ? String(
-                                    localized: "crash_app_scheduled_summary",
-                                    defaultValue: "Crash scheduled in 10 seconds."
-                                )
-                                : String(
-                                    localized: "crash_app_summary",
-                                    defaultValue: "Crash app after 10 seconds. Debugging feature, visible only in debug builds."
-                                ))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                    }
-                }
-                .disabled(debugCrashScheduled)
-                #endif
-            }
-
-            Section(String(localized: "settings_data")) {
-                NavigationLink {
-                    ModuleBrowserView()
-                } label: {
-                    settingsNavigationRow(
-                        title: String(localized: "downloads"),
-                        identifier: "settingsDownloadsLink"
-                    )
-                }
-                NavigationLink {
-                    RepositoryManagerView()
-                } label: {
-                    settingsNavigationRow(
-                        title: String(localized: "repositories"),
-                        identifier: "settingsRepositoriesLink"
-                    )
-                }
-                NavigationLink {
-                    ImportExportView()
-                } label: {
-                    settingsNavigationRow(
-                        title: String(localized: "import_export"),
-                        identifier: "settingsImportExportLink"
-                    )
-                }
-                NavigationLink {
-                    SyncSettingsView()
-                } label: {
-                    settingsNavigationRow(
-                        title: String(localized: "icloud_sync"),
-                        identifier: "settingsSyncLink"
-                    )
-                }
-                NavigationLink {
-                    LabelManagerView()
-                } label: {
-                    settingsNavigationRow(
-                        title: String(localized: "labels"),
-                        identifier: "settingsLabelsLink"
-                    )
-                }
-            }
-
-            Section(String(localized: "settings_about")) {
-                HStack {
-                    Text(String(localized: "version"))
-                    Spacer()
-                    Text("1.0.0")
+                    Text(String(
+                        localized: "prefs_open_links_in_special_window_summary",
+                        defaultValue: "Open links in special window, for quicker display of cross-references and Strongs"
+                    ))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-            }
-        }
-        .accessibilityIdentifier("settingsForm")
-        .navigationTitle(String(localized: "settings"))
-        .alert(
-            String(localized: "prefs_interface_locale_title", defaultValue: "Application language"),
-            isPresented: $showRestartAlert
-        ) {
-            Button(String(localized: "ok")) {}
-        } message: {
-            Text(String(localized: "language_restart_required"))
-        }
-        .sheet(isPresented: $showDiscreteHelp) {
-            NavigationStack {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text(String(localized: "discrete_help_par1"))
-                        Text(String(localized: "discrete_help_par2"))
-                        Text(String(localized: "discrete_help_par3"))
-                        Text(String(localized: "discrete_help_ios_note"))
+
+                lookAndFeelSection
+
+                Section(String(localized: "settings_security")) {
+                    Button {
+                        showDiscreteHelp = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.red)
+                            VStack(alignment: .leading) {
+                                Text(String(localized: "discrete_help_title"))
+                                    .foregroundStyle(.primary)
+                                Text(String(localized: "discrete_help_summary"))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
+                    Toggle(String(localized: "discrete_mode"), isOn: $discreteMode)
+                    Text(String(localized: "discrete_mode_description"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Toggle(String(localized: "show_calculator"), isOn: $showCalculator)
+                    Text(String(localized: "show_calculator_description"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Text(String(localized: "calculator_pin"))
+                        Spacer()
+                        TextField(String(localized: "calculator_pin_placeholder"), text: $calculatorPin)
+                            #if os(iOS)
+                            .keyboardType(.numberPad)
+                            #endif
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 100)
+                            .onChange(of: calculatorPin) { _, newValue in
+                                let filtered = newValue.filter { $0.isNumber }
+                                if filtered != newValue { calculatorPin = filtered }
+                            }
+                    }
+                    Text(String(localized: "calculator_pin_description"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section(String(localized: "prefs_advanced_settings_cat", defaultValue: "Advanced settings")) {
+                    Toggle(
+                        String(
+                            localized: "prefs_enable_bluetooth_title",
+                            defaultValue: "Enable Bluetooth media buttons"
+                        ),
+                        isOn: Binding(
+                            get: { enableBluetoothMediaButtons },
+                            set: { newValue in
+                                enableBluetoothMediaButtons = newValue
+                                let store = SettingsStore(modelContext: modelContext)
+                                store.setBool(.enableBluetoothPref, value: newValue)
+                                onSettingsChanged?()
+                            }
+                        )
+                    )
+                    Text(String(
+                        localized: "prefs_enable_bluetooth_summary",
+                        defaultValue: "Handle Bluetooth media buttons to start/stop speaking."
+                    ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    NavigationLink {
+                        ExperimentalFeaturesMultiSelectView(
+                            title: String(
+                                localized: "prefs_experimental_features_title",
+                                defaultValue: "Experimental features"
+                            ),
+                            options: Self.experimentalFeatureOptions,
+                            selectedValues: $enabledExperimentalFeatures
+                        )
+                    } label: {
+                        settingsSelectionRow(
+                            title: String(
+                                localized: "prefs_experimental_features_title",
+                                defaultValue: "Experimental features"
+                            ),
+                            summary: String(
+                                localized: "prefs_experimental_features_summary",
+                                defaultValue: "Select which experimental features to enable. These features are still in development and may change or be removed"
+                            ),
+                            detail: experimentalFeaturesSummary(selectedValues: enabledExperimentalFeatures)
+                        )
+                    }
+                    #if DEBUG
+                    Toggle(
+                        String(
+                            localized: "prefs_show_error_box_title",
+                            defaultValue: "Show Javascript error box"
+                        ),
+                        isOn: Binding(
+                            get: { showErrorBox },
+                            set: { newValue in
+                                showErrorBox = newValue
+                                let store = SettingsStore(modelContext: modelContext)
+                                store.setBool(.showErrorBox, value: newValue)
+                                onSettingsChanged?()
+                            }
+                        )
+                    )
+                    Text(String(
+                        localized: "prefs_show_error_box_summary",
+                        defaultValue: "Useful for developers when debugging BibleView javascript side errors. This will make the app slower."
+                    ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    #endif
+
+                    #if os(iOS)
+                    Button {
+                        openBibleLinkSystemSettings()
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(String(
+                                    localized: "open_bible_links_title",
+                                    defaultValue: "Open Bible links in AndBible"
+                                ))
+                                    .foregroundStyle(.primary)
+                                Text(String(
+                                    localized: "open_bible_links_summary",
+                                    defaultValue: "When clicking links that refer to AndBible supported Bible URL, open them in AndBible"
+                                ))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "arrow.up.right.square")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    #endif
+
+                    #if DEBUG
+                    Button(role: .destructive) {
+                        triggerDebugCrash()
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(String(
+                                    localized: "crash_app",
+                                    defaultValue: "Crash app!"
+                                ))
+                                .foregroundStyle(.red)
+                                Text(debugCrashScheduled
+                                    ? String(
+                                        localized: "crash_app_scheduled_summary",
+                                        defaultValue: "Crash scheduled in 10 seconds."
+                                    )
+                                    : String(
+                                        localized: "crash_app_summary",
+                                        defaultValue: "Crash app after 10 seconds. Debugging feature, visible only in debug builds."
+                                    ))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.red)
+                        }
+                    }
+                    .disabled(debugCrashScheduled)
+                    #endif
+                }
+
+                Section(String(localized: "settings_data")) {
+                    NavigationLink {
+                        ModuleBrowserView()
+                    } label: {
+                        settingsNavigationRow(title: String(localized: "downloads"))
+                    }
+                    .id("settingsDownloadsLink")
+                    .accessibilityIdentifier("settingsDownloadsLink")
+                    NavigationLink {
+                        RepositoryManagerView()
+                    } label: {
+                        settingsNavigationRow(title: String(localized: "repositories"))
+                    }
+                    .id("settingsRepositoriesLink")
+                    .accessibilityIdentifier("settingsRepositoriesLink")
+                    NavigationLink {
+                        ImportExportView()
+                    } label: {
+                        settingsNavigationRow(title: String(localized: "import_export"))
+                    }
+                    .id("settingsImportExportLink")
+                    .accessibilityIdentifier("settingsImportExportLink")
+                    NavigationLink {
+                        SyncSettingsView()
+                    } label: {
+                        settingsNavigationRow(title: String(localized: "icloud_sync"))
+                    }
+                    .id("settingsSyncLink")
+                    .accessibilityIdentifier("settingsSyncLink")
+                    NavigationLink {
+                        LabelManagerView()
+                    } label: {
+                        settingsNavigationRow(title: String(localized: "labels"))
+                    }
+                    .id("settingsLabelsLink")
+                    .accessibilityIdentifier("settingsLabelsLink")
+                }
+
+                Section(String(localized: "settings_about")) {
+                    HStack {
+                        Text(String(localized: "version"))
+                        Spacer()
+                        Text("1.0.0")
                             .foregroundStyle(.secondary)
                     }
-                    .padding()
-                }
-                .navigationTitle(String(localized: "settings_security"))
-                #if os(iOS)
-                .navigationBarTitleDisplayMode(.inline)
-                #endif
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(String(localized: "done")) { showDiscreteHelp = false }
-                    }
                 }
             }
-        }
-        .onAppear {
-            // Load installed dictionary modules
-            if let mgr = SwordManager() {
-                let all = mgr.installedModules()
-                strongsGreekDictionaries = all
-                    .filter {
-                        ($0.category == .dictionary || $0.category == .glossary) &&
-                            $0.features.contains(.greekDef)
-                    }
-                    .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-                strongsHebrewDictionaries = all
-                    .filter {
-                        ($0.category == .dictionary || $0.category == .glossary) &&
-                            $0.features.contains(.hebrewDef)
-                    }
-                    .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-                robinsonMorphologyDictionaries = all
-                    .filter {
-                        ($0.category == .dictionary || $0.category == .glossary) &&
-                            $0.features.contains(.greekParse)
-                    }
-                    .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-                wordLookupDictionaries = all
-                    .filter {
-                        $0.category == .dictionary &&
-                            !$0.features.contains(.greekDef) &&
-                            !$0.features.contains(.hebrewDef) &&
-                            !$0.features.contains(.greekParse)
-                    }
-                    .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            .accessibilityIdentifier("settingsForm")
+            .navigationTitle(String(localized: "settings"))
+            .alert(
+                String(localized: "prefs_interface_locale_title", defaultValue: "Application language"),
+                isPresented: $showRestartAlert
+            ) {
+                Button(String(localized: "ok")) {}
+            } message: {
+                Text(String(localized: "language_restart_required"))
             }
-            hasLoadedPreferences = false
-            // Load persisted preferences
-            let store = SettingsStore(modelContext: modelContext)
-            selectedStrongsGreekDictionaryNames = Set(store.getStringSet(.strongsGreekDictionary))
-            selectedStrongsHebrewDictionaryNames = Set(store.getStringSet(.strongsHebrewDictionary))
-            selectedRobinsonMorphologyDictionaryNames = Set(store.getStringSet(.robinsonGreekMorphology))
-            disabledWordLookupDictionaryNames = Set(store.getStringSet(.disabledWordLookupDictionaries))
-            disabledBibleBookmarkModalButtons = Set(store.getStringSet(.disableBibleBookmarkModalButtons))
-            disabledGenBookmarkModalButtons = Set(store.getStringSet(.disableGenBookmarkModalButtons))
-            sanitizeDictionaryPreferences(store: store)
-            sanitizeBookmarkModalActionPreferences(store: store)
-            openLinksInSpecialWindow = store.getBool(.openLinksInSpecialWindowPref)
-            monochromeMode = store.getBool(.monochromeMode)
-            disableAnimations = store.getBool(.disableAnimations)
-            disableClickToEdit = store.getBool(.disableClickToEdit)
-            showActiveWindowIndicator = store.getBool(.showActiveWindowIndicator)
-            showErrorBox = store.getBool(.showErrorBox)
-            enableBluetoothMediaButtons = store.getBool(.enableBluetoothPref)
-            fontSizeMultiplier = store.getInt(.fontSizeMultiplier)
-            fullScreenHideButtons = store.getBool(.fullScreenHideButtonsPref)
-            hideWindowButtons = store.getBool(.hideWindowButtons)
-            hideBibleReferenceOverlay = store.getBool(.hideBibleReferenceOverlay)
-            navigateToVerse = store.getBool(.navigateToVersePref)
-            screenKeepOn = store.getBool(.screenKeepOnPref)
-            doubleTapToFullscreen = store.getBool(.doubleTapToFullscreen)
-            autoFullscreen = store.getBool(.autoFullscreenPref)
-            disableTwoStepBookmarking = store.getBool(.disableTwoStepBookmarking)
-            toolbarButtonActionsMode = Self.normalizedToolbarButtonActionsMode(
-                store.getString(.toolbarButtonActions)
-            )
-            bibleViewSwipeMode = Self.normalizedBibleViewSwipeMode(store.getString(.bibleViewSwipeMode))
-            volumeKeysScroll = store.getBool(.volumeKeysScroll)
-            enabledExperimentalFeatures = Set(store.getStringSet(.experimentalFeatures))
-            sanitizeExperimentalFeatures(store: store)
-            nightModeMode = store.getString(.nightModePref3)
-            let manualNightMode = store.getBool("night_mode")
-            nightMode = NightModeSettingsResolver.isNightMode(
-                rawValue: nightModeMode,
-                manualNightMode: manualNightMode,
-                systemIsDark: colorScheme == .dark
-            )
-            applyScreenKeepOn(screenKeepOn)
-            // Load locale_pref first. Fallback to any existing AppleLanguages override from older builds.
-            let persistedLocale = store.getString(.localePref)
-            if Self.localeOptions.contains(where: { $0.value == persistedLocale }) {
-                selectedLanguage = persistedLocale
-            } else {
-                selectedLanguage = ""
-                if !persistedLocale.isEmpty {
-                    store.setString(.localePref, value: "")
+            .sheet(isPresented: $showDiscreteHelp) {
+                NavigationStack {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text(String(localized: "discrete_help_par1"))
+                            Text(String(localized: "discrete_help_par2"))
+                            Text(String(localized: "discrete_help_par3"))
+                            Text(String(localized: "discrete_help_ios_note"))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding()
+                    }
+                    .navigationTitle(String(localized: "settings_security"))
+                    #if os(iOS)
+                    .navigationBarTitleDisplayMode(.inline)
+                    #endif
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button(String(localized: "done")) { showDiscreteHelp = false }
+                        }
+                    }
                 }
             }
-            if selectedLanguage.isEmpty,
-               let overrideLangs = UserDefaults.standard.array(forKey: "AppleLanguages") as? [String],
-               let first = overrideLangs.first,
-               let mapped = Self.localePrefValue(forAppleLanguage: first) {
-                selectedLanguage = mapped
-                store.setString(.localePref, value: mapped)
+            .onAppear {
+                // Load installed dictionary modules
+                if let mgr = SwordManager() {
+                    let all = mgr.installedModules()
+                    strongsGreekDictionaries = all
+                        .filter {
+                            ($0.category == .dictionary || $0.category == .glossary) &&
+                                $0.features.contains(.greekDef)
+                        }
+                        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                    strongsHebrewDictionaries = all
+                        .filter {
+                            ($0.category == .dictionary || $0.category == .glossary) &&
+                                $0.features.contains(.hebrewDef)
+                        }
+                        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                    robinsonMorphologyDictionaries = all
+                        .filter {
+                            ($0.category == .dictionary || $0.category == .glossary) &&
+                                $0.features.contains(.greekParse)
+                        }
+                        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                    wordLookupDictionaries = all
+                        .filter {
+                            $0.category == .dictionary &&
+                                !$0.features.contains(.greekDef) &&
+                                !$0.features.contains(.hebrewDef) &&
+                                !$0.features.contains(.greekParse)
+                        }
+                        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                }
+                hasLoadedPreferences = false
+                // Load persisted preferences
+                let store = SettingsStore(modelContext: modelContext)
+                selectedStrongsGreekDictionaryNames = Set(store.getStringSet(.strongsGreekDictionary))
+                selectedStrongsHebrewDictionaryNames = Set(store.getStringSet(.strongsHebrewDictionary))
+                selectedRobinsonMorphologyDictionaryNames = Set(store.getStringSet(.robinsonGreekMorphology))
+                disabledWordLookupDictionaryNames = Set(store.getStringSet(.disabledWordLookupDictionaries))
+                disabledBibleBookmarkModalButtons = Set(store.getStringSet(.disableBibleBookmarkModalButtons))
+                disabledGenBookmarkModalButtons = Set(store.getStringSet(.disableGenBookmarkModalButtons))
+                sanitizeDictionaryPreferences(store: store)
+                sanitizeBookmarkModalActionPreferences(store: store)
+                openLinksInSpecialWindow = store.getBool(.openLinksInSpecialWindowPref)
+                monochromeMode = store.getBool(.monochromeMode)
+                disableAnimations = store.getBool(.disableAnimations)
+                disableClickToEdit = store.getBool(.disableClickToEdit)
+                showActiveWindowIndicator = store.getBool(.showActiveWindowIndicator)
+                showErrorBox = store.getBool(.showErrorBox)
+                enableBluetoothMediaButtons = store.getBool(.enableBluetoothPref)
+                fontSizeMultiplier = store.getInt(.fontSizeMultiplier)
+                fullScreenHideButtons = store.getBool(.fullScreenHideButtonsPref)
+                hideWindowButtons = store.getBool(.hideWindowButtons)
+                hideBibleReferenceOverlay = store.getBool(.hideBibleReferenceOverlay)
+                navigateToVerse = store.getBool(.navigateToVersePref)
+                screenKeepOn = store.getBool(.screenKeepOnPref)
+                doubleTapToFullscreen = store.getBool(.doubleTapToFullscreen)
+                autoFullscreen = store.getBool(.autoFullscreenPref)
+                disableTwoStepBookmarking = store.getBool(.disableTwoStepBookmarking)
+                toolbarButtonActionsMode = Self.normalizedToolbarButtonActionsMode(
+                    store.getString(.toolbarButtonActions)
+                )
+                bibleViewSwipeMode = Self.normalizedBibleViewSwipeMode(store.getString(.bibleViewSwipeMode))
+                volumeKeysScroll = store.getBool(.volumeKeysScroll)
+                enabledExperimentalFeatures = Set(store.getStringSet(.experimentalFeatures))
+                sanitizeExperimentalFeatures(store: store)
+                nightModeMode = store.getString(.nightModePref3)
+                let manualNightMode = store.getBool("night_mode")
+                nightMode = NightModeSettingsResolver.isNightMode(
+                    rawValue: nightModeMode,
+                    manualNightMode: manualNightMode,
+                    systemIsDark: colorScheme == .dark
+                )
+                applyScreenKeepOn(screenKeepOn)
+                // Load locale_pref first. Fallback to any existing AppleLanguages override from older builds.
+                let persistedLocale = store.getString(.localePref)
+                if Self.localeOptions.contains(where: { $0.value == persistedLocale }) {
+                    selectedLanguage = persistedLocale
+                } else {
+                    selectedLanguage = ""
+                    if !persistedLocale.isEmpty {
+                        store.setString(.localePref, value: "")
+                    }
+                }
+                if selectedLanguage.isEmpty,
+                   let overrideLangs = UserDefaults.standard.array(forKey: "AppleLanguages") as? [String],
+                   let first = overrideLangs.first,
+                   let mapped = Self.localePrefValue(forAppleLanguage: first) {
+                    selectedLanguage = mapped
+                    store.setString(.localePref, value: mapped)
+                }
+                hasLoadedPreferences = true
+                scrollToUITestTarget(using: proxy)
             }
-            hasLoadedPreferences = true
-        }
-        .onChange(of: selectedStrongsGreekDictionaryNames) { _, newValue in
-            let store = SettingsStore(modelContext: modelContext)
-            store.setStringSet(.strongsGreekDictionary, values: Array(newValue))
-        }
-        .onChange(of: selectedStrongsHebrewDictionaryNames) { _, newValue in
-            let store = SettingsStore(modelContext: modelContext)
-            store.setStringSet(.strongsHebrewDictionary, values: Array(newValue))
-        }
-        .onChange(of: selectedRobinsonMorphologyDictionaryNames) { _, newValue in
-            let store = SettingsStore(modelContext: modelContext)
-            store.setStringSet(.robinsonGreekMorphology, values: Array(newValue))
-        }
-        .onChange(of: disabledWordLookupDictionaryNames) { _, newValue in
-            let store = SettingsStore(modelContext: modelContext)
-            store.setStringSet(.disabledWordLookupDictionaries, values: Array(newValue))
-        }
-        .onChange(of: disabledBibleBookmarkModalButtons) { _, newValue in
-            let store = SettingsStore(modelContext: modelContext)
-            store.setStringSet(.disableBibleBookmarkModalButtons, values: Array(newValue))
-            onSettingsChanged?()
-        }
-        .onChange(of: disabledGenBookmarkModalButtons) { _, newValue in
-            let store = SettingsStore(modelContext: modelContext)
-            store.setStringSet(.disableGenBookmarkModalButtons, values: Array(newValue))
-            onSettingsChanged?()
-        }
-        .onChange(of: enabledExperimentalFeatures) { _, newValue in
-            let store = SettingsStore(modelContext: modelContext)
-            store.setStringSet(.experimentalFeatures, values: Array(newValue))
-            onSettingsChanged?()
+            .onChange(of: selectedStrongsGreekDictionaryNames) { _, newValue in
+                let store = SettingsStore(modelContext: modelContext)
+                store.setStringSet(.strongsGreekDictionary, values: Array(newValue))
+            }
+            .onChange(of: selectedStrongsHebrewDictionaryNames) { _, newValue in
+                let store = SettingsStore(modelContext: modelContext)
+                store.setStringSet(.strongsHebrewDictionary, values: Array(newValue))
+            }
+            .onChange(of: selectedRobinsonMorphologyDictionaryNames) { _, newValue in
+                let store = SettingsStore(modelContext: modelContext)
+                store.setStringSet(.robinsonGreekMorphology, values: Array(newValue))
+            }
+            .onChange(of: disabledWordLookupDictionaryNames) { _, newValue in
+                let store = SettingsStore(modelContext: modelContext)
+                store.setStringSet(.disabledWordLookupDictionaries, values: Array(newValue))
+            }
+            .onChange(of: disabledBibleBookmarkModalButtons) { _, newValue in
+                let store = SettingsStore(modelContext: modelContext)
+                store.setStringSet(.disableBibleBookmarkModalButtons, values: Array(newValue))
+                onSettingsChanged?()
+            }
+            .onChange(of: disabledGenBookmarkModalButtons) { _, newValue in
+                let store = SettingsStore(modelContext: modelContext)
+                store.setStringSet(.disableGenBookmarkModalButtons, values: Array(newValue))
+                onSettingsChanged?()
+            }
+            .onChange(of: enabledExperimentalFeatures) { _, newValue in
+                let store = SettingsStore(modelContext: modelContext)
+                store.setStringSet(.experimentalFeatures, values: Array(newValue))
+                onSettingsChanged?()
+            }
         }
     }
 
@@ -1051,19 +1069,17 @@ public struct SettingsView: View {
             NavigationLink {
                 TextDisplaySettingsView(settings: $displaySettings, onChange: onSettingsChanged)
             } label: {
-                settingsNavigationRow(
-                    title: String(localized: "settings_text_display"),
-                    identifier: "settingsTextDisplayLink"
-                )
+                settingsNavigationRow(title: String(localized: "settings_text_display"))
             }
+            .id("settingsTextDisplayLink")
+            .accessibilityIdentifier("settingsTextDisplayLink")
             NavigationLink {
                 ColorSettingsView(settings: $displaySettings, onChange: onSettingsChanged)
             } label: {
-                settingsNavigationRow(
-                    title: String(localized: "settings_colors"),
-                    identifier: "settingsColorsLink"
-                )
+                settingsNavigationRow(title: String(localized: "settings_colors"))
             }
+            .id("settingsColorsLink")
+            .accessibilityIdentifier("settingsColorsLink")
             Picker(
                 String(localized: "prefs_night_mode_title", defaultValue: "Night mode switching"),
                 selection: Binding(
@@ -1372,23 +1388,46 @@ public struct SettingsView: View {
 
     @ViewBuilder
     /**
-     Builds a single-line navigation row with a stable accessibility identifier for UI automation.
+     Builds a single-line navigation row used by nested settings links.
      *
-     * - Parameters:
-     *   - title: User-visible title shown in the row.
-     *   - identifier: Accessibility identifier attached to the rendered row label.
+     * - Parameter title: User-visible title shown in the row.
      * - Returns: Row content suitable for use as a `NavigationLink` label inside the settings form.
      * - Side effects: none.
      * - Failure modes: This helper cannot fail.
      */
-    private func settingsNavigationRow(title: String, identifier: String) -> some View {
+    private func settingsNavigationRow(title: String) -> some View {
         HStack {
             Text(title)
             Spacer()
         }
         .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(identifier)
+    }
+
+    /**
+     Scrolls the settings form to a UI-test-requested target row after the form has rendered.
+
+     The production app never sets a target. UI automation uses this hook to bring deep
+     navigation rows on-screen before XCTest queries them, avoiding repeated swipe attempts
+     against SwiftUI `Form` virtualization.
+
+     - Parameter proxy: Scroll proxy associated with the rendered settings form.
+     - Side effects:
+       - schedules one immediate and one delayed scroll on the main queue when a test target is set
+     - Failure modes:
+       - does nothing when no UI-test scroll target was supplied
+       - if the supplied identifier does not map to a rendered row, the scroll request is ignored
+         by SwiftUI and the view remains at its current offset
+     */
+    private func scrollToUITestTarget(using proxy: ScrollViewProxy) {
+        guard let target = uiTestScrollTargetIdentifier else {
+            return
+        }
+        DispatchQueue.main.async {
+            proxy.scrollTo(target, anchor: .center)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            proxy.scrollTo(target, anchor: .center)
+        }
     }
 
     /**

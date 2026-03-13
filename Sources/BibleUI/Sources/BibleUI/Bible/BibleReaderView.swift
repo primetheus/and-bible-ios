@@ -204,6 +204,9 @@ public struct BibleReaderView: View {
     /// Launch-argument override used by XCUITests to present Label Manager immediately on launch.
     private let uiTestOpensLabelManagerOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_LABEL_MANAGER")
 
+    /// Launch-argument override used by XCUITests to present Workspaces immediately on launch.
+    private let uiTestOpensWorkspacesOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_WORKSPACES")
+
     /// Stored Android-parity toolbar gesture mode for Bible/commentary buttons.
     @State private var toolbarButtonActionsMode =
         AppPreferenceRegistry.stringDefault(for: .toolbarButtonActions) ?? "default"
@@ -522,6 +525,9 @@ public struct BibleReaderView: View {
                 } else if uiTestOpensLabelManagerOnLaunch {
                     hasAppliedUITestInitialPresentation = true
                     showLabelManager = true
+                } else if uiTestOpensWorkspacesOnLaunch {
+                    hasAppliedUITestInitialPresentation = true
+                    showWorkspaces = true
                 } else if uiTestOpensSettingsOnLaunch {
                     hasAppliedUITestInitialPresentation = true
                     showSettings = true

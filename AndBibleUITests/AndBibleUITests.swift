@@ -115,6 +115,107 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that workspaces can be created, renamed, cloned, and deleted from the workspace
+     selector.
+     *
+     * - Side effects:
+     *   - launches the app directly into the workspace selector
+     *   - creates one workspace, renames it through the test-only inline action surface, clones
+     *     it, switches back to the original active workspace, and deletes the cloned and renamed
+     *     workspaces
+     * - Failure modes:
+     *   - fails if the direct-launch workspace selector never appears
+     *   - fails if any alert, inline workspace action, or workspace row required for the CRUD flow
+     *     does not appear or does not update the selector state as expected
+     */
+    func testWorkspaceSelectorCreateRenameCloneDeleteFlow() {
+        let initialApp = makeApp(openWorkspacesOnLaunch: true)
+        let createdName = uniqueWorkspaceName(prefix: "UITest Workspace")
+        let renamedName = uniqueWorkspaceName(prefix: "UITest Renamed Workspace")
+        let cloneName = uniqueWorkspaceName(prefix: "UITest Cloned Workspace")
+        initialApp.launch()
+
+        XCTAssertTrue(openWorkspaceSelector(in: initialApp, launchedDirectly: true).exists)
+        let originalActiveWorkspaceName = requireActiveWorkspaceRow(in: initialApp, timeout: 10).label
+
+        addTeardownBlock {
+            self.bestEffortCleanupWorkspaces(
+                originalWorkspaceName: originalActiveWorkspaceName,
+                transientWorkspaceNames: [createdName, renamedName, cloneName]
+            )
+        }
+
+        requireElement("workspaceSelectorAddButton", in: initialApp, timeout: 10).tap()
+        let createAlert = initialApp.alerts.firstMatch
+        XCTAssertTrue(createAlert.waitForExistence(timeout: 10))
+        let createField = createAlert.textFields.firstMatch
+        XCTAssertTrue(createField.waitForExistence(timeout: 10))
+        createField.tap()
+        createField.typeText(createdName)
+        let createButton = createAlert.buttons["Create"].firstMatch
+        XCTAssertTrue(createButton.waitForExistence(timeout: 10))
+        createButton.tap()
+
+        XCTAssertTrue(requireElement("readerMoreMenuButton", in: initialApp, timeout: 10).exists)
+        initialApp.terminate()
+
+        let renameApp = makeApp(openWorkspacesOnLaunch: true)
+        renameApp.launch()
+
+        XCTAssertTrue(openWorkspaceSelector(in: renameApp, launchedDirectly: true).exists)
+        XCTAssertEqual(requireActiveWorkspaceRow(in: renameApp, timeout: 10).label, originalActiveWorkspaceName)
+
+        requireWorkspaceInlineAction(
+            identifier: "workspaceSelectorInlineRenameButton",
+            workspaceName: createdName,
+            in: renameApp,
+            timeout: 10
+        ).tap()
+
+        let renameAlert = renameApp.alerts.firstMatch
+        XCTAssertTrue(renameAlert.waitForExistence(timeout: 10))
+        let renameField = renameAlert.textFields.firstMatch
+        XCTAssertTrue(renameField.waitForExistence(timeout: 10))
+        replaceText(in: renameField, with: renamedName)
+        let saveButton = renameAlert.buttons["Save"].firstMatch
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 10))
+        saveButton.tap()
+
+        XCTAssertTrue(requireWorkspaceRow(named: renamedName, in: renameApp, timeout: 10).exists)
+        XCTAssertEqual(requireActiveWorkspaceRow(in: renameApp, timeout: 10).label, originalActiveWorkspaceName)
+
+        requireWorkspaceInlineAction(
+            identifier: "workspaceSelectorInlineCloneButton",
+            workspaceName: renamedName,
+            in: renameApp,
+            timeout: 10
+        ).tap()
+
+        let cloneAlert = renameApp.alerts.firstMatch
+        XCTAssertTrue(cloneAlert.waitForExistence(timeout: 10))
+        let cloneField = cloneAlert.textFields.firstMatch
+        XCTAssertTrue(cloneField.waitForExistence(timeout: 10))
+        replaceText(in: cloneField, with: cloneName)
+        let cloneCreateButton = cloneAlert.buttons["Create"].firstMatch
+        XCTAssertTrue(cloneCreateButton.waitForExistence(timeout: 10))
+        cloneCreateButton.tap()
+
+        XCTAssertTrue(requireWorkspaceRow(named: cloneName, in: renameApp, timeout: 10).exists)
+        XCTAssertEqual(
+            requireActiveWorkspaceRow(in: renameApp, timeout: 10).label,
+            originalActiveWorkspaceName
+        )
+
+        deleteWorkspaceIfPresent(named: cloneName, in: renameApp)
+        deleteWorkspaceIfPresent(named: renamedName, in: renameApp)
+
+        let deletedPredicate = NSPredicate(format: "exists == false")
+        expectation(for: deletedPredicate, evaluatedWith: workspaceRow(named: cloneName, in: renameApp))
+        expectation(for: deletedPredicate, evaluatedWith: workspaceRow(named: renamedName, in: renameApp))
+        waitForExpectations(timeout: 10)
+    }
+
+    /**
      Verifies that the bookmark list can be opened from the reader shell.
      *
      * - Side effects:
@@ -416,6 +517,7 @@ final class AndBibleUITests: XCTestCase {
      *     launch.
      *   - openLabelManagerOnLaunch: Whether the app should present Label Manager immediately on
      *     launch.
+     *   - openWorkspacesOnLaunch: Whether the app should present Workspaces immediately on launch.
      * - Returns: App handle configured with deterministic launch arguments for the smoke suite.
      * - Side effects:
      *   - appends a launch argument that disables the discrete-mode calculator gate during UI tests
@@ -427,13 +529,16 @@ final class AndBibleUITests: XCTestCase {
      *     Export immediately after the reader hydrates
      *   - when `openLabelManagerOnLaunch` is `true`, configures the app to present Label Manager
      *     immediately after the reader hydrates
+     *   - when `openWorkspacesOnLaunch` is `true`, configures the app to present Workspaces
+     *     immediately after the reader hydrates
      * - Failure modes: This helper cannot fail.
      */
     private func makeApp(
         settingsTarget: String? = nil,
         openTextDisplayOnLaunch: Bool = false,
         openImportExportOnLaunch: Bool = false,
-        openLabelManagerOnLaunch: Bool = false
+        openLabelManagerOnLaunch: Bool = false,
+        openWorkspacesOnLaunch: Bool = false
     ) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["UITEST_DISABLE_CALCULATOR_GATE"]
@@ -450,7 +555,39 @@ final class AndBibleUITests: XCTestCase {
         if openLabelManagerOnLaunch {
             app.launchArguments += ["UITEST_OPEN_LABEL_MANAGER"]
         }
+        if openWorkspacesOnLaunch {
+            app.launchArguments += ["UITEST_OPEN_WORKSPACES"]
+        }
         return app
+    }
+
+    /**
+     Opens the workspace selector either from the reader overflow menu or from a direct test-only
+     launch path.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - launchedDirectly: Whether the app was launched straight into the workspace selector
+     *     sheet.
+     * - Returns: The root accessibility-identified workspace selector screen element.
+     * - Side effects:
+     *   - when `launchedDirectly` is `false`, opens the reader overflow menu and pushes the
+     *     workspace selector
+     *   - when `launchedDirectly` is `true`, waits for the direct-launch workspace selector sheet
+     *     to render
+     * - Failure modes:
+     *   - fails when the workspace selector screen never appears
+     */
+    private func openWorkspaceSelector(
+        in app: XCUIApplication,
+        launchedDirectly: Bool = false
+    ) -> XCUIElement {
+        if !launchedDirectly {
+            let moreMenuButton = requireElement("readerMoreMenuButton", in: app)
+            moreMenuButton.tap()
+            requireElement("readerOpenWorkspacesAction", in: app, timeout: 5).tap()
+        }
+        return requireElement("workspaceSelectorScreen", in: app, timeout: 10)
     }
 
     /**
@@ -634,6 +771,235 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Resolves one workspace row by its accessibility label.
+     *
+     * - Parameters:
+     *   - name: User-visible workspace name expected on the row.
+     *   - app: Running application under test.
+     * - Returns: The first matching workspace-selector row button for the requested workspace.
+     * - Side effects:
+     *   - queries the live accessibility hierarchy for a workspace-selector row whose label matches
+     *     `name`
+     * - Failure modes:
+     *   - returns an unresolved query when no matching row currently exists
+     */
+    private func workspaceRow(named name: String, in app: XCUIApplication) -> XCUIElement {
+        let predicate = NSPredicate(format: "label == %@", name)
+        return app.buttons
+            .matching(identifier: "workspaceSelectorRowButton")
+            .matching(predicate)
+            .firstMatch
+    }
+
+    /**
+     Waits for a workspace row to appear and records a precise failure if it does not.
+     *
+     * - Parameters:
+     *   - name: User-visible workspace name expected on the row.
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to wait before failing.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Returns: The resolved workspace-row UI element.
+     * - Side effects:
+     *   - polls the live accessibility hierarchy until the requested row exists or the timeout
+     *     expires
+     * - Failure modes:
+     *   - records an XCTest failure if the row never appears within the requested timeout
+     */
+    private func requireWorkspaceRow(
+        named name: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement {
+        let element = workspaceRow(named: name, in: app)
+        XCTAssertTrue(
+            element.waitForExistence(timeout: timeout),
+            "Expected workspace row '\(name)' to exist within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+        return element
+    }
+
+    /**
+     Waits for the active workspace row to appear.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to wait before failing.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Returns: The first workspace row whose accessibility value is `activeWorkspace`.
+     * - Side effects:
+     *   - polls the live accessibility hierarchy until the active workspace row exists or the
+     *     timeout expires
+     * - Failure modes:
+     *   - records an XCTest failure if no active workspace row becomes visible within the timeout
+     */
+    private func requireActiveWorkspaceRow(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement {
+        let predicate = NSPredicate(format: "value == %@", "activeWorkspace")
+        let element = app.buttons
+            .matching(identifier: "workspaceSelectorRowButton")
+            .matching(predicate)
+            .firstMatch
+        XCTAssertTrue(
+            element.waitForExistence(timeout: timeout),
+            "Expected an active workspace row within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+        return element
+    }
+
+    /**
+     Deletes one non-active workspace through its inline action button when the row is present.
+     *
+     * - Parameters:
+     *   - name: User-visible workspace name that should be removed.
+     *   - app: Running application under test.
+     * - Side effects:
+     *   - taps the inline destructive action when the requested row is present
+     * - Failure modes:
+     *   - returns silently when the row is absent or the delete action cannot be reached
+     */
+    private func deleteWorkspaceIfPresent(named name: String, in app: XCUIApplication) {
+        let row = workspaceRow(named: name, in: app)
+        guard row.waitForExistence(timeout: 2) else { return }
+        let deleteAction = workspaceInlineAction(
+            identifier: "workspaceSelectorInlineDeleteButton",
+            workspaceName: name,
+            in: app
+        )
+        guard deleteAction.waitForExistence(timeout: 2) else { return }
+        deleteAction.tap()
+    }
+
+    /**
+     Resolves one workspace inline action by button identifier and workspace label.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier exposed by the workspace selector inline action.
+     *   - workspaceName: User-visible workspace name attached to the button's accessibility label.
+     *   - app: Running application under test.
+     * - Returns: The first matching inline action button.
+     * - Side effects:
+     *   - queries the live accessibility hierarchy for a button whose identifier and label match
+     *     the requested workspace action
+     * - Failure modes:
+     *   - returns an unresolved query when no matching inline action button currently exists
+     */
+    private func workspaceInlineAction(
+        identifier: String,
+        workspaceName: String,
+        in app: XCUIApplication
+    ) -> XCUIElement {
+        let labelPredicate = NSPredicate(format: "label == %@", workspaceName)
+        return app.buttons
+            .matching(identifier: identifier)
+            .matching(labelPredicate)
+            .firstMatch
+    }
+
+    /**
+     Waits for a workspace inline action and records a precise failure if it does not appear.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier exposed by the workspace selector inline action.
+     *   - workspaceName: User-visible workspace name attached to the button's accessibility label.
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to wait before failing.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Returns: The resolved inline workspace-action UI element.
+     * - Side effects:
+     *   - polls the live accessibility hierarchy until the requested inline action becomes visible
+     * - Failure modes:
+     *   - records an XCTest failure if the action never appears within the requested timeout
+     */
+    private func requireWorkspaceInlineAction(
+        identifier: String,
+        workspaceName: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement {
+        let element = workspaceInlineAction(
+            identifier: identifier,
+            workspaceName: workspaceName,
+            in: app
+        )
+        XCTAssertTrue(
+            element.waitForExistence(timeout: timeout),
+            "Expected workspace action '\(identifier)' for '\(workspaceName)' to exist within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+        return element
+    }
+
+    /**
+     Best-effort teardown cleanup for transient workspaces created by one test run.
+     *
+     * - Parameters:
+     *   - originalWorkspaceName: Workspace that should be active after cleanup completes.
+     *   - transientWorkspaceNames: Workspace names that should be deleted when present.
+     * - Side effects:
+     *   - launches fresh app instances, restores the original active workspace when possible, and
+     *     removes any transient workspace rows that still exist
+     * - Failure modes:
+     *   - returns silently when the workspace selector cannot be opened or when specific cleanup
+     *     steps are unreachable
+     */
+    private func bestEffortCleanupWorkspaces(
+        originalWorkspaceName: String,
+        transientWorkspaceNames: [String]
+    ) {
+        var cleanupApp = makeApp(openWorkspacesOnLaunch: true)
+        cleanupApp.launch()
+        let workspaceScreen = cleanupApp.descendants(matching: .any)["workspaceSelectorScreen"].firstMatch
+        guard workspaceScreen.waitForExistence(timeout: 10) else {
+            cleanupApp.terminate()
+            return
+        }
+
+        let activeRowPredicate = NSPredicate(format: "value == %@", "activeWorkspace")
+        let activeRow = cleanupApp.buttons
+            .matching(identifier: "workspaceSelectorRowButton")
+            .matching(activeRowPredicate)
+            .firstMatch
+        if activeRow.waitForExistence(timeout: 5), activeRow.label != originalWorkspaceName {
+            let originalRow = workspaceRow(named: originalWorkspaceName, in: cleanupApp)
+            if originalRow.waitForExistence(timeout: 2) {
+                originalRow.tap()
+                let readerMoreMenuButton = cleanupApp.descendants(matching: .any)["readerMoreMenuButton"].firstMatch
+                if readerMoreMenuButton.waitForExistence(timeout: 5) {
+                    cleanupApp.terminate()
+                    cleanupApp = makeApp(openWorkspacesOnLaunch: true)
+                    cleanupApp.launch()
+                    guard cleanupApp.descendants(matching: .any)["workspaceSelectorScreen"].firstMatch.waitForExistence(timeout: 10) else {
+                        cleanupApp.terminate()
+                        return
+                    }
+                }
+            }
+        }
+
+        for name in transientWorkspaceNames {
+            deleteWorkspaceIfPresent(named: name, in: cleanupApp)
+        }
+        cleanupApp.terminate()
+    }
+
+    /**
      Resolves one label row by its accessibility label.
      *
      * - Parameters:
@@ -719,6 +1085,18 @@ final class AndBibleUITests: XCTestCase {
      * - Failure modes: This helper cannot fail.
      */
     private func uniqueLabelName(prefix: String) -> String {
+        "\(prefix) \(String(UUID().uuidString.prefix(8)))"
+    }
+
+    /**
+     Builds a unique workspace name for tests that create and later remove workspaces.
+     *
+     * - Parameter prefix: Human-readable prefix to keep XCTest failures understandable.
+     * - Returns: One unique workspace name derived from `prefix` plus a short UUID suffix.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func uniqueWorkspaceName(prefix: String) -> String {
         "\(prefix) \(String(UUID().uuidString.prefix(8)))"
     }
 }

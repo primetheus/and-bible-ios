@@ -57,6 +57,9 @@ public struct WorkspaceSelectorView: View {
     /// Persisted workspaces ordered by `orderNumber`.
     @Query(sort: \Workspace.orderNumber) private var workspaces: [Workspace]
 
+    /// Launch-argument override used by XCUITests to expose inline row actions instead of context menus.
+    private let uiTestShowsInlineActions = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_WORKSPACES")
+
     /**
      Creates the workspace selector screen.
 
@@ -84,34 +87,12 @@ public struct WorkspaceSelectorView: View {
             } else {
                 Section(String(localized: "workspaces")) {
                     ForEach(workspaces) { workspace in
-                        Button {
-                            windowManager.setActiveWorkspace(workspace)
-                            dismiss()
-                        } label: {
-                            workspaceRow(workspace)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            Button(String(localized: "rename"), systemImage: "pencil") {
-                                workspaceToRename = workspace
-                                renameWorkspaceName = workspace.name
-                                showRenameWorkspace = true
-                            }
+                        HStack(spacing: 8) {
+                            workspaceSelectionButton(workspace)
 
-                            Button(String(localized: "clone"), systemImage: "doc.on.doc") {
-                                workspaceToClone = workspace
-                                cloneWorkspaceName = String(format: String(localized: "copy_of %@"), workspace.name)
-                                showCloneWorkspace = true
+                            if uiTestShowsInlineActions {
+                                workspaceInlineActions(workspace)
                             }
-
-                            Divider()
-
-                            Button(String(localized: "delete"), systemImage: "trash", role: .destructive) {
-                                guard workspace.id != windowManager.activeWorkspace?.id else { return }
-                                let store = WorkspaceStore(modelContext: modelContext)
-                                store.delete(workspace)
-                            }
-                            .disabled(workspace.id == windowManager.activeWorkspace?.id)
                         }
                     }
                     .onDelete(perform: deleteWorkspaces)
@@ -130,6 +111,7 @@ public struct WorkspaceSelectorView: View {
                 Button(String(localized: "add"), systemImage: "plus") {
                     showNewWorkspace = true
                 }
+                .accessibilityIdentifier("workspaceSelectorAddButton")
             }
         }
         .alert(String(localized: "workspace_new"), isPresented: $showNewWorkspace) {
@@ -204,6 +186,154 @@ public struct WorkspaceSelectorView: View {
                     .foregroundStyle(.blue)
             }
         }
+    }
+
+    /**
+     Builds the main workspace-selection button for one row.
+     *
+     * - Parameter workspace: Workspace represented by the selectable row body.
+     * - Returns: A button that switches the active workspace and dismisses the selector.
+     * - Side effects:
+     *   - switches the active workspace through `WindowManager`
+     *   - dismisses the selector sheet after the switch
+     * - Failure modes: This helper cannot fail.
+     */
+    private func workspaceSelectionButton(_ workspace: Workspace) -> some View {
+        Button {
+            windowManager.setActiveWorkspace(workspace)
+            dismiss()
+        } label: {
+            workspaceRow(workspace)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("workspaceSelectorRowButton")
+        .accessibilityLabel(workspaceDisplayName(workspace))
+        .accessibilityValue(
+            workspace.id == windowManager.activeWorkspace?.id
+                ? "activeWorkspace"
+                : "inactiveWorkspace"
+        )
+        .contextMenu {
+            Button(String(localized: "rename"), systemImage: "pencil") {
+                prepareRename(for: workspace)
+            }
+            .accessibilityIdentifier("workspaceSelectorRenameAction")
+
+            Button(String(localized: "clone"), systemImage: "doc.on.doc") {
+                prepareClone(for: workspace)
+            }
+            .accessibilityIdentifier("workspaceSelectorCloneAction")
+
+            Divider()
+
+            Button(String(localized: "delete"), systemImage: "trash", role: .destructive) {
+                deleteWorkspace(workspace)
+            }
+            .accessibilityIdentifier("workspaceSelectorDeleteAction")
+            .disabled(workspace.id == windowManager.activeWorkspace?.id)
+        }
+    }
+
+    /**
+     Builds test-only inline management actions for one workspace row.
+     *
+     * - Parameter workspace: Workspace whose lifecycle actions should be exposed inline.
+     * - Returns: A compact trailing action cluster for rename, clone, and delete operations.
+     * - Side effects:
+     *   - rename and clone buttons prepare alert presentation state
+     *   - delete mutates persisted workspace state when the target is not currently active
+     * - Failure modes: This helper cannot fail.
+     */
+    private func workspaceInlineActions(_ workspace: Workspace) -> some View {
+        HStack(spacing: 4) {
+            Button {
+                prepareRename(for: workspace)
+            } label: {
+                Image(systemName: "pencil")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("workspaceSelectorInlineRenameButton")
+            .accessibilityLabel(workspaceDisplayName(workspace))
+
+            Button {
+                prepareClone(for: workspace)
+            } label: {
+                Image(systemName: "doc.on.doc")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("workspaceSelectorInlineCloneButton")
+            .accessibilityLabel(workspaceDisplayName(workspace))
+
+            Button(role: .destructive) {
+                deleteWorkspace(workspace)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("workspaceSelectorInlineDeleteButton")
+            .accessibilityLabel(workspaceDisplayName(workspace))
+            .disabled(workspace.id == windowManager.activeWorkspace?.id)
+        }
+    }
+
+    /**
+     Resolves the user-visible workspace name used by the row and UI tests.
+     *
+     * - Parameter workspace: Workspace whose display name should be derived.
+     * - Returns: The persisted workspace name, or the localized untitled fallback when blank.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func workspaceDisplayName(_ workspace: Workspace) -> String {
+        workspace.name.isEmpty ? String(localized: "untitled") : workspace.name
+    }
+
+    /**
+     Prepares the rename alert for the selected workspace.
+     *
+     * - Parameter workspace: Workspace that should be renamed.
+     * - Side effects:
+     *   - stores the selected workspace in local alert state
+     *   - pre-fills the rename text field with the current workspace name
+     *   - presents the rename alert
+     * - Failure modes: This helper cannot fail.
+     */
+    private func prepareRename(for workspace: Workspace) {
+        workspaceToRename = workspace
+        renameWorkspaceName = workspace.name
+        showRenameWorkspace = true
+    }
+
+    /**
+     Prepares the clone alert for the selected workspace.
+     *
+     * - Parameter workspace: Workspace that should be deep-cloned.
+     * - Side effects:
+     *   - stores the selected workspace in local alert state
+     *   - pre-fills the clone text field with the localized copy-of default
+     *   - presents the clone alert
+     * - Failure modes: This helper cannot fail.
+     */
+    private func prepareClone(for workspace: Workspace) {
+        workspaceToClone = workspace
+        cloneWorkspaceName = String(format: String(localized: "copy_of %@"), workspace.name)
+        showCloneWorkspace = true
+    }
+
+    /**
+     Deletes a non-active workspace from the selector.
+     *
+     * - Parameter workspace: Workspace that should be removed.
+     * - Side effects:
+     *   - deletes the workspace through `WorkspaceStore` when it is not active
+     * - Failure modes:
+     *   - returns without mutation when the requested workspace is the active workspace
+     */
+    private func deleteWorkspace(_ workspace: Workspace) {
+        guard workspace.id != windowManager.activeWorkspace?.id else { return }
+        let store = WorkspaceStore(modelContext: modelContext)
+        store.delete(workspace)
     }
 
     /**

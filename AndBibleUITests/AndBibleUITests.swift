@@ -481,6 +481,40 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that switching the active sync backend swaps the visible Sync section and exported
+     backend state.
+     *
+     * - Side effects:
+     *   - launches the app directly into Sync Settings with NextCloud selected in the in-memory
+     *     settings store
+     *   - invokes the XCUITest-only backend switch control to move from NextCloud to Google Drive
+     * - Failure modes:
+     *   - fails if the seeded NextCloud field or the Google Drive sign-in control never appears
+     *   - fails if the exported Sync screen state does not move from `backend=NEXT_CLOUD;enabled=none`
+     *     to `backend=GOOGLE_DRIVE;enabled=none`
+     */
+    func testSyncSettingsBackendSwitchMutatesVisibleSection() {
+        let app = makeApp(openSyncOnLaunch: true, syncBackend: "NEXT_CLOUD")
+        app.launch()
+
+        let syncScreen = openSyncSettings(in: app, launchedDirectly: true)
+        XCTAssertEqual(
+            syncScreen.value as? String,
+            "backend=NEXT_CLOUD;enabled=none"
+        )
+        XCTAssertTrue(requireElement("syncNextCloudServerURLField", in: app, timeout: 10).exists)
+
+        requireElement("syncBackendSelect::GOOGLE_DRIVE", in: app, timeout: 10).tap()
+        waitForElementValue(
+            "syncSettingsScreen",
+            toEqual: "backend=GOOGLE_DRIVE;enabled=none",
+            in: app,
+            timeout: 10
+        )
+        XCTAssertTrue(requireElement("syncGoogleDriveSignInButton", in: app, timeout: 10).exists)
+    }
+
+    /**
     Verifies that toggling justify text mutates the exported control state.
      *
      * - Side effects:

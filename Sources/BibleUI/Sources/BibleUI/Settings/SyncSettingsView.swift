@@ -314,6 +314,16 @@ public struct SyncSettingsView: View {
                     .tag(RemoteSyncBackend.googleDrive)
             }
             .accessibilityIdentifier("syncBackendPicker")
+
+            if isUITestHarnessEnabled {
+                ForEach(RemoteSyncBackend.allCases.filter { $0 != selectedBackend }, id: \.self) { backend in
+                    Button(syncBackendAutomationTitle(for: backend)) {
+                        selectedBackend = backend
+                    }
+                    .font(.caption)
+                    .accessibilityIdentifier("syncBackendSelect::\(backend.rawValue)")
+                }
+            }
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
                 Text(String(localized: "prefs_sync_introduction_summary1"))
@@ -490,6 +500,7 @@ public struct SyncSettingsView: View {
                     }
                 }
                 .disabled(isGoogleDriveSignInButtonDisabled)
+                .accessibilityIdentifier("syncGoogleDriveSignInButton")
 
                 if case .signedIn = googleDriveAuthService.state {
                     Button(String(localized: "google_drive_sign_out"), role: .destructive) {
@@ -640,6 +651,25 @@ public struct SyncSettingsView: View {
     private func remoteCategoryAccessibilityValue(for category: RemoteSyncCategory) -> String {
         let isEnabled = isRemoteCategoryEnabled(category)
         return isEnabled ? "enabled" : "disabled"
+    }
+
+    /**
+     Stable button title used by the XCUITest-only backend switch controls.
+
+     - Parameter backend: Backend that should become active when the button is tapped.
+     - Returns: Short deterministic label for the requested backend.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
+    private func syncBackendAutomationTitle(for backend: RemoteSyncBackend) -> String {
+        switch backend {
+        case .iCloud:
+            return "Switch to iCloud"
+        case .nextCloud:
+            return "Switch to NextCloud"
+        case .googleDrive:
+            return "Switch to Google Drive"
+        }
     }
 
     /**

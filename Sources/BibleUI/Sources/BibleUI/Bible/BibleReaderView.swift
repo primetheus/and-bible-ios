@@ -99,6 +99,15 @@ func presentCompareView(book: String, chapter: Int, currentModuleName: String, s
    display updates into active pane controllers
  */
 public struct BibleReaderView: View {
+    /**
+     Test-only route used to present one seeded daily-reading screen without depending on list-row
+     taps during long XCUITest bundles.
+     */
+    private struct UITestDailyReadingRoute: Identifiable {
+        /// Identifier of the seeded reading plan that `DailyReadingView` should display.
+        let id: UUID
+    }
+
     /// Shared workspace/window coordinator that owns panes, focus, and controller registration.
     @Environment(WindowManager.self) private var windowManager
 
@@ -144,11 +153,11 @@ public struct BibleReaderView: View {
     /// Presents reading-plan management UI.
     @State private var showReadingPlans = false
 
-    /// Test-only seeded plan identifier used to launch directly into one active daily-reading view.
-    @State private var uiTestDailyReadingPlanID: UUID?
-
     /// Test-only seeded bookmark identifier used to launch directly into label assignment.
     @State private var uiTestLabelAssignmentBookmarkID: UUID?
+
+    /// Test-only seeded daily-reading route used to launch directly into `DailyReadingView`.
+    @State private var uiTestDailyReadingRoute: UITestDailyReadingRoute?
 
     /// Presents the expanded speech controls sheet.
     @State private var showSpeakControls = false
@@ -221,7 +230,7 @@ public struct BibleReaderView: View {
     /// Launch-argument override used by XCUITests to present Reading Plans immediately on launch.
     private let uiTestOpensReadingPlansOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_READING_PLANS")
 
-    /// Launch-argument override used by XCUITests to present one seeded daily-reading view.
+    /// Launch-argument override used by XCUITests to seed one active plan and open Reading Plans.
     private let uiTestOpensDailyReadingOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_DAILY_READING")
 
     /// Launch-argument override used by XCUITests to present Workspaces immediately on launch.
@@ -690,21 +699,22 @@ public struct BibleReaderView: View {
         }
         .sheet(isPresented: $showReadingPlans) {
             NavigationStack {
-                if let uiTestDailyReadingPlanID, uiTestOpensDailyReadingOnLaunch {
-                    DailyReadingView(planId: uiTestDailyReadingPlanID)
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button(String(localized: "done")) { showReadingPlans = false }
-                            }
+                ReadingPlanListView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(String(localized: "done")) { showReadingPlans = false }
                         }
-                } else {
-                    ReadingPlanListView()
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button(String(localized: "done")) { showReadingPlans = false }
-                            }
+                    }
+            }
+        }
+        .sheet(item: $uiTestDailyReadingRoute) { route in
+            NavigationStack {
+                DailyReadingView(planId: route.id)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(String(localized: "done")) { uiTestDailyReadingRoute = nil }
                         }
-                }
+                    }
             }
         }
         .sheet(isPresented: $showSpeakControls) {
@@ -2152,8 +2162,10 @@ public struct BibleReaderView: View {
     private func resetLabelsForUITests() {
         let descriptor = FetchDescriptor<BibleCore.Label>()
         guard let labels = try? modelContext.fetch(descriptor) else { return }
+        let bookmarkStore = BookmarkStore(modelContext: modelContext)
+        let bookmarkService = BookmarkService(store: bookmarkStore)
         for label in labels where label.isRealLabel {
-            modelContext.delete(label)
+            bookmarkService.deleteLabel(id: label.id)
         }
         modelContext.insert(BibleCore.Label(name: "UI Test Seed"))
         try? modelContext.save()
@@ -2251,8 +2263,11 @@ public struct BibleReaderView: View {
             showReadingPlans = true
         } else if uiTestOpensDailyReadingOnLaunch {
             resetReadingPlansForUITests()
-            uiTestDailyReadingPlanID = seedReadingPlanForUITests()
-            showReadingPlans = uiTestDailyReadingPlanID != nil
+            if let seededPlanID = seedReadingPlanForUITests() {
+                uiTestDailyReadingRoute = UITestDailyReadingRoute(id: seededPlanID)
+            } else {
+                showReadingPlans = true
+            }
         } else if uiTestOpensWorkspacesOnLaunch {
             resetWorkspacesForUITests()
             showWorkspaces = true

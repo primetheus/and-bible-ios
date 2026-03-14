@@ -84,11 +84,11 @@ final class AndBibleUITests: XCTestCase {
      Verifies that an active reading plan can advance from day one to day two.
      *
      * - Side effects:
-     *   - launches the app directly into one seeded daily-reading view with existing plans reset
-     *     for determinism
+     *   - launches the app with one seeded active plan and existing plans reset for determinism
+     *   - opens that seeded plan through the dedicated UI-test daily-reading route
      *   - marks day one complete and waits for the daily-reading state to advance to day two
      * - Failure modes:
-     *   - fails if the direct-launch daily-reading route never appears
+     *   - fails if the seeded daily-reading screen never appears
      *   - fails if the day label or mark-as-read control is missing
      *   - fails if marking day one complete does not advance the daily-reading state to day two
      */
@@ -96,7 +96,7 @@ final class AndBibleUITests: XCTestCase {
         let app = makeApp(openDailyReadingOnLaunch: true)
         app.launch()
 
-        XCTAssertTrue(requireElement("dailyReadingScreen", in: app, timeout: 10).exists)
+        XCTAssertTrue(requireElement("dailyReadingScreen", in: app, timeout: 15).exists)
         let currentDay = requireElement("dailyReadingCurrentDayLabel", in: app, timeout: 10)
         XCTAssertEqual(currentDay.value as? String, "1")
 

@@ -6417,6 +6417,138 @@ final class AndBibleTests: XCTestCase {
         return URLSession(configuration: configuration)
     }
 
+    /**
+     Verifies that bookmark-label serialization falls back to the synthetic unlabeled payload when
+     a relationship still points at a deleted in-memory label object.
+     *
+     * Data dependencies:
+     * - creates an in-memory bookmark schema with one Bible bookmark, one label, and one junction
+     *   row
+     *
+     * Side effects:
+     * - inserts and saves live bookmark data
+     * - deletes the label in the same `ModelContext` without first detaching the junction row so
+     *   the helper sees the stale relationship shape that previously crashed the reader
+     *
+     * Failure modes:
+     * - throws if the in-memory SwiftData container cannot be created or saved
+     * - fails if serialization no longer produces an unlabeled fallback for the deleted relation
+     */
+    func testBookmarkLabelSerializationSkipsDeletedBibleLabels() throws {
+        let container = try makeBookmarkRestoreModelContainer()
+        let modelContext = ModelContext(container)
+
+        let label = Label(name: "Temp")
+        let bookmark = BibleBookmark(
+            kjvOrdinalStart: 1,
+            kjvOrdinalEnd: 1,
+            ordinalStart: 1,
+            ordinalEnd: 1,
+            v11n: "KJVA"
+        )
+        bookmark.primaryLabelId = label.id
+
+        let link = BibleBookmarkToLabel(orderNumber: 3, indentLevel: 1, expandContent: true)
+        link.bookmark = bookmark
+        link.label = label
+        bookmark.bookmarkToLabels = [link]
+
+        modelContext.insert(label)
+        modelContext.insert(bookmark)
+        modelContext.insert(link)
+        try modelContext.save()
+
+        modelContext.delete(label)
+
+        let payload = BookmarkLabelSerializationSupport.biblePayload(
+            bookmarkID: bookmark.id,
+            links: bookmark.bookmarkToLabels,
+            unlabeledLabelID: "UNLABELED"
+        )
+
+        XCTAssertEqual(payload.labelIDs, ["UNLABELED"])
+        XCTAssertEqual(payload.relationItemsJSON.count, 1)
+        XCTAssertTrue(payload.relationsJSON.contains("\"labelId\":\"UNLABELED\""))
+        XCTAssertEqual(
+            BookmarkLabelSerializationSupport.primaryLabelIDJSON(
+                primaryLabelID: bookmark.primaryLabelId,
+                validLabelIDs: payload.labelIDs
+            ),
+            "null"
+        )
+    }
+
+    /**
+     Verifies that deleting a label clears bookmark junction rows and primary-label references
+     before the label itself is removed.
+     *
+     * Data dependencies:
+     * - creates an in-memory bookmark schema with one shared label attached to one Bible bookmark
+     *   and one generic bookmark
+     *
+     * Side effects:
+     * - persists the shared label, both bookmarks, and both bookmark-to-label junction rows
+     * - deletes the label through `BookmarkService`, which should detach every affected bookmark
+     *   relationship before saving
+     *
+     * Failure modes:
+     * - throws if the in-memory SwiftData container cannot be created or saved
+     * - fails if any relationship row or primary-label reference survives the label deletion
+     */
+    func testBookmarkServiceDeleteLabelDetachesBookmarkRelationships() throws {
+        let container = try makeBookmarkRestoreModelContainer()
+        let modelContext = ModelContext(container)
+        let bookmarkStore = BookmarkStore(modelContext: modelContext)
+        let bookmarkService = BookmarkService(store: bookmarkStore)
+
+        let label = Label(name: "Prayer")
+
+        let bibleBookmark = BibleBookmark(
+            kjvOrdinalStart: 1,
+            kjvOrdinalEnd: 1,
+            ordinalStart: 1,
+            ordinalEnd: 1,
+            v11n: "KJVA"
+        )
+        bibleBookmark.primaryLabelId = label.id
+        let bibleLink = BibleBookmarkToLabel(orderNumber: 0, indentLevel: 0, expandContent: false)
+        bibleLink.bookmark = bibleBookmark
+        bibleLink.label = label
+        bibleBookmark.bookmarkToLabels = [bibleLink]
+
+        let genericBookmark = GenericBookmark(key: "entry", bookInitials: "DICT")
+        genericBookmark.primaryLabelId = label.id
+        let genericLink = GenericBookmarkToLabel(orderNumber: 1, indentLevel: 0, expandContent: true)
+        genericLink.bookmark = genericBookmark
+        genericLink.label = label
+        genericBookmark.bookmarkToLabels = [genericLink]
+
+        modelContext.insert(label)
+        modelContext.insert(bibleBookmark)
+        modelContext.insert(bibleLink)
+        modelContext.insert(genericBookmark)
+        modelContext.insert(genericLink)
+        try modelContext.save()
+
+        bookmarkService.deleteLabel(id: label.id)
+
+        XCTAssertTrue(try modelContext.fetch(FetchDescriptor<Label>()).isEmpty)
+
+        let reloadedBibleBookmark = try XCTUnwrap(
+            try modelContext.fetch(FetchDescriptor<BibleBookmark>()).first
+        )
+        XCTAssertNil(reloadedBibleBookmark.primaryLabelId)
+        XCTAssertTrue(reloadedBibleBookmark.bookmarkToLabels?.isEmpty ?? true)
+        XCTAssertTrue(try modelContext.fetch(FetchDescriptor<BibleBookmarkToLabel>()).isEmpty)
+
+        let reloadedGenericBookmark = try XCTUnwrap(
+            try modelContext.fetch(FetchDescriptor<GenericBookmark>()).first
+        )
+        XCTAssertNil(reloadedGenericBookmark.primaryLabelId)
+        XCTAssertTrue(reloadedGenericBookmark.bookmarkToLabels?.isEmpty ?? true)
+        XCTAssertTrue(try modelContext.fetch(FetchDescriptor<GenericBookmarkToLabel>()).isEmpty)
+    }
+
     private func makeInMemorySettingsStore() throws -> SettingsStore {
         SettingsStore(modelContext: ModelContext(try makeInMemorySettingsContainer()))
     }

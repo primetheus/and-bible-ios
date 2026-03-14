@@ -359,15 +359,16 @@ public struct LabelManagerView: View {
      - Parameter label: Label to delete from SwiftData.
 
      Side effects:
-     - removes the label from the model context and attempts to save the deletion
+     - removes the label through `BookmarkService`, which also detaches bookmark relations and
+       clears any matching primary-label references before saving
 
      Failure modes:
-     - save failures are swallowed by `try?`, so a failed persistence write will not surface an
-       error to the user from this view
+     - save failures are swallowed inside `BookmarkService`, so a failed persistence write will
+       not surface an error to the user from this view
      */
     private func deleteLabel(_ label: BibleCore.Label) {
-        modelContext.delete(label)
-        try? modelContext.save()
+        let bookmarkStore = BookmarkStore(modelContext: modelContext)
+        BookmarkService(store: bookmarkStore).deleteLabel(id: label.id)
     }
 }
 

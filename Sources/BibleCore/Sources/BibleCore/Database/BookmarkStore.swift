@@ -262,12 +262,51 @@ public final class BookmarkStore {
     }
 
     /**
-     * Deletes a label and relies on SwiftData cascade rules for attached StudyPad entries.
-     * - Parameter label: Label to delete.
-     * - Side Effects: Deletes the label graph and saves `modelContext`.
-     * - Failure: Save errors are swallowed.
+     Deletes a label and detaches every bookmark relationship that still points at it.
+
+     - Parameter label: Label to delete.
+     - Side effects:
+       - removes matching `BibleBookmarkToLabel` and `GenericBookmarkToLabel` rows from both the
+         model context and their owning bookmark collections
+       - clears `primaryLabelId` on bookmarks whose primary label matches the deleted label
+       - deletes the label itself and saves the updated graph
+     - Failure modes:
+       - fetch failures are swallowed and treated as empty relationship collections
+       - save failures are swallowed by `save()`
      */
     public func delete(_ label: Label) {
+        let labelId = label.id
+
+        let bibleLinksDescriptor = FetchDescriptor<BibleBookmarkToLabel>()
+        let genericLinksDescriptor = FetchDescriptor<GenericBookmarkToLabel>()
+
+        let bibleLinks = ((try? modelContext.fetch(bibleLinksDescriptor)) ?? [])
+            .filter {
+                guard let linkedLabel = $0.label, !linkedLabel.isDeleted else { return false }
+                return linkedLabel.id == labelId
+            }
+        let genericLinks = ((try? modelContext.fetch(genericLinksDescriptor)) ?? [])
+            .filter {
+                guard let linkedLabel = $0.label, !linkedLabel.isDeleted else { return false }
+                return linkedLabel.id == labelId
+            }
+
+        for link in bibleLinks {
+            if link.bookmark?.primaryLabelId == labelId {
+                link.bookmark?.primaryLabelId = nil
+            }
+            link.bookmark?.bookmarkToLabels?.removeAll { $0 === link }
+            modelContext.delete(link)
+        }
+
+        for link in genericLinks {
+            if link.bookmark?.primaryLabelId == labelId {
+                link.bookmark?.primaryLabelId = nil
+            }
+            link.bookmark?.bookmarkToLabels?.removeAll { $0 === link }
+            modelContext.delete(link)
+        }
+
         modelContext.delete(label)
         save()
     }

@@ -2077,8 +2077,8 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         let gbtls = service.genericBookmarkToLabels(labelId: lblId)
         let entries = service.studyPadEntries(labelId: lblId)
 
-        let btlsJSON = btls.map { buildBibleBookmarkToLabelJSON($0) }.joined(separator: ",")
-        let gbtlsJSON = gbtls.map { buildGenericBookmarkToLabelJSON($0) }.joined(separator: ",")
+        let btlsJSON = btls.compactMap { buildBibleBookmarkToLabelJSON($0) }.joined(separator: ",")
+        let gbtlsJSON = gbtls.compactMap { buildGenericBookmarkToLabelJSON($0) }.joined(separator: ",")
         let entriesJSON = entries.map { buildStudyPadEntryJSON($0) }.joined(separator: ",")
 
         bridge.emit(event: "add_or_update_study_pad", data: """
@@ -2109,7 +2109,7 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
 
         // Emit update
         if let btl = service.bibleBookmarkToLabel(bookmarkId: bmId, labelId: lblId) {
-            let btlJSON = buildBibleBookmarkToLabelJSON(btl)
+            guard let btlJSON = buildBibleBookmarkToLabelJSON(btl) else { return }
             bridge.emit(event: "add_or_update_bookmark_to_label", data: btlJSON)
         }
     }
@@ -2137,7 +2137,7 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
 
         // Emit update
         if let gbtl = service.genericBookmarkToLabel(bookmarkId: bmId, labelId: lblId) {
-            let gbtlJSON = buildGenericBookmarkToLabelJSON(gbtl)
+            guard let gbtlJSON = buildGenericBookmarkToLabelJSON(gbtl) else { return }
             bridge.emit(event: "add_or_update_bookmark_to_label", data: gbtlJSON)
         }
     }
@@ -2533,9 +2533,9 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         let genericBookmarksJSON = genericBookmarks.isEmpty ? "[]" :
             "[" + genericBookmarks.map { buildGenericBookmarkJSONForStudyPad($0) }.joined(separator: ",") + "]"
         let btlsJSON = bibleBtls.isEmpty ? "[]" :
-            "[" + bibleBtls.map { buildBibleBookmarkToLabelJSON($0) }.joined(separator: ",") + "]"
+            "[" + bibleBtls.compactMap { buildBibleBookmarkToLabelJSON($0) }.joined(separator: ",") + "]"
         let gbtlsJSON = genericBtls.isEmpty ? "[]" :
-            "[" + genericBtls.map { buildGenericBookmarkToLabelJSON($0) }.joined(separator: ",") + "]"
+            "[" + genericBtls.compactMap { buildGenericBookmarkToLabelJSON($0) }.joined(separator: ",") + "]"
         let entriesJSON = entries.isEmpty ? "[]" :
             "[" + entries.map { buildStudyPadEntryJSON($0) }.joined(separator: ",") + "]"
         let labelJSON = buildLabelJSON(label)
@@ -4025,8 +4025,11 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         var allLabelsJSON = [unlabeledJSON]
         if let service = bookmarkService {
             for label in service.allLabels() {
+                guard let labelID = BookmarkLabelSerializationSupport.liveLabelIDString(for: label) else {
+                    continue
+                }
                 let labelJSON = """
-                {"id":"\(label.id.uuidString)","name":"\(label.name.replacingOccurrences(of: "\"", with: "\\\""))","isRealLabel":\(label.isRealLabel),"style":{"color":\(label.color),"isSpeak":false,"isParagraphBreak":false,"underline":\(label.underlineStyle),"underlineWholeVerse":\(label.underlineStyleWholeVerse),"markerStyle":\(label.markerStyle),"markerStyleWholeVerse":\(label.markerStyleWholeVerse),"hideStyle":\(label.hideStyle),"hideStyleWholeVerse":\(label.hideStyleWholeVerse),"customIcon":\(label.customIcon.map { "\"\($0)\"" } ?? "null")}}
+                {"id":"\(labelID)","name":"\(label.name.replacingOccurrences(of: "\"", with: "\\\""))","isRealLabel":\(label.isRealLabel),"style":{"color":\(label.color),"isSpeak":false,"isParagraphBreak":false,"underline":\(label.underlineStyle),"underlineWholeVerse":\(label.underlineStyleWholeVerse),"markerStyle":\(label.markerStyle),"markerStyleWholeVerse":\(label.markerStyleWholeVerse),"hideStyle":\(label.hideStyle),"hideStyleWholeVerse":\(label.hideStyleWholeVerse),"customIcon":\(label.customIcon.map { "\"\($0)\"" } ?? "null")}}
                 """
                 allLabelsJSON.append(labelJSON)
             }
@@ -4047,30 +4050,18 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
         let hasNote = !noteText.isEmpty
-        let primaryLabelId = bookmark.primaryLabelId.map { "\"\($0.uuidString)\"" } ?? "null"
         let customIcon = bookmark.customIcon.map { "\"\($0)\"" } ?? "null"
-
-        // Build labels array — always include at least the unlabeled label
-        var labelIds = bookmark.bookmarkToLabels?.compactMap { $0.label?.id.uuidString } ?? []
-        if labelIds.isEmpty {
-            labelIds = [Self.unlabeledLabelId]
-        }
-        let labelsJSON = "[" + labelIds.map { "\"\($0)\"" }.joined(separator: ",") + "]"
-
-        // Build bookmarkToLabels array
-        let btlJSON: String
-        if let btls = bookmark.bookmarkToLabels, !btls.isEmpty {
-            let items = btls.compactMap { btl -> String? in
-                guard let labelId = btl.label?.id.uuidString else { return nil }
-                return """
-                {"type":"BibleBookmarkToLabel","bookmarkId":"\(id)","labelId":"\(labelId)","orderNumber":\(btl.orderNumber),"indentLevel":\(btl.indentLevel),"expandContent":\(btl.expandContent)}
-                """
-            }
-            btlJSON = "[" + items.joined(separator: ",") + "]"
-        } else {
-            // Default: assign to the unlabeled label
-            btlJSON = "[{\"type\":\"BibleBookmarkToLabel\",\"bookmarkId\":\"\(id)\",\"labelId\":\"\(Self.unlabeledLabelId)\",\"orderNumber\":0,\"indentLevel\":0,\"expandContent\":false}]"
-        }
+        let labelPayload = BookmarkLabelSerializationSupport.biblePayload(
+            bookmarkID: bookmark.id,
+            links: bookmark.bookmarkToLabels,
+            unlabeledLabelID: Self.unlabeledLabelId
+        )
+        let primaryLabelId = BookmarkLabelSerializationSupport.primaryLabelIDJSON(
+            primaryLabelID: bookmark.primaryLabelId,
+            validLabelIDs: labelPayload.labelIDs
+        )
+        let labelsJSON = labelPayload.labelsJSON
+        let btlJSON = labelPayload.relationsJSON
 
         // Compute verse references from ordinals
         let osisBookId = osisBookId(for: currentBook)
@@ -4120,25 +4111,18 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
         let hasNote = !noteText.isEmpty
-        let primaryLabelId = bookmark.primaryLabelId.map { "\"\($0.uuidString)\"" } ?? "null"
         let customIcon = bookmark.customIcon.map { "\"\($0)\"" } ?? "null"
-
-        // Labels
-        var labelIds = bookmark.bookmarkToLabels?.compactMap { $0.label?.id.uuidString } ?? []
-        if labelIds.isEmpty { labelIds = [Self.unlabeledLabelId] }
-        let labelsJSON = "[" + labelIds.map { "\"\($0)\"" }.joined(separator: ",") + "]"
-
-        // bookmarkToLabels
-        let btlJSON: String
-        if let btls = bookmark.bookmarkToLabels, !btls.isEmpty {
-            let items = btls.compactMap { btl -> String? in
-                guard let labelId = btl.label?.id.uuidString else { return nil }
-                return "{\"type\":\"BibleBookmarkToLabel\",\"bookmarkId\":\"\(id)\",\"labelId\":\"\(labelId)\",\"orderNumber\":\(btl.orderNumber),\"indentLevel\":\(btl.indentLevel),\"expandContent\":\(btl.expandContent)}"
-            }
-            btlJSON = "[" + items.joined(separator: ",") + "]"
-        } else {
-            btlJSON = "[{\"type\":\"BibleBookmarkToLabel\",\"bookmarkId\":\"\(id)\",\"labelId\":\"\(Self.unlabeledLabelId)\",\"orderNumber\":0,\"indentLevel\":0,\"expandContent\":false}]"
-        }
+        let labelPayload = BookmarkLabelSerializationSupport.biblePayload(
+            bookmarkID: bookmark.id,
+            links: bookmark.bookmarkToLabels,
+            unlabeledLabelID: Self.unlabeledLabelId
+        )
+        let primaryLabelId = BookmarkLabelSerializationSupport.primaryLabelIDJSON(
+            primaryLabelID: bookmark.primaryLabelId,
+            validLabelIDs: labelPayload.labelIDs
+        )
+        let labelsJSON = labelPayload.labelsJSON
+        let btlJSON = labelPayload.relationsJSON
 
         // Compute verse references from ordinals
         let osisBookId = osisBookId(for: currentBook)
@@ -4201,7 +4185,7 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
     private func buildStudyPadEntryJSON(_ entry: StudyPadTextEntry) -> String {
         let id = entry.id.uuidString
         let hashCode = abs(id.hashValue)
-        let labelId = entry.label?.id.uuidString ?? ""
+        let labelId = BookmarkLabelSerializationSupport.liveLabelIDString(for: entry.label) ?? ""
         let text = entry.textEntry?.text ?? ""
         let escapedText = text
             .replacingOccurrences(of: "\\", with: "\\\\")
@@ -4213,18 +4197,22 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
     }
 
     /// Serialize a BibleBookmarkToLabel to JSON for Vue.js.
-    private func buildBibleBookmarkToLabelJSON(_ btl: BibleBookmarkToLabel) -> String {
+    private func buildBibleBookmarkToLabelJSON(_ btl: BibleBookmarkToLabel) -> String? {
         let bmId = btl.bookmark?.id.uuidString ?? ""
-        let lblId = btl.label?.id.uuidString ?? ""
+        guard let lblId = BookmarkLabelSerializationSupport.liveLabelIDString(for: btl.label) else {
+            return nil
+        }
         return """
         {"type":"BibleBookmarkToLabel","bookmarkId":"\(bmId)","labelId":"\(lblId)","orderNumber":\(btl.orderNumber),"indentLevel":\(btl.indentLevel),"expandContent":\(btl.expandContent)}
         """
     }
 
     /// Serialize a GenericBookmarkToLabel to JSON for Vue.js.
-    private func buildGenericBookmarkToLabelJSON(_ gbtl: GenericBookmarkToLabel) -> String {
+    private func buildGenericBookmarkToLabelJSON(_ gbtl: GenericBookmarkToLabel) -> String? {
         let bmId = gbtl.bookmark?.id.uuidString ?? ""
-        let lblId = gbtl.label?.id.uuidString ?? ""
+        guard let lblId = BookmarkLabelSerializationSupport.liveLabelIDString(for: gbtl.label) else {
+            return nil
+        }
         return """
         {"type":"GenericBookmarkToLabel","bookmarkId":"\(bmId)","labelId":"\(lblId)","orderNumber":\(gbtl.orderNumber),"indentLevel":\(gbtl.indentLevel),"expandContent":\(gbtl.expandContent)}
         """
@@ -4232,12 +4220,15 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
 
     /// Serialize a Label to JSON for Vue.js StudyPad document.
     private func buildLabelJSON(_ label: Label) -> String {
+        guard let labelID = BookmarkLabelSerializationSupport.liveLabelIDString(for: label) else {
+            return "null"
+        }
         let customIcon = label.customIcon.map { "\"\($0)\"" } ?? "null"
         let escapedName = label.name
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
         return """
-        {"id":"\(label.id.uuidString)","name":"\(escapedName)","isRealLabel":\(label.isRealLabel),"style":{"color":\(label.color),"isSpeak":false,"isParagraphBreak":false,"underline":\(label.underlineStyle),"underlineWholeVerse":\(label.underlineStyleWholeVerse),"markerStyle":\(label.markerStyle),"markerStyleWholeVerse":\(label.markerStyleWholeVerse),"hideStyle":\(label.hideStyle),"hideStyleWholeVerse":\(label.hideStyleWholeVerse),"customIcon":\(customIcon)}}
+        {"id":"\(labelID)","name":"\(escapedName)","isRealLabel":\(label.isRealLabel),"style":{"color":\(label.color),"isSpeak":false,"isParagraphBreak":false,"underline":\(label.underlineStyle),"underlineWholeVerse":\(label.underlineStyleWholeVerse),"markerStyle":\(label.markerStyle),"markerStyleWholeVerse":\(label.markerStyleWholeVerse),"hideStyle":\(label.hideStyle),"hideStyleWholeVerse":\(label.hideStyleWholeVerse),"customIcon":\(customIcon)}}
         """
     }
 
@@ -4253,26 +4244,18 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
         let hasNote = !noteText.isEmpty
-        let primaryLabelId = bookmark.primaryLabelId.map { "\"\($0.uuidString)\"" } ?? "null"
         let customIcon = bookmark.customIcon.map { "\"\($0)\"" } ?? "null"
-
-        var labelIds = bookmark.bookmarkToLabels?.compactMap { $0.label?.id.uuidString } ?? []
-        if labelIds.isEmpty { labelIds = [Self.unlabeledLabelId] }
-        let labelsJSON = "[" + labelIds.map { "\"\($0)\"" }.joined(separator: ",") + "]"
-
-        // Build BTLs with type field
-        let btlJSON: String
-        if let btls = bookmark.bookmarkToLabels, !btls.isEmpty {
-            let items = btls.compactMap { btl -> String? in
-                guard let labelId = btl.label?.id.uuidString else { return nil }
-                return """
-                {"type":"BibleBookmarkToLabel","bookmarkId":"\(id)","labelId":"\(labelId)","orderNumber":\(btl.orderNumber),"indentLevel":\(btl.indentLevel),"expandContent":\(btl.expandContent)}
-                """
-            }
-            btlJSON = "[" + items.joined(separator: ",") + "]"
-        } else {
-            btlJSON = "[{\"type\":\"BibleBookmarkToLabel\",\"bookmarkId\":\"\(id)\",\"labelId\":\"\(Self.unlabeledLabelId)\",\"orderNumber\":0,\"indentLevel\":0,\"expandContent\":false}]"
-        }
+        let labelPayload = BookmarkLabelSerializationSupport.biblePayload(
+            bookmarkID: bookmark.id,
+            links: bookmark.bookmarkToLabels,
+            unlabeledLabelID: Self.unlabeledLabelId
+        )
+        let primaryLabelId = BookmarkLabelSerializationSupport.primaryLabelIDJSON(
+            primaryLabelID: bookmark.primaryLabelId,
+            validLabelIDs: labelPayload.labelIDs
+        )
+        let labelsJSON = labelPayload.labelsJSON
+        let btlJSON = labelPayload.relationsJSON
 
         // Compute verse references
         let bookOsisId: String
@@ -4335,25 +4318,18 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
         let hasNote = !noteText.isEmpty
-        let primaryLabelId = bookmark.primaryLabelId.map { "\"\($0.uuidString)\"" } ?? "null"
         let customIcon = bookmark.customIcon.map { "\"\($0)\"" } ?? "null"
-
-        var labelIds = bookmark.bookmarkToLabels?.compactMap { $0.label?.id.uuidString } ?? []
-        if labelIds.isEmpty { labelIds = [Self.unlabeledLabelId] }
-        let labelsJSON = "[" + labelIds.map { "\"\($0)\"" }.joined(separator: ",") + "]"
-
-        let btlJSON: String
-        if let btls = bookmark.bookmarkToLabels, !btls.isEmpty {
-            let items = btls.compactMap { btl -> String? in
-                guard let labelId = btl.label?.id.uuidString else { return nil }
-                return """
-                {"type":"GenericBookmarkToLabel","bookmarkId":"\(id)","labelId":"\(labelId)","orderNumber":\(btl.orderNumber),"indentLevel":\(btl.indentLevel),"expandContent":\(btl.expandContent)}
-                """
-            }
-            btlJSON = "[" + items.joined(separator: ",") + "]"
-        } else {
-            btlJSON = "[{\"type\":\"GenericBookmarkToLabel\",\"bookmarkId\":\"\(id)\",\"labelId\":\"\(Self.unlabeledLabelId)\",\"orderNumber\":0,\"indentLevel\":0,\"expandContent\":false}]"
-        }
+        let labelPayload = BookmarkLabelSerializationSupport.genericPayload(
+            bookmarkID: bookmark.id,
+            links: bookmark.bookmarkToLabels,
+            unlabeledLabelID: Self.unlabeledLabelId
+        )
+        let primaryLabelId = BookmarkLabelSerializationSupport.primaryLabelIDJSON(
+            primaryLabelID: bookmark.primaryLabelId,
+            validLabelIDs: labelPayload.labelIDs
+        )
+        let labelsJSON = labelPayload.labelsJSON
+        let btlJSON = labelPayload.relationsJSON
 
         let escapedKey = bookmark.key
             .replacingOccurrences(of: "\\", with: "\\\\")
@@ -4401,8 +4377,8 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         changedEntries: [StudyPadTextEntry]
     ) {
         let entryJSON = newEntry.map { buildStudyPadEntryJSON($0) } ?? "null"
-        let btlsJSON = changedBibleBtls.map { buildBibleBookmarkToLabelJSON($0) }.joined(separator: ",")
-        let gbtlsJSON = changedGenericBtls.map { buildGenericBookmarkToLabelJSON($0) }.joined(separator: ",")
+        let btlsJSON = changedBibleBtls.compactMap { buildBibleBookmarkToLabelJSON($0) }.joined(separator: ",")
+        let gbtlsJSON = changedGenericBtls.compactMap { buildGenericBookmarkToLabelJSON($0) }.joined(separator: ",")
         let entriesJSON = changedEntries.map { buildStudyPadEntryJSON($0) }.joined(separator: ",")
 
         bridge.emit(event: "add_or_update_study_pad", data: """

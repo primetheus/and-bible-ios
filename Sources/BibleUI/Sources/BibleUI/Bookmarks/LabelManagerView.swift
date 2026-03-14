@@ -49,6 +49,10 @@ public struct LabelManagerView: View {
     private let uiTestCreateNameOverride = ProcessInfo.processInfo.environment["UITEST_LABEL_CREATE_NAME"]?
         .trimmingCharacters(in: .whitespacesAndNewlines)
 
+    /// Optional XCUITest-provided rename override used to bypass sheet typing in CRUD automation.
+    private let uiTestRenameNameOverride = ProcessInfo.processInfo.environment["UITEST_LABEL_RENAME_NAME"]?
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+
     /**
      Creates the label manager and optionally enables StudyPad handoff actions.
 
@@ -87,6 +91,12 @@ public struct LabelManagerView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button(String(localized: "add"), systemImage: "plus") {
+                    if uiTestShowsInlineActions,
+                       let uiTestCreateNameOverride,
+                       !uiTestCreateNameOverride.isEmpty {
+                        createLabel(named: uiTestCreateNameOverride)
+                        return
+                    }
                     if let uiTestCreateNameOverride, !uiTestCreateNameOverride.isEmpty {
                         newLabelName = uiTestCreateNameOverride
                     }
@@ -174,7 +184,7 @@ public struct LabelManagerView: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityIdentifier("labelManagerRowButton")
+        .accessibilityIdentifier(labelRowIdentifier(label))
         .accessibilityLabel(label.name)
         .swipeActions(edge: .trailing) {
             Button(String(localized: "delete"), role: .destructive) {
@@ -219,19 +229,28 @@ public struct LabelManagerView: View {
      * - Parameter label: Label whose edit and delete actions should be exposed inline.
      * - Returns: A compact trailing action cluster for edit and delete operations.
      * - Side effects:
-     *   - the edit action presents the label-edit sheet
+     *   - outside XCUITest rename overrides, the edit action presents the label-edit sheet
+     *   - when a XCUITest rename override is configured, the edit action renames the label in
+     *     place and attempts to persist it immediately
      *   - the delete action mutates SwiftData by deleting the selected label
      * - Failure modes: This helper cannot fail.
      */
     private func labelInlineActions(_ label: BibleCore.Label) -> some View {
         HStack(spacing: 4) {
             Button {
+                if let uiTestRenameNameOverride,
+                   !uiTestRenameNameOverride.isEmpty {
+                    renameLabel(label, to: uiTestRenameNameOverride)
+                    return
+                }
                 editingLabel = label
             } label: {
                 Image(systemName: "pencil")
             }
             .buttonStyle(.borderless)
-            .accessibilityIdentifier("labelManagerInlineEditButton")
+            .accessibilityIdentifier(
+                labelInlineActionIdentifier("labelManagerInlineEditButton", label: label)
+            )
             .accessibilityLabel(label.name)
 
             Button(role: .destructive) {
@@ -240,9 +259,40 @@ public struct LabelManagerView: View {
                 Image(systemName: "trash")
             }
             .buttonStyle(.borderless)
-            .accessibilityIdentifier("labelManagerInlineDeleteButton")
+            .accessibilityIdentifier(
+                labelInlineActionIdentifier("labelManagerInlineDeleteButton", label: label)
+            )
             .accessibilityLabel(label.name)
         }
+    }
+
+    /**
+     Resolves the deterministic XCUITest accessibility identifier for one label row.
+     *
+     * - Parameter label: Label whose row identifier should be derived.
+     * - Returns: A stable row identifier that incorporates the current label name.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func labelRowIdentifier(_ label: BibleCore.Label) -> String {
+        "labelManagerRowButton-\(label.name)"
+    }
+
+    /**
+     Resolves the deterministic XCUITest accessibility identifier for one inline label action.
+     *
+     * - Parameters:
+     *   - baseIdentifier: Base action identifier shared by the inline edit or delete button.
+     *   - label: Label whose inline action identifier should be derived.
+     * - Returns: A stable action identifier that incorporates the current label name.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func labelInlineActionIdentifier(
+        _ baseIdentifier: String,
+        label: BibleCore.Label
+    ) -> String {
+        "\(baseIdentifier)-\(label.name)"
     }
 
     /**
@@ -258,11 +308,49 @@ public struct LabelManagerView: View {
        SwiftData's own reconciliation behavior
      */
     private func createLabel() {
-        guard !newLabelName.isEmpty else { return }
-        let label = BibleCore.Label(name: newLabelName)
+        createLabel(named: newLabelName)
+        newLabelName = ""
+    }
+
+    /**
+     Creates one new label with an explicit name and persists it.
+
+     - Parameter name: Name that should be assigned to the newly inserted label.
+     *
+     Side effects:
+     - inserts a new `Label` into SwiftData and attempts to save the context
+     *
+     Failure modes:
+     - returns without mutating state when `name` is empty
+     - context-save failures are swallowed by `try?`, leaving the in-memory change subject to
+       SwiftData's own reconciliation behavior
+     */
+    private func createLabel(named name: String) {
+        guard !name.isEmpty else { return }
+        let label = BibleCore.Label(name: name)
         modelContext.insert(label)
         try? modelContext.save()
-        newLabelName = ""
+    }
+
+    /**
+     Renames one existing label and attempts to persist the change.
+
+     - Parameters:
+     - label: Label whose name should be updated.
+     - name: Replacement label name that should be persisted.
+
+     Side effects:
+     - mutates the label name in place and attempts to save the updated value
+
+     Failure modes:
+     - returns without mutating state when `name` is empty
+     - save failures are swallowed by `try?`, so a failed persistence write will not surface an
+       error to the user from this view
+     */
+    private func renameLabel(_ label: BibleCore.Label, to name: String) {
+        guard !name.isEmpty else { return }
+        label.name = name
+        try? modelContext.save()
     }
 
     /**

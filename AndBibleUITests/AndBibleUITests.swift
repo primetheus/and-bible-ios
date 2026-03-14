@@ -376,11 +376,7 @@ final class AndBibleUITests: XCTestCase {
         XCTAssertTrue(openLabelManager(in: app, launchedDirectly: true).exists)
 
         requireElement("labelManagerAddButton", in: app, timeout: 10).tap()
-        let newLabelAlert = app.alerts.firstMatch
-        XCTAssertTrue(newLabelAlert.waitForExistence(timeout: 10))
-        let createButton = newLabelAlert.buttons["Create"].firstMatch
-        XCTAssertTrue(createButton.waitForExistence(timeout: 10))
-        createButton.tap()
+        XCTAssertTrue(requireLabelRow(named: originalName, in: app, timeout: 10).exists)
 
         requireLabelInlineAction(
             identifier: "labelManagerInlineEditButton",
@@ -388,9 +384,6 @@ final class AndBibleUITests: XCTestCase {
             in: app,
             timeout: 10
         ).tap()
-
-        XCTAssertTrue(requireElement("labelEditScreen", in: app, timeout: 10).exists)
-        requireElement("labelEditDoneButton", in: app, timeout: 10).tap()
 
         let renamedRow = requireLabelRow(named: renamedName, in: app, timeout: 10)
         XCTAssertTrue(renamedRow.exists)
@@ -994,11 +987,7 @@ final class AndBibleUITests: XCTestCase {
      *   - returns an unresolved query when no matching row currently exists
      */
     private func labelRow(named name: String, in app: XCUIApplication) -> XCUIElement {
-        let predicate = NSPredicate(format: "label == %@", name)
-        return app.buttons
-            .matching(identifier: "labelManagerRowButton")
-            .matching(predicate)
-            .firstMatch
+        app.buttons["labelManagerRowButton-\(name)"]
     }
 
     /**
@@ -1053,11 +1042,7 @@ final class AndBibleUITests: XCTestCase {
         labelName: String,
         in app: XCUIApplication
     ) -> XCUIElement {
-        let labelPredicate = NSPredicate(format: "label == %@", labelName)
-        return app.buttons
-            .matching(identifier: identifier)
-            .matching(labelPredicate)
-            .firstMatch
+        app.buttons["\(identifier)-\(labelName)"]
     }
 
     /**

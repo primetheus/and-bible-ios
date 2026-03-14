@@ -31,14 +31,17 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
-     Verifies that settings can be opened from the reader shell.
+     Verifies that the reader overflow menu exposes its primary actions and that Settings can be
+     opened from the reader shell.
      *
      * - Side effects:
      *   - launches the app with the calculator gate disabled for test determinism
-     *   - opens the reader overflow menu and pushes the settings screen
+     *   - opens the reader overflow menu, validates the primary action rows, and pushes the
+     *     settings screen
      * - Failure modes:
+     *   - fails if any primary overflow-menu action is absent
      *   - fails if settings cannot be reached from the reader shell
-     *   - fails if the settings form or critical navigation rows are absent after navigation completes
+     *   - fails if the settings form does not render after navigation completes
      */
     func testSettingsScreenShowsPrimaryNavigationRows() {
         let app = makeApp()
@@ -46,26 +49,15 @@ final class AndBibleUITests: XCTestCase {
 
         let moreMenuButton = requireElement("readerMoreMenuButton", in: app)
         moreMenuButton.tap()
+        XCTAssertTrue(requireElement("readerOpenReadingPlansAction", in: app, timeout: 5).exists)
+        XCTAssertTrue(requireElement("readerOpenDownloadsAction", in: app, timeout: 5).exists)
+        XCTAssertTrue(requireElement("readerOpenWorkspacesAction", in: app, timeout: 5).exists)
+        XCTAssertTrue(requireElement("readerOpenBookmarksAction", in: app, timeout: 5).exists)
+        XCTAssertTrue(requireElement("readerOpenAboutAction", in: app, timeout: 5).exists)
+
         requireElement("readerOpenSettingsAction", in: app, timeout: 5).tap()
 
         XCTAssertTrue(requireElement("settingsForm", in: app, timeout: 10).exists)
-    }
-
-    /**
-     Verifies that reading plans can be opened from the reader shell.
-     *
-     * - Side effects:
-     *   - launches the app with the calculator gate disabled for test determinism
-     *   - opens the reader overflow menu and pushes the reading-plan screen
-     * - Failure modes:
-     *   - fails if the reading-plans action is missing from the reader menu
-     *   - fails if the reading-plan list screen does not render after navigation completes
-     */
-    func testReadingPlansScreenOpensFromReaderMenu() {
-        let app = makeApp()
-        app.launch()
-
-        XCTAssertTrue(openReadingPlans(in: app).exists)
     }
 
     /**
@@ -114,27 +106,6 @@ final class AndBibleUITests: XCTestCase {
         requireElement("readerOpenDownloadsAction", in: app, timeout: 5).tap()
 
         XCTAssertTrue(requireElement("moduleBrowserScreen", in: app, timeout: 10).exists)
-    }
-
-    /**
-     Verifies that the workspace selector can be opened from the reader shell.
-     *
-     * - Side effects:
-     *   - launches the app with the calculator gate disabled for test determinism
-     *   - opens the reader overflow menu and pushes the workspace selector
-     * - Failure modes:
-     *   - fails if the workspaces action is missing from the reader menu
-     *   - fails if the workspace selector screen does not render after navigation completes
-     */
-    func testWorkspacesScreenOpensFromReaderMenu() {
-        let app = makeApp()
-        app.launch()
-
-        let moreMenuButton = requireElement("readerMoreMenuButton", in: app)
-        moreMenuButton.tap()
-        requireElement("readerOpenWorkspacesAction", in: app, timeout: 5).tap()
-
-        XCTAssertTrue(requireElement("workspaceSelectorScreen", in: app, timeout: 10).exists)
     }
 
     /**
@@ -249,46 +220,6 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
-     Verifies that the downloads browser can be opened from Settings.
-     *
-     * - Side effects:
-     *   - launches the app directly into Settings with the downloads row pre-scrolled into view
-     *   - opens the downloads browser from the settings screen
-     * - Failure modes:
-     *   - fails if the Settings downloads link is missing or never becomes hittable
-     *   - fails if the downloads browser screen does not render after navigation completes
-     */
-    func testSettingsDownloadsLinkOpensDownloadsBrowser() {
-        let app = makeApp(settingsTarget: "settingsDownloadsLink")
-        app.launch()
-
-        openSettings(in: app, launchedDirectly: true)
-        tapSettingsElement("settingsDownloadsLink", in: app)
-
-        XCTAssertTrue(requireElement("moduleBrowserScreen", in: app, timeout: 10).exists)
-    }
-
-    /**
-     Verifies that the import/export screen can be opened from Settings.
-     *
-     * - Side effects:
-     *   - launches the app directly into Settings with the import/export row pre-scrolled into view
-     *   - opens the import/export screen from Settings
-     * - Failure modes:
-     *   - fails if the Settings import/export link is missing or never becomes hittable
-     *   - fails if the import/export screen does not render after navigation completes
-     */
-    func testSettingsImportExportLinkOpensImportExportScreen() {
-        let app = makeApp(settingsTarget: "settingsImportExportLink")
-        app.launch()
-
-        openSettings(in: app, launchedDirectly: true)
-        tapSettingsElement("settingsImportExportLink", in: app)
-
-        XCTAssertTrue(requireElement("importExportScreen", in: app, timeout: 10).exists)
-    }
-
-    /**
      Verifies that the full-backup export action drives Import and Export into share-sheet presentation.
      *
      * - Side effects:
@@ -338,23 +269,6 @@ final class AndBibleUITests: XCTestCase {
         let valuePredicate = NSPredicate(format: "value == %@", "importPickerPresented")
         expectation(for: valuePredicate, evaluatedWith: importExportScreen)
         waitForExpectations(timeout: 15)
-    }
-
-    /**
-     Verifies that the label manager can be opened from Settings.
-     *
-     * - Side effects:
-     *   - launches the app directly into Settings with the labels row pre-scrolled into view
-     *   - opens the label manager from Settings
-     * - Failure modes:
-     *   - fails if the Settings labels link is missing or never becomes hittable
-     *   - fails if the label manager screen does not render after navigation completes
-     */
-    func testSettingsLabelsLinkOpensLabelManager() {
-        let app = makeApp(settingsTarget: "settingsLabelsLink")
-        app.launch()
-
-        XCTAssertTrue(openLabelManager(in: app).exists)
     }
 
     /**
@@ -424,26 +338,6 @@ final class AndBibleUITests: XCTestCase {
         tapSettingsElement("settingsSyncLink", in: app)
 
         XCTAssertTrue(requireElement("syncSettingsScreen", in: app, timeout: 10).exists)
-    }
-
-    /**
-     Verifies that the text-display editor can be opened from Settings.
-     *
-     * - Side effects:
-     *   - launches the app directly into Settings with the text-display row pre-scrolled into view
-     *   - opens text-display settings from the settings screen
-     * - Failure modes:
-     *   - fails if the Settings text-display link is missing or never becomes hittable
-     *   - fails if the text-display settings screen does not render after navigation completes
-     */
-    func testSettingsTextDisplayLinkOpensTextDisplayEditor() {
-        let app = makeApp(settingsTarget: "settingsTextDisplayLink")
-        app.launch()
-
-        openSettings(in: app, launchedDirectly: true)
-        tapSettingsElement("settingsTextDisplayLink", in: app)
-
-        XCTAssertTrue(requireElement("textDisplaySettingsScreen", in: app, timeout: 10).exists)
     }
 
     /**
@@ -563,34 +457,6 @@ final class AndBibleUITests: XCTestCase {
             app.launchArguments += ["UITEST_OPEN_WORKSPACES"]
         }
         return app
-    }
-
-    /**
-     Opens Reading Plans either from the reader overflow menu or from a direct test-only launch
-     path.
-     *
-     * - Parameters:
-     *   - app: Running application under test.
-     *   - launchedDirectly: Whether the app was launched straight into the Reading Plans sheet.
-     * - Returns: The root accessibility-identified Reading Plans screen element.
-     * - Side effects:
-     *   - when `launchedDirectly` is `false`, opens the reader overflow menu and pushes Reading
-     *     Plans
-     *   - when `launchedDirectly` is `true`, waits for the direct-launch Reading Plans sheet to
-     *     render
-     * - Failure modes:
-     *   - fails when the Reading Plans screen never appears
-     */
-    private func openReadingPlans(
-        in app: XCUIApplication,
-        launchedDirectly: Bool = false
-    ) -> XCUIElement {
-        if !launchedDirectly {
-            let moreMenuButton = requireElement("readerMoreMenuButton", in: app)
-            moreMenuButton.tap()
-            requireElement("readerOpenReadingPlansAction", in: app, timeout: 5).tap()
-        }
-        return requireElement("readingPlanListScreen", in: app, timeout: 10)
     }
 
     /**

@@ -2277,14 +2277,15 @@ public struct BibleReaderView: View {
     /**
      Seeds one deterministic remote-sync backend configuration for direct XCUITest sync workflows.
 
-    Side effects:
-    - clears any persisted WebDAV server, username, folder path, and password through
-      `RemoteSyncSettingsStore`
-    - persists the requested backend override so `SyncSettingsView` loads the expected section
-    - disables all remote category toggles so sync workflow tests start from a clean state
+     Side effects:
+     - clears any persisted WebDAV server, username, folder path, and password through
+       `RemoteSyncSettingsStore`
+     - persists the requested backend override so `SyncSettingsView` loads the expected section
+     - disables all remote category toggles so sync workflow tests start from a clean state unless
+       the launch environment explicitly requests seeded enabled categories
 
-    Failure modes:
-    - secret-store clear failures are swallowed because the route only serves the in-memory
+     Failure modes:
+     - secret-store clear failures are swallowed because the route only serves the in-memory
        XCUITest harness and should not block presentation
      */
     private func seedSyncSettingsForUITests() {
@@ -2296,6 +2297,13 @@ public struct BibleReaderView: View {
         store.selectedBackend = backend
         for category in RemoteSyncCategory.allCases {
             store.setSyncEnabled(false, for: category)
+        }
+        if let enabledCategories = ProcessInfo.processInfo.environment["UITEST_SYNC_ENABLED_CATEGORIES"] {
+            for rawValue in enabledCategories.split(separator: ",").map(String.init) {
+                if let category = RemoteSyncCategory(rawValue: rawValue) {
+                    store.setSyncEnabled(true, for: category)
+                }
+            }
         }
     }
 

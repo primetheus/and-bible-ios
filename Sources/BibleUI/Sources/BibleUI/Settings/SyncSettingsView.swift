@@ -174,6 +174,7 @@ public struct SyncSettingsView: View {
             }
         }
         .accessibilityIdentifier("syncSettingsScreen")
+        .accessibilityValue(syncSettingsAccessibilityValue)
         .navigationTitle(String(localized: "sync_adapter"))
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -512,21 +513,35 @@ public struct SyncSettingsView: View {
      */
     private var remoteCategoryList: some View {
         ForEach(RemoteSyncCategory.allCases, id: \.self) { category in
-            Toggle(isOn: remoteCategoryBinding(for: category)) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(remoteCategoryTitle(for: category))
-                    Text(remoteCategoryContentDescription(for: category))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    if let supplementalText = remoteCategorySupplementalText(for: category) {
-                        Text(supplementalText)
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle(isOn: remoteCategoryBinding(for: category)) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(remoteCategoryTitle(for: category))
+                        Text(remoteCategoryContentDescription(for: category))
                             .font(.caption)
-                            .foregroundStyle(remoteCategorySupplementalColor(for: category))
+                            .foregroundStyle(.secondary)
+
+                        if let supplementalText = remoteCategorySupplementalText(for: category) {
+                            Text(supplementalText)
+                                .font(.caption)
+                                .foregroundStyle(remoteCategorySupplementalColor(for: category))
+                        }
                     }
+                    .accessibilityIdentifier("syncCategoryState::\(category.rawValue)")
+                    .accessibilityValue(remoteCategoryAccessibilityValue(for: category))
+                }
+                .accessibilityIdentifier("syncCategoryToggle::\(category.rawValue)")
+                .accessibilityValue(remoteCategoryAccessibilityValue(for: category))
+                .disabled(isRemoteSyncInteractionLocked)
+
+                if isUITestHarnessEnabled, isRemoteCategoryEnabled(category) {
+                    Button("Disable") {
+                        disableRemoteSync(for: category)
+                    }
+                    .font(.caption)
+                    .accessibilityIdentifier("syncCategoryDisableButton::\(category.rawValue)")
                 }
             }
-            .disabled(isRemoteSyncInteractionLocked)
         }
     }
 
@@ -607,6 +622,66 @@ public struct SyncSettingsView: View {
             let invalidURLMessage = String(localized: "invalid_url_message")
             return message == invalidURLMessage ? "failureInvalidURL" : "failure"
         }
+    }
+
+    /**
+     Accessibility-exported state for one remote sync category toggle.
+
+     The UI suite uses stable semantic tokens instead of localized toggle labels or platform-
+     specific switch values so assertions remain deterministic across locales and SwiftUI control
+     rendering differences.
+
+     - Parameter category: Remote sync category whose current persisted or in-memory enabled state
+       should be exported.
+     - Returns: `enabled` when the category is currently on, otherwise `disabled`.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
+    private func remoteCategoryAccessibilityValue(for category: RemoteSyncCategory) -> String {
+        let isEnabled = isRemoteCategoryEnabled(category)
+        return isEnabled ? "enabled" : "disabled"
+    }
+
+    /**
+     Stable root-screen state exported for Sync UI automation.
+
+     The token captures the active backend plus the currently enabled remote categories so UI tests
+     can assert state changes without relying on localized row text or SwiftUI switch internals.
+
+     - Returns: A deterministic `backend=<raw>;enabled=<csv-or-none>` token.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
+    private var syncSettingsAccessibilityValue: String {
+        let enabledCategories = RemoteSyncCategory.allCases
+            .filter(isRemoteCategoryEnabled)
+            .map(\.rawValue)
+            .sorted()
+        let enabledToken = enabledCategories.isEmpty ? "none" : enabledCategories.joined(separator: ",")
+        return "backend=\(selectedBackend.rawValue);enabled=\(enabledToken)"
+    }
+
+    /**
+     Returns the currently effective enabled state for one remote sync category.
+
+     - Parameter category: Category whose in-memory or persisted enabled state should be resolved.
+     - Returns: `true` when the category is currently enabled, otherwise `false`.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
+    private func isRemoteCategoryEnabled(_ category: RemoteSyncCategory) -> Bool {
+        remoteCategoryEnabled[category] ?? remoteSettingsStore.isSyncEnabled(for: category)
+    }
+
+    /**
+     Whether the current process is running under the in-memory XCUITest harness.
+
+     - Returns: `true` when `UITEST_USE_IN_MEMORY_STORES` is present in launch arguments.
+     - Side effects: none.
+     - Failure modes: This helper cannot fail.
+     */
+    private var isUITestHarnessEnabled: Bool {
+        ProcessInfo.processInfo.arguments.contains("UITEST_USE_IN_MEMORY_STORES")
     }
 
     /**

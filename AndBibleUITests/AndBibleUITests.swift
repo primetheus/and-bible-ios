@@ -443,6 +443,44 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that disabling one seeded NextCloud sync category updates the exported Sync screen
+     state.
+     *
+     * - Side effects:
+     *   - launches the app directly into Sync Settings with NextCloud selected and bookmarks
+     *     pre-enabled in the in-memory settings store
+     *   - invokes the XCUITest-only inline disable action, which calls the real category-disable
+     *     persistence path
+     * - Failure modes:
+     *   - fails if the seeded disable action never appears for the bookmarks category
+     *   - fails if the Sync screen state does not start with `backend=NEXT_CLOUD;enabled=bookmarks`
+     *   - fails if disabling the category does not update the exported Sync screen state to
+     *     `backend=NEXT_CLOUD;enabled=none`
+     */
+    func testSyncSettingsCategoryToggleMutatesExportedState() {
+        let app = makeApp(
+            openSyncOnLaunch: true,
+            syncBackend: "NEXT_CLOUD",
+            syncEnabledCategories: "bookmarks"
+        )
+        app.launch()
+
+        let syncScreen = openSyncSettings(in: app, launchedDirectly: true)
+        XCTAssertEqual(
+            syncScreen.value as? String,
+            "backend=NEXT_CLOUD;enabled=bookmarks"
+        )
+
+        requireElement("syncCategoryDisableButton::bookmarks", in: app, timeout: 10).tap()
+        waitForElementValue(
+            "syncSettingsScreen",
+            toEqual: "backend=NEXT_CLOUD;enabled=none",
+            in: app,
+            timeout: 10
+        )
+    }
+
+    /**
     Verifies that toggling justify text mutates the exported control state.
      *
      * - Side effects:
@@ -552,6 +590,8 @@ final class AndBibleUITests: XCTestCase {
      *     into view on launch.
      *   - openSyncOnLaunch: Whether the app should present Sync Settings immediately on launch.
      *   - syncBackend: Optional remote backend raw value to seed before a direct Sync launch.
+     *   - syncEnabledCategories: Optional comma-separated remote category raw values to seed as
+     *     enabled before a direct Sync launch.
      *   - openTextDisplayOnLaunch: Whether the app should present Text Display immediately on
      *     launch.
      *   - openImportExportOnLaunch: Whether the app should present Import and Export immediately on
@@ -579,6 +619,8 @@ final class AndBibleUITests: XCTestCase {
      *     immediately after the reader hydrates
      *   - when `syncBackend` is supplied, exports the requested backend raw value for the direct
      *     Sync Settings harness
+     *   - when `syncEnabledCategories` is supplied, exports the requested enabled-category seed
+     *     list for the direct Sync Settings harness
      *   - when `openTextDisplayOnLaunch` is `true`, configures the app to present Text Display
      *     immediately after the reader hydrates
      *   - when `openImportExportOnLaunch` is `true`, configures the app to present Import and
@@ -603,6 +645,7 @@ final class AndBibleUITests: XCTestCase {
         settingsTarget: String? = nil,
         openSyncOnLaunch: Bool = false,
         syncBackend: String? = nil,
+        syncEnabledCategories: String? = nil,
         openTextDisplayOnLaunch: Bool = false,
         openImportExportOnLaunch: Bool = false,
         openColorsOnLaunch: Bool = false,
@@ -628,6 +671,9 @@ final class AndBibleUITests: XCTestCase {
         }
         if let syncBackend {
             app.launchEnvironment["UITEST_SYNC_BACKEND"] = syncBackend
+        }
+        if let syncEnabledCategories {
+            app.launchEnvironment["UITEST_SYNC_ENABLED_CATEGORIES"] = syncEnabledCategories
         }
         if openTextDisplayOnLaunch {
             app.launchArguments += ["UITEST_OPEN_TEXT_DISPLAY"]
@@ -930,6 +976,51 @@ final class AndBibleUITests: XCTestCase {
         )
         return element
     }
+
+    /**
+     Polls one accessibility-identified element until its value matches the expected semantic token.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier whose resolved element value should be sampled.
+     *   - expectedValue: Semantic value expected before the timeout expires.
+     *   - app: Running application under test.
+     *   - timeout: Maximum time to keep polling before failing.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - repeatedly re-queries the live XCUI hierarchy for the requested identifier
+     *   - records an XCTest failure when the value never reaches the expected state before timeout
+     * - Failure modes:
+     *   - fails when the element disappears or its accessibility value never reaches the requested
+     *     token within the timeout window
+     */
+    private func waitForElementValue(
+        _ identifier: String,
+        toEqual expectedValue: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let currentElement = app.descendants(matching: .any)[identifier].firstMatch
+            if currentElement.exists, currentElement.value as? String == expectedValue {
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        let finalElement = app.descendants(matching: .any)[identifier].firstMatch
+        XCTAssertEqual(
+            finalElement.value as? String,
+            expectedValue,
+            "Expected element '\(identifier)' to reach value '\(expectedValue)' within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+    }
+
 
     /**
      Waits for the reader shell's overflow-menu button, allowing extra time for the first cold app

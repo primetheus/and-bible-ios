@@ -411,6 +411,38 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that invalid NextCloud server input surfaces the expected validation status.
+     *
+     * - Side effects:
+     *   - launches the app directly into Sync Settings with the backend seeded to NextCloud
+     *   - enters one invalid server URL plus a username and triggers the manual connection test
+     * - Failure modes:
+     *   - fails if the direct-launch Sync Settings sheet never appears
+     *   - fails if the NextCloud fields or test-connection button are missing
+     *   - fails if the exported connection-test state never reaches `failureInvalidURL`
+     */
+    func testSyncSettingsNextCloudInvalidURLShowsValidationStatus() {
+        let app = makeApp(openSyncOnLaunch: true, syncBackend: "NEXT_CLOUD")
+        app.launch()
+
+        _ = openSyncSettings(in: app, launchedDirectly: true)
+        let serverField = requireElement("syncNextCloudServerURLField", in: app, timeout: 10)
+        let usernameField = requireElement("syncNextCloudUsernameField", in: app, timeout: 10)
+        let statusRow = requireElement("syncRemoteStatus", in: app, timeout: 10)
+
+        serverField.tap()
+        serverField.typeText("not-a-url")
+        usernameField.tap()
+        usernameField.typeText("tester")
+
+        requireElement("syncNextCloudTestConnectionButton", in: app, timeout: 10).tap()
+
+        let valuePredicate = NSPredicate(format: "value == %@", "failureInvalidURL")
+        expectation(for: valuePredicate, evaluatedWith: statusRow)
+        waitForExpectations(timeout: 10)
+    }
+
+    /**
     Verifies that toggling justify text mutates the exported control state.
      *
      * - Side effects:
@@ -518,6 +550,8 @@ final class AndBibleUITests: XCTestCase {
      * - Parameters:
      *   - settingsTarget: Optional settings-row identifier that the app should open and pre-scroll
      *     into view on launch.
+     *   - openSyncOnLaunch: Whether the app should present Sync Settings immediately on launch.
+     *   - syncBackend: Optional remote backend raw value to seed before a direct Sync launch.
      *   - openTextDisplayOnLaunch: Whether the app should present Text Display immediately on
      *     launch.
      *   - openImportExportOnLaunch: Whether the app should present Import and Export immediately on
@@ -541,6 +575,10 @@ final class AndBibleUITests: XCTestCase {
      *     container for deterministic launches
      *   - when `settingsTarget` is supplied, configures the app to present Settings immediately and
      *     scroll the requested row into view
+     *   - when `openSyncOnLaunch` is `true`, configures the app to present Sync Settings
+     *     immediately after the reader hydrates
+     *   - when `syncBackend` is supplied, exports the requested backend raw value for the direct
+     *     Sync Settings harness
      *   - when `openTextDisplayOnLaunch` is `true`, configures the app to present Text Display
      *     immediately after the reader hydrates
      *   - when `openImportExportOnLaunch` is `true`, configures the app to present Import and
@@ -563,6 +601,8 @@ final class AndBibleUITests: XCTestCase {
      */
     private func makeApp(
         settingsTarget: String? = nil,
+        openSyncOnLaunch: Bool = false,
+        syncBackend: String? = nil,
         openTextDisplayOnLaunch: Bool = false,
         openImportExportOnLaunch: Bool = false,
         openColorsOnLaunch: Bool = false,
@@ -582,6 +622,12 @@ final class AndBibleUITests: XCTestCase {
         if let settingsTarget {
             app.launchArguments += ["UITEST_OPEN_SETTINGS"]
             app.launchEnvironment["UITEST_SETTINGS_SCROLL_TARGET"] = settingsTarget
+        }
+        if openSyncOnLaunch {
+            app.launchArguments += ["UITEST_OPEN_SYNC"]
+        }
+        if let syncBackend {
+            app.launchEnvironment["UITEST_SYNC_BACKEND"] = syncBackend
         }
         if openTextDisplayOnLaunch {
             app.launchArguments += ["UITEST_OPEN_TEXT_DISPLAY"]
@@ -739,6 +785,33 @@ final class AndBibleUITests: XCTestCase {
             tapSettingsElement("settingsImportExportLink", in: app)
         }
         return requireElement("importExportScreen", in: app, timeout: 10)
+    }
+
+    /**
+     Opens Sync Settings either from Settings navigation or from a direct test-only launch path.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - launchedDirectly: Whether the app was launched straight into the Sync Settings sheet.
+     * - Returns: The root accessibility-identified Sync Settings screen element.
+     * - Side effects:
+     *   - when `launchedDirectly` is `false`, opens Settings and pushes the Sync Settings screen
+     *   - when `launchedDirectly` is `true`, waits for the direct-launch Sync Settings sheet to render
+     * - Failure modes:
+     *   - fails when the Sync Settings screen never appears
+     */
+    private func openSyncSettings(
+        in app: XCUIApplication,
+        launchedDirectly: Bool = false
+    ) -> XCUIElement {
+        if !launchedDirectly {
+            openSettings(
+                in: app,
+                launchedDirectly: app.launchArguments.contains("UITEST_OPEN_SETTINGS")
+            )
+            tapSettingsElement("settingsSyncLink", in: app)
+        }
+        return requireElement("syncSettingsScreen", in: app, timeout: 10)
     }
 
     /**

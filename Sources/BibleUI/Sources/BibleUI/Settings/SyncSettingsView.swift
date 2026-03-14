@@ -312,6 +312,7 @@ public struct SyncSettingsView: View {
                 Text(String(localized: "adapters_google_drive"))
                     .tag(RemoteSyncBackend.googleDrive)
             }
+            .accessibilityIdentifier("syncBackendPicker")
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
                 Text(String(localized: "prefs_sync_introduction_summary1"))
@@ -401,6 +402,7 @@ public struct SyncSettingsView: View {
                 TextField(String(localized: "auth_server_uri"), text: $serverURL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .accessibilityIdentifier("syncNextCloudServerURLField")
                     #if os(iOS)
                     .textContentType(.URL)
                     #endif
@@ -408,6 +410,7 @@ public struct SyncSettingsView: View {
                 TextField(String(localized: "auth_username"), text: $username)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .accessibilityIdentifier("syncNextCloudUsernameField")
                     #if os(iOS)
                     .textContentType(.username)
                     #endif
@@ -415,6 +418,7 @@ public struct SyncSettingsView: View {
                 SecureField(String(localized: "auth_password"), text: $password)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .accessibilityIdentifier("syncNextCloudPasswordField")
                     #if os(iOS)
                     .textContentType(.password)
                     #endif
@@ -422,6 +426,7 @@ public struct SyncSettingsView: View {
                 TextField(String(localized: "auth_folder_path"), text: $folderPath)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .accessibilityIdentifier("syncNextCloudFolderPathField")
             } header: {
                 Text(String(localized: "adapters_next_cloud"))
             } footer: {
@@ -435,12 +440,15 @@ public struct SyncSettingsView: View {
                     }
                 }
                 .disabled(isTestingConnection)
+                .accessibilityIdentifier("syncNextCloudTestConnectionButton")
 
                 HStack(alignment: .top) {
                     Text(String(localized: "status"))
                     Spacer()
                     remoteStatusView
                 }
+                .accessibilityIdentifier("syncRemoteStatus")
+                .accessibilityValue(remoteStatusAccessibilityValue)
             } header: {
                 Text(String(localized: "sync_status"))
             }
@@ -573,6 +581,31 @@ public struct SyncSettingsView: View {
         } else {
             Text("—")
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    /**
+     Accessibility-exported state for the NextCloud/WebDAV connection-test row.
+
+     The UI suite uses a stable semantic token instead of matching localized status strings.
+     This keeps the workflow assertion deterministic while leaving the visible user-facing copy
+     unchanged.
+     */
+    private var remoteStatusAccessibilityValue: String {
+        if isTestingConnection {
+            return "testing"
+        }
+
+        guard let remoteConnectionStatus else {
+            return "idle"
+        }
+
+        switch remoteConnectionStatus {
+        case .success:
+            return "success"
+        case .failure(let message):
+            let invalidURLMessage = String(localized: "invalid_url_message")
+            return message == invalidURLMessage ? "failureInvalidURL" : "failure"
         }
     }
 

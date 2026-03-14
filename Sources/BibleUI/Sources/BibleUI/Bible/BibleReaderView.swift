@@ -90,7 +90,7 @@ func presentCompareView(book: String, chapter: Int, currentModuleName: String, s
  - `onAppear` loads persisted preferences, wires TTS callbacks, restores speech settings, and
    registers synchronized-scrolling callbacks on `WindowManager`
  - XCUITest launch arguments can seed bookmark/label data or present the settings, text-display
-   editor, color editor, import/export sheet, label manager, or a seeded bookmark
+   editor, color editor, sync editor, import/export sheet, label manager, or a seeded bookmark
    label-assignment sheet immediately after initial state hydration so automation can target
    nested flows without menu traversal
  - iOS `onAppear` and `onDisappear` start and stop tilt-to-scroll based on workspace settings
@@ -131,6 +131,9 @@ public struct BibleReaderView: View {
 
     /// Presents the consolidated settings screen.
     @State private var showSettings = false
+
+    /// Presents the sync settings editor directly for focused workflow testing.
+    @State private var showSyncSettings = false
 
     /// Presents the text-display editor directly for focused workflow testing.
     @State private var showTextDisplaySettings = false
@@ -216,6 +219,9 @@ public struct BibleReaderView: View {
 
     /// Launch-argument override used by XCUITests to present Text Display immediately on launch.
     private let uiTestOpensTextDisplayOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_TEXT_DISPLAY")
+
+    /// Launch-argument override used by XCUITests to present Sync Settings immediately on launch.
+    private let uiTestOpensSyncSettingsOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_SYNC")
 
     /// Launch-argument override used by XCUITests to present Colors immediately on launch.
     private let uiTestOpensColorsOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_COLORS")
@@ -635,6 +641,16 @@ public struct BibleReaderView: View {
                             Button(String(localized: "done")) { showTextDisplaySettings = false }
                         }
                 }
+            }
+        }
+        .sheet(isPresented: $showSyncSettings) {
+            NavigationStack {
+                SyncSettingsView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(String(localized: "done")) { showSyncSettings = false }
+                        }
+                    }
             }
         }
         .sheet(isPresented: $showColorSettings) {
@@ -2259,13 +2275,38 @@ public struct BibleReaderView: View {
     }
 
     /**
+     Seeds one deterministic remote-sync backend configuration for direct XCUITest sync workflows.
+
+    Side effects:
+    - clears any persisted WebDAV server, username, folder path, and password through
+      `RemoteSyncSettingsStore`
+    - persists the requested backend override so `SyncSettingsView` loads the expected section
+    - disables all remote category toggles so sync workflow tests start from a clean state
+
+    Failure modes:
+    - secret-store clear failures are swallowed because the route only serves the in-memory
+       XCUITest harness and should not block presentation
+     */
+    private func seedSyncSettingsForUITests() {
+        let store = RemoteSyncSettingsStore(settingsStore: SettingsStore(modelContext: modelContext))
+        let backend = ProcessInfo.processInfo.environment["UITEST_SYNC_BACKEND"]
+            .flatMap(RemoteSyncBackend.init(rawValue:))
+            ?? .iCloud
+        try? store.clearWebDAVConfiguration()
+        store.selectedBackend = backend
+        for category in RemoteSyncCategory.allCases {
+            store.setSyncEnabled(false, for: category)
+        }
+    }
+
+    /**
      Applies the requested XCUITest initial presentation only after the reader shell finishes its
      first render pass.
      *
      * - Side effects:
      *   - yields twice on the main actor so SwiftUI finishes mounting the reader shell before any
      *     modal or navigation state changes are applied
-     *   - resets or seeds deterministic state for color, label, bookmark, reading-plan, or
+     *   - resets or seeds deterministic state for color, sync, label, bookmark, reading-plan, or
      *     workspace tests as required by the active launch arguments
      *   - toggles the requested test-only presentation state or seeded navigation route
      * - Failure modes:
@@ -2281,6 +2322,9 @@ public struct BibleReaderView: View {
 
         if uiTestOpensTextDisplayOnLaunch {
             showTextDisplaySettings = true
+        } else if uiTestOpensSyncSettingsOnLaunch {
+            seedSyncSettingsForUITests()
+            showSyncSettings = true
         } else if uiTestOpensColorsOnLaunch {
             seedColorsForUITests()
             showColorSettings = true

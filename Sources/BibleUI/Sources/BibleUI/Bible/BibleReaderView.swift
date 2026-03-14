@@ -90,8 +90,8 @@ func presentCompareView(book: String, chapter: Int, currentModuleName: String, s
  - `onAppear` loads persisted preferences, wires TTS callbacks, restores speech settings, and
    registers synchronized-scrolling callbacks on `WindowManager`
  - XCUITest launch arguments can present the settings, text-display editor, import/export sheet,
-   or label manager immediately after initial state hydration so automation can target nested
-   flows without menu traversal
+   label manager, or a seeded bookmark label-assignment sheet immediately after initial state
+   hydration so automation can target nested flows without menu traversal
  - iOS `onAppear` and `onDisappear` start and stop tilt-to-scroll based on workspace settings
  - sheet dismissals reload behavior preferences or refresh installed-module lists where needed
  - toolbar toggles and helper actions mutate SwiftData-backed workspace/settings state and push
@@ -145,6 +145,9 @@ public struct BibleReaderView: View {
 
     /// Test-only seeded plan identifier used to launch directly into one active daily-reading view.
     @State private var uiTestDailyReadingPlanID: UUID?
+
+    /// Test-only seeded bookmark identifier used to launch directly into label assignment.
+    @State private var uiTestLabelAssignmentBookmarkID: UUID?
 
     /// Presents the expanded speech controls sheet.
     @State private var showSpeakControls = false
@@ -206,6 +209,9 @@ public struct BibleReaderView: View {
 
     /// Launch-argument override used by XCUITests to present Label Manager immediately on launch.
     private let uiTestOpensLabelManagerOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_LABEL_MANAGER")
+
+    /// Launch-argument override used by XCUITests to present one seeded label-assignment sheet.
+    private let uiTestOpensLabelAssignmentOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_LABEL_ASSIGNMENT")
 
     /// Launch-argument override used by XCUITests to present Reading Plans immediately on launch.
     private let uiTestOpensReadingPlansOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_READING_PLANS")
@@ -534,7 +540,14 @@ public struct BibleReaderView: View {
                 } else if uiTestOpensLabelManagerOnLaunch {
                     hasAppliedUITestInitialPresentation = true
                     resetLabelsForUITests()
-                    showLabelManager = true
+                    DispatchQueue.main.async {
+                        showLabelManager = true
+                    }
+                } else if uiTestOpensLabelAssignmentOnLaunch {
+                    hasAppliedUITestInitialPresentation = true
+                    resetLabelsForUITests()
+                    resetBookmarksForUITests()
+                    uiTestLabelAssignmentBookmarkID = seedLabelAssignmentBookmarkForUITests()
                 } else if uiTestOpensReadingPlansOnLaunch {
                     hasAppliedUITestInitialPresentation = true
                     resetReadingPlansForUITests()
@@ -828,7 +841,15 @@ public struct BibleReaderView: View {
                         ToolbarItem(placement: .cancellationAction) {
                             Button(String(localized: "done")) { showLabelManager = false }
                         }
-                    }
+                }
+            }
+        }
+        .sheet(item: $uiTestLabelAssignmentBookmarkID) { bookmarkId in
+            NavigationStack {
+                LabelAssignmentView(
+                    bookmarkId: bookmarkId,
+                    onDismiss: { uiTestLabelAssignmentBookmarkID = nil }
+                )
             }
         }
         .sheet(isPresented: $showHelp) {
@@ -2161,6 +2182,57 @@ public struct BibleReaderView: View {
         }
         modelContext.insert(BibleCore.Label(name: "UI Test Seed"))
         try? modelContext.save()
+    }
+
+    /**
+     Clears persisted bookmarks before a direct XCUITest bookmark-label workflow.
+     *
+     * Side effects:
+     * - fetches persisted `BibleBookmark` and `GenericBookmark` rows from SwiftData
+     * - deletes every fetched bookmark, relying on cascade rules for related notes and label links
+     * - saves the cleared bookmark state back to SwiftData
+     *
+     * Failure modes:
+     * - returns without mutation when either bookmark fetch fails
+     * - silently discards save failures because the reset is only used for test setup
+     */
+    private func resetBookmarksForUITests() {
+        let bibleDescriptor = FetchDescriptor<BibleBookmark>()
+        let genericDescriptor = FetchDescriptor<GenericBookmark>()
+        guard let bibleBookmarks = try? modelContext.fetch(bibleDescriptor),
+              let genericBookmarks = try? modelContext.fetch(genericDescriptor) else { return }
+        for bookmark in bibleBookmarks {
+            modelContext.delete(bookmark)
+        }
+        for bookmark in genericBookmarks {
+            modelContext.delete(bookmark)
+        }
+        try? modelContext.save()
+    }
+
+    /**
+     Seeds one deterministic Bible bookmark for direct XCUITest label-assignment workflows.
+     *
+     * - Returns: Identifier of the seeded bookmark, or `nil` when the insert/save path fails.
+     * - Side effects:
+     *   - inserts one whole-verse `BibleBookmark` into SwiftData
+     *   - persists the bookmark so `LabelAssignmentView` can fetch it by identifier
+     * - Failure modes:
+     *   - returns `nil` when the save fails after insertion because the seeded sheet would be
+     *     unable to resolve its target bookmark
+     */
+    private func seedLabelAssignmentBookmarkForUITests() -> UUID? {
+        let bookmark = BibleBookmark(
+            kjvOrdinalStart: 1,
+            kjvOrdinalEnd: 1,
+            ordinalStart: 1,
+            ordinalEnd: 1,
+            v11n: "KJVA"
+        )
+        bookmark.book = "Genesis"
+        modelContext.insert(bookmark)
+        guard (try? modelContext.save()) != nil else { return nil }
+        return bookmark.id
     }
 
     /**

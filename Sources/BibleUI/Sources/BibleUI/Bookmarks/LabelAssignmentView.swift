@@ -83,6 +83,8 @@ struct LabelAssignmentView: View {
                                 .font(.body)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier(labelInlineActionIdentifier("labelAssignmentFavouriteButton", for: label))
+                        .accessibilityValue(label.favourite ? "favourite" : "notFavourite")
 
                         Button {
                             toggleLabel(label)
@@ -92,7 +94,12 @@ struct LabelAssignmentView: View {
                                 .font(.body)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier(labelInlineActionIdentifier("labelAssignmentToggleButton", for: label))
+                        .accessibilityValue(assignedLabelIds.contains(label.id) ? "assigned" : "unassigned")
                     }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier(labelRowIdentifier(label))
+                    .accessibilityValue(labelRowAccessibilityValue(for: label))
                 }
             }
 
@@ -105,6 +112,7 @@ struct LabelAssignmentView: View {
             }
         }
         .navigationTitle("Assign Labels")
+        .accessibilityIdentifier("labelAssignmentScreen")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
@@ -123,6 +131,65 @@ struct LabelAssignmentView: View {
             Button("Cancel", role: .cancel) { newLabelName = "" }
         }
         .onAppear { loadAssignedLabels() }
+    }
+
+    /**
+     Resolves the deterministic XCUITest accessibility identifier for one label row.
+     *
+     * - Parameter label: Label represented by the row.
+     * - Returns: Stable identifier derived from the label name.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func labelRowIdentifier(_ label: BibleCore.Label) -> String {
+        "labelAssignmentRow::\(sanitizedAccessibilitySegment(label.name))"
+    }
+
+    /**
+     Resolves the deterministic XCUITest accessibility identifier for one inline row action.
+     *
+     * - Parameters:
+     *   - prefix: Fixed action prefix naming the control role.
+     *   - label: Label represented by the enclosing row.
+     * - Returns: Stable identifier derived from the action prefix and label name.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func labelInlineActionIdentifier(_ prefix: String, for label: BibleCore.Label) -> String {
+        "\(prefix)::\(sanitizedAccessibilitySegment(label.name))"
+    }
+
+    /**
+     Builds the row-level accessibility summary for one label-assignment row.
+     *
+     * - Parameter label: Label represented by the row.
+     * - Returns: Comma-delimited assignment and favourite state summary.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func labelRowAccessibilityValue(for label: BibleCore.Label) -> String {
+        let assignmentState = assignedLabelIds.contains(label.id) ? "assigned" : "unassigned"
+        let favouriteState = label.favourite ? "favourite" : "notFavourite"
+        return "\(assignmentState),\(favouriteState)"
+    }
+
+    /**
+     Sanitizes one free-form label name for deterministic accessibility identifiers.
+     *
+     * - Parameter value: Raw user-visible label name.
+     * - Returns: Identifier-safe string containing only ASCII letters, digits, and underscores.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func sanitizedAccessibilitySegment(_ value: String) -> String {
+        let mapped = value.unicodeScalars.map { scalar -> String in
+            if CharacterSet.alphanumerics.contains(scalar) {
+                return String(scalar)
+            }
+            return "_"
+        }
+        let collapsed = mapped.joined().replacingOccurrences(of: "_+", with: "_", options: .regularExpression)
+        return collapsed.trimmingCharacters(in: CharacterSet(charactersIn: "_"))
     }
 
     // MARK: - Bible Bookmark helpers

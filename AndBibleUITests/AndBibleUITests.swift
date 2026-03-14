@@ -272,6 +272,45 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that label assignment can toggle both favourite and assignment state for a seeded
+     label.
+     *
+     * - Side effects:
+     *   - launches the app directly into one seeded label-assignment sheet
+     *   - toggles the seed label's favourite state and assignment checkbox
+     * - Failure modes:
+     *   - fails if the direct-launch label-assignment route never appears
+     *   - fails if the seed label row or either inline control is missing
+     *   - fails if the row accessibility state never updates to the combined assigned/favourite
+     *     value after the toggles
+     */
+    func testLabelAssignmentTogglesFavouriteAndAssignment() {
+        let app = makeApp(openLabelAssignmentOnLaunch: true)
+        app.launch()
+
+        let labelAssignmentScreen = openLabelAssignment(in: app, launchedDirectly: true)
+        XCTAssertTrue(labelAssignmentScreen.exists)
+
+        let seedRow = requireElement("labelAssignmentRow::UI_Test_Seed", in: app, timeout: 10)
+        XCTAssertEqual(seedRow.value as? String, "unassigned,notFavourite")
+
+        requireElement(
+            "labelAssignmentFavouriteButton::UI_Test_Seed",
+            in: app,
+            timeout: 10
+        ).tap()
+        requireElement(
+            "labelAssignmentToggleButton::UI_Test_Seed",
+            in: app,
+            timeout: 10
+        ).tap()
+
+        let updatedPredicate = NSPredicate(format: "value == %@", "assigned,favourite")
+        expectation(for: updatedPredicate, evaluatedWith: seedRow)
+        waitForExpectations(timeout: 10)
+    }
+
+    /**
      Verifies that labels can be created, renamed, and deleted from the label manager.
      *
      * - Side effects:
@@ -399,6 +438,8 @@ final class AndBibleUITests: XCTestCase {
      *     launch.
      *   - openLabelManagerOnLaunch: Whether the app should present Label Manager immediately on
      *     launch.
+     *   - openLabelAssignmentOnLaunch: Whether the app should present one seeded label-assignment
+     *     sheet immediately on launch.
      *   - openReadingPlansOnLaunch: Whether the app should present Reading Plans immediately on
      *     launch.
      *   - openDailyReadingOnLaunch: Whether the app should present one seeded daily-reading view
@@ -415,6 +456,8 @@ final class AndBibleUITests: XCTestCase {
      *     Export immediately after the reader hydrates
      *   - when `openLabelManagerOnLaunch` is `true`, configures the app to present Label Manager
      *     immediately after the reader hydrates
+     *   - when `openLabelAssignmentOnLaunch` is `true`, configures the app to seed one bookmark
+     *     plus labels and present Label Assignment immediately after the reader hydrates
      *   - when `openReadingPlansOnLaunch` is `true`, configures the app to present Reading Plans
      *     immediately after the reader hydrates
      *   - when `openDailyReadingOnLaunch` is `true`, configures the app to seed one reading plan
@@ -428,6 +471,7 @@ final class AndBibleUITests: XCTestCase {
         openTextDisplayOnLaunch: Bool = false,
         openImportExportOnLaunch: Bool = false,
         openLabelManagerOnLaunch: Bool = false,
+        openLabelAssignmentOnLaunch: Bool = false,
         openReadingPlansOnLaunch: Bool = false,
         openDailyReadingOnLaunch: Bool = false,
         openWorkspacesOnLaunch: Bool = false
@@ -446,6 +490,9 @@ final class AndBibleUITests: XCTestCase {
         }
         if openLabelManagerOnLaunch {
             app.launchArguments += ["UITEST_OPEN_LABEL_MANAGER"]
+        }
+        if openLabelAssignmentOnLaunch {
+            app.launchArguments += ["UITEST_OPEN_LABEL_ASSIGNMENT"]
         }
         if openReadingPlansOnLaunch {
             app.launchArguments += ["UITEST_OPEN_READING_PLANS"]
@@ -514,6 +561,31 @@ final class AndBibleUITests: XCTestCase {
             tapSettingsElement("settingsLabelsLink", in: app)
         }
         return requireElement("labelManagerScreen", in: app, timeout: 10)
+    }
+
+    /**
+     Opens Label Assignment either from a direct test-only launch path or from a future in-app
+     path.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - launchedDirectly: Whether the app was launched straight into the label-assignment sheet.
+     * - Returns: The root accessibility-identified Label Assignment screen element.
+     * - Side effects:
+     *   - when `launchedDirectly` is `true`, waits for the direct-launch Label Assignment sheet to
+     *     render
+     * - Failure modes:
+     *   - fails when the Label Assignment screen never appears
+     *   - triggers an XCTest failure if called without a supported non-direct launch path
+     */
+    private func openLabelAssignment(
+        in app: XCUIApplication,
+        launchedDirectly: Bool = false
+    ) -> XCUIElement {
+        if !launchedDirectly {
+            XCTFail("Non-direct label-assignment launch is not implemented in this smoke suite")
+        }
+        return requireElement("labelAssignmentScreen", in: app, timeout: 10)
     }
 
     /**

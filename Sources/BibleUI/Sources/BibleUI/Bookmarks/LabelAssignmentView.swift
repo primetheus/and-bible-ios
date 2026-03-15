@@ -109,6 +109,7 @@ struct LabelAssignmentView: View {
                 } label: {
                     SwiftUI.Label("Create New Label", systemImage: "plus.circle")
                 }
+                .accessibilityIdentifier("labelAssignmentCreateNewLabelButton")
             }
         }
         .navigationTitle("Assign Labels")
@@ -123,6 +124,7 @@ struct LabelAssignmentView: View {
                     onDismiss?()
                     dismiss()
                 }
+                .accessibilityIdentifier("labelAssignmentDoneButton")
             }
         }
         .alert("New Label", isPresented: $showNewLabel) {

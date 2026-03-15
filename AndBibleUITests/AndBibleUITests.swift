@@ -764,6 +764,50 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that label assignment can create a new label from the real bookmark-list path and
+     reflect that assignment back on the bookmark list after dismissal.
+     *
+     * - Side effects:
+     *   - launches the reader shell with one deterministic bookmark plus the seeded label-assignment
+     *     workflow data
+     *   - opens label assignment from the actual bookmark-list row affordance
+     *   - creates one new label inline through the alert flow and dismisses back to the bookmark
+     *     list
+     * - Failure modes:
+     *   - fails if the bookmark list, label-assignment screen, or create-label affordance never
+     *     appears
+     *   - fails if the alert text field or confirm action cannot be reached
+     *   - fails if the new label row never reaches the assigned state or if the bookmark list does
+     *     not expose the new filter chip after dismissal
+     */
+    func testBookmarkListLabelAssignmentCreatesAndAssignsNewLabel() {
+        let app = makeApp(seedBookmarkRowLabelWorkflowOnLaunch: true)
+        let newLabelName = "UI Test Fresh"
+        let newLabelSegment = "UI_Test_Fresh"
+        app.launch()
+
+        _ = openLabelAssignmentFromBookmarkList(in: app)
+
+        requireElement("labelAssignmentCreateNewLabelButton", in: app, timeout: 10).tap()
+        let nameField = app.textFields["Label name"].firstMatch
+        XCTAssertTrue(nameField.waitForExistence(timeout: 10), "Expected create-label text field to exist.")
+        replaceText(in: nameField, with: newLabelName)
+        app.buttons["Create"].firstMatch.tap()
+
+        let newLabelRow = requireElement("labelAssignmentRow::\(newLabelSegment)", in: app, timeout: 10)
+        let assignedPredicate = NSPredicate(format: "value == %@", "assigned,notFavourite")
+        expectation(for: assignedPredicate, evaluatedWith: newLabelRow)
+        waitForExpectations(timeout: 10)
+
+        requireElement("labelAssignmentDoneButton", in: app, timeout: 10).tap()
+        XCTAssertTrue(requireElement("bookmarkListScreen", in: app, timeout: 10).exists)
+        XCTAssertTrue(
+            requireElement("bookmarkListFilterChip::\(newLabelSegment)", in: app, timeout: 10).exists,
+            "Expected the new label to appear as a bookmark-list filter chip after dismissal."
+        )
+    }
+
+    /**
      Verifies that labels can be created, renamed, and deleted from the label manager.
      *
      * - Side effects:

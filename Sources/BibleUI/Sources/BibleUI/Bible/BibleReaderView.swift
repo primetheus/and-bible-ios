@@ -165,6 +165,9 @@ public struct BibleReaderView: View {
     /// Test-only seeded daily-reading route used to launch directly into `DailyReadingView`.
     @State private var uiTestDailyReadingRoute: UITestDailyReadingRoute?
 
+    /// Test-only seeded bookmark identifier used to drive deterministic My Notes workflows.
+    @State private var uiTestMyNotesBookmarkID: UUID?
+
     /// Exported XCUITest-only history workflow state used to diagnose jump-back navigation.
     @State private var uiTestHistoryNavigationState = "idle"
 
@@ -173,6 +176,9 @@ public struct BibleReaderView: View {
 
     /// Exported XCUITest-only StudyPad note workflow state used to diagnose shell-backed note creation.
     @State private var uiTestStudyPadNoteState = "idle"
+
+    /// Exported XCUITest-only My Notes note workflow state used to diagnose shell-backed note mutation.
+    @State private var uiTestMyNotesNoteState = "idle"
 
     /// Presents the expanded speech controls sheet.
     @State private var showSpeakControls = false
@@ -523,6 +529,26 @@ public struct BibleReaderView: View {
                         .accessibilityIdentifier("uiTestReopenSyncSettingsButton")
                     }
 
+                    if focusedController?.showingMyNotes == true {
+                        Button("Update My Notes Note") {
+                            updateUITestMyNotesNote()
+                        }
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .accessibilityIdentifier("uiTestUpdateMyNotesNoteButton")
+                    } else if uiTestMyNotesBookmarkID != nil {
+                        Button("Reopen My Notes") {
+                            reopenMyNotesForUITests()
+                        }
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .accessibilityIdentifier("uiTestReopenMyNotesButton")
+                    }
+
                     if focusedController?.showingStudyPad == true {
                         Button("Create StudyPad Note") {
                             createUITestStudyPadNote()
@@ -663,6 +689,9 @@ public struct BibleReaderView: View {
                     Text("studyPadNoteState")
                         .accessibilityIdentifier("uiTestStudyPadNoteState")
                         .accessibilityValue(uiTestStudyPadNoteState)
+                    Text("myNotesNoteState")
+                        .accessibilityIdentifier("uiTestMyNotesNoteState")
+                        .accessibilityValue(uiTestMyNotesNoteState)
                 }
                 .font(.caption2)
                 .foregroundStyle(.clear)
@@ -2602,10 +2631,12 @@ public struct BibleReaderView: View {
      */
     private func openMyNotesForUITests() {
         guard let bookmarkId = seedBookmarkForUITests(book: "Genesis", ordinalStart: 1) else { return }
+        uiTestMyNotesBookmarkID = bookmarkId
         let store = BookmarkStore(modelContext: modelContext)
         let service = BookmarkService(store: store)
         service.saveBibleBookmarkNote(bookmarkId: bookmarkId, note: "UI Test My Notes Note")
         try? modelContext.save()
+        refreshUITestMyNotesNoteState()
         Task { @MainActor in
             for _ in 0..<20 {
                 if let controller = focusedController {
@@ -2616,6 +2647,85 @@ public struct BibleReaderView: View {
                 }
                 try? await Task.sleep(nanoseconds: 100_000_000)
             }
+        }
+    }
+
+    /**
+     Reopens My Notes through the active reader controller for deterministic XCUITest workflows.
+     *
+     * Side effects:
+     * - asks the focused reader controller to reload the current chapter's My Notes document
+     * - refreshes `uiTestMyNotesNoteState` from persisted bookmark-note storage after the document
+     *   request is issued
+     *
+     * Failure modes:
+     * - returns without mutation when no seeded My Notes bookmark or focused controller exists
+     * - leaves the reader on Bible text when the focused controller rejects the My Notes load
+     */
+    private func reopenMyNotesForUITests() {
+        guard uiTestMyNotesBookmarkID != nil,
+              let controller = focusedController else { return }
+        controller.loadMyNotesDocument()
+        refreshUITestMyNotesNoteState()
+    }
+
+    /**
+     Updates the seeded My Notes bookmark to one deterministic replacement note value.
+     *
+     * Side effects:
+     * - persists one replacement note string through `BookmarkService`
+     * - reloads the active My Notes document in the focused reader controller so the WebView-backed
+     *   document reflects the updated note body
+     * - exports tokenized persistence state through `uiTestMyNotesNoteState`
+     *
+     * Failure modes:
+     * - exports `failed:missingContext` when no seeded bookmark, focused controller, or bookmark
+     *   service exists
+     * - exports `failed:verify` when the persisted bookmark note cannot be confirmed after reload
+     */
+    private func updateUITestMyNotesNote() {
+        guard let bookmarkId = uiTestMyNotesBookmarkID,
+              let controller = focusedController,
+              controller.showingMyNotes else {
+            uiTestMyNotesNoteState = "failed:missingContext"
+            return
+        }
+
+        let service = controller.bookmarkService ?? BookmarkService(store: BookmarkStore(modelContext: modelContext))
+        service.saveBibleBookmarkNote(bookmarkId: bookmarkId, note: "UI Test My Notes Updated Note")
+        controller.loadMyNotesDocument()
+        refreshUITestMyNotesNoteState()
+    }
+
+    /**
+     Refreshes the exported My Notes XCUITest state token from persisted bookmark-note storage.
+     *
+     * Side effects:
+     * - samples the seeded bookmark note from `BookmarkService`
+     * - rewrites `uiTestMyNotesNoteState` so XCTest can assert seeded, updated, deleted, or failed
+     *   note states without inspecting WebView DOM content
+     *
+     * Failure modes:
+     * - exports `failed:missingContext` when the seeded bookmark or bookmark service is unavailable
+     */
+    private func refreshUITestMyNotesNoteState() {
+        guard let bookmarkId = uiTestMyNotesBookmarkID else {
+            uiTestMyNotesNoteState = "failed:missingContext"
+            return
+        }
+
+        let service = focusedController?.bookmarkService
+            ?? BookmarkService(store: BookmarkStore(modelContext: modelContext))
+        let note = service.bibleBookmark(id: bookmarkId)?.notes?.notes
+        switch note {
+        case "UI Test My Notes Note":
+            uiTestMyNotesNoteState = "seeded:UI_Test_My_Notes_Note"
+        case "UI Test My Notes Updated Note":
+            uiTestMyNotesNoteState = "updated:UI_Test_My_Notes_Updated_Note"
+        case .some:
+            uiTestMyNotesNoteState = "updated:custom"
+        case .none:
+            uiTestMyNotesNoteState = "deleted"
         }
     }
 

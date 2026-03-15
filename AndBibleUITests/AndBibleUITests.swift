@@ -275,6 +275,54 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that the seeded My Notes bookmark note can be updated and that the updated note state
+     persists after returning to the reader and reopening My Notes.
+     *
+     * - Side effects:
+     *   - launches the app with one deterministic `Genesis 1:1` note-bearing bookmark and opens
+     *     My Notes directly through the reader-shell harness
+     *   - triggers the native XCUITest My Notes update action, which rewrites the seeded note to
+     *     one deterministic replacement value and reloads the My Notes document
+     *   - returns to the Bible reader shell and reopens My Notes through the native harness button
+     * - Failure modes:
+     *   - fails if the direct My Notes route never presents its native header
+     *   - fails if the exported note state never reaches the seeded or updated tokens
+     *   - fails if reopening My Notes does not preserve the updated note state
+     */
+    func testMyNotesSeededNoteUpdatePersistsAcrossReturnAndReopen() {
+        let app = makeApp(openMyNotesOnLaunch: true)
+        app.launch()
+
+        XCTAssertTrue(requireElement("readerMyNotesTitle", in: app, timeout: 10).exists)
+        waitForElementValue(
+            "uiTestMyNotesNoteState",
+            toEqual: "seeded:UI_Test_My_Notes_Note",
+            in: app,
+            timeout: 10
+        )
+
+        requireElement("uiTestUpdateMyNotesNoteButton", in: app, timeout: 10).tap()
+        waitForElementValue(
+            "uiTestMyNotesNoteState",
+            toEqual: "updated:UI_Test_My_Notes_Updated_Note",
+            in: app,
+            timeout: 10
+        )
+
+        requireElement("readerReturnFromMyNotesButton", in: app, timeout: 10).tap()
+        XCTAssertTrue(requireReaderMoreMenuButton(in: app).exists)
+
+        requireElement("uiTestReopenMyNotesButton", in: app, timeout: 10).tap()
+        XCTAssertTrue(requireElement("readerMyNotesTitle", in: app, timeout: 10).exists)
+        waitForElementValue(
+            "uiTestMyNotesNoteState",
+            toEqual: "updated:UI_Test_My_Notes_Updated_Note",
+            in: app,
+            timeout: 10
+        )
+    }
+
+    /**
      Verifies that selecting a seeded bookmark row dismisses the list and navigates the reader to
      that bookmark's chapter.
      *

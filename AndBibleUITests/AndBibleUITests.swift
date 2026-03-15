@@ -808,6 +808,47 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that removing a bookmark's assigned label through the real label-assignment sheet
+     prevents that bookmark from appearing under the same label filter on return to the bookmark
+     list.
+     *
+     * - Side effects:
+     *   - launches the reader shell with one deterministic bookmark already assigned to the seeded
+     *     `UI Test Seed` label
+     *   - opens label assignment from the actual bookmark-list row affordance
+     *   - removes the seeded label assignment, dismisses back to the bookmark list, and applies
+     *     the real label filter chip
+     * - Failure modes:
+     *   - fails if the bookmark list, label-assignment screen, or seeded label row never appears
+     *   - fails if the seeded row never reaches the unassigned state after toggling
+     *   - fails if filtering by the removed label still shows the bookmark row
+     */
+    func testBookmarkListLabelAssignmentRemovalHidesBookmarkUnderFilter() {
+        let app = makeApp(seedBookmarkStudyPadWorkflowOnLaunch: true)
+        app.launch()
+
+        _ = openLabelAssignmentFromBookmarkList(in: app)
+
+        let seedRow = requireElement("labelAssignmentRow::UI_Test_Seed", in: app, timeout: 10)
+        XCTAssertEqual(seedRow.value as? String, "assigned,notFavourite")
+        requireElement("labelAssignmentToggleButton::UI_Test_Seed", in: app, timeout: 10).tap()
+
+        let unassignedPredicate = NSPredicate(format: "value == %@", "unassigned,notFavourite")
+        expectation(for: unassignedPredicate, evaluatedWith: seedRow)
+        waitForExpectations(timeout: 10)
+
+        requireElement("labelAssignmentDoneButton", in: app, timeout: 10).tap()
+        _ = requireElement("bookmarkListScreen", in: app, timeout: 10)
+
+        requireElement("bookmarkListFilterChip::UI_Test_Seed", in: app, timeout: 10).tap()
+
+        let hiddenPredicate = NSPredicate(format: "exists == false")
+        let bookmarkRow = app.buttons["bookmarkListRowButton::Genesis_1_1"].firstMatch
+        expectation(for: hiddenPredicate, evaluatedWith: bookmarkRow)
+        waitForExpectations(timeout: 10)
+    }
+
+    /**
      Verifies that labels can be created, renamed, and deleted from the label manager.
      *
      * - Side effects:

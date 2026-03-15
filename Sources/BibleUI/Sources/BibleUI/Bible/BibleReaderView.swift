@@ -288,6 +288,9 @@ public struct BibleReaderView: View {
     /// Launch-argument override used by XCUITests to seed one active plan and open Reading Plans.
     private let uiTestOpensDailyReadingOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_DAILY_READING")
 
+    /// Launch-argument override used by XCUITests to seed one chapter note and open My Notes.
+    private let uiTestOpensMyNotesOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_MY_NOTES")
+
     /// Launch-argument override used by XCUITests to present Workspaces immediately on launch.
     private let uiTestOpensWorkspacesOnLaunch = ProcessInfo.processInfo.arguments.contains("UITEST_OPEN_WORKSPACES")
 
@@ -1376,11 +1379,13 @@ public struct BibleReaderView: View {
                         }
                     }
                     .accessibilityLabel(String(localized: "back_to_bible"))
+                    .accessibilityIdentifier("readerReturnFromMyNotesButton")
 
                     Spacer()
 
                     Text(String(localized: "my_notes"))
                         .font(.headline)
+                        .accessibilityIdentifier("readerMyNotesTitle")
 
                     Spacer()
                     Color.clear.frame(width: 80, height: 1)
@@ -2582,6 +2587,39 @@ public struct BibleReaderView: View {
     }
 
     /**
+     Seeds one deterministic note-bearing bookmark and opens My Notes for XCUITests.
+     *
+     * - Side effects:
+     *   - inserts one `Genesis 1:1` bookmark into SwiftData
+     *   - persists one deterministic note on that bookmark through `BookmarkService`
+     *   - retries the focused `BibleReaderController` My Notes load until the active WebView
+     *     controller is ready or the short harness timeout elapses
+     * - Failure modes:
+     *   - returns without mutation when bookmark insertion fails
+     *   - leaves the reader on its standard chapter view when the focused controller never becomes
+     *     ready during the short retry window
+     *   - silently discards note-save failures because the route is only used for UI-test setup
+     */
+    private func openMyNotesForUITests() {
+        guard let bookmarkId = seedBookmarkForUITests(book: "Genesis", ordinalStart: 1) else { return }
+        let store = BookmarkStore(modelContext: modelContext)
+        let service = BookmarkService(store: store)
+        service.saveBibleBookmarkNote(bookmarkId: bookmarkId, note: "UI Test My Notes Note")
+        try? modelContext.save()
+        Task { @MainActor in
+            for _ in 0..<20 {
+                if let controller = focusedController {
+                    controller.loadMyNotesDocument()
+                    if controller.showingMyNotes {
+                        break
+                    }
+                }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+        }
+    }
+
+    /**
      Seeds non-default theme colors for direct XCUITest color-reset workflows.
 
      Side effects:
@@ -2756,6 +2794,9 @@ public struct BibleReaderView: View {
             } else {
                 showReadingPlans = true
             }
+        } else if uiTestOpensMyNotesOnLaunch {
+            resetBookmarksForUITests()
+            openMyNotesForUITests()
         } else if uiTestOpensWorkspacesOnLaunch {
             resetWorkspacesForUITests()
             showWorkspaces = true

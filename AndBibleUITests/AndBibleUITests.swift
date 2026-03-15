@@ -241,6 +241,40 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that the direct My Notes launch route shows the native notes header and can return
+     to the Bible reader shell.
+     *
+     * - Side effects:
+     *   - launches the app with one deterministic `Genesis 1:1` bookmark note seeded for the
+     *     current chapter
+     *   - opens My Notes directly through the reader-shell XCUITest harness
+     *   - returns to the Bible header by tapping the native My Notes back button
+     * - Failure modes:
+     *   - fails if the direct My Notes route never presents its native header
+     *   - fails if the seeded reader reference is not `Genesis 1`
+     *   - fails if returning from My Notes does not restore the standard reader toolbar
+     */
+    func testMyNotesDirectLaunchShowsHeaderAndReturnsToBible() {
+        let app = makeApp(openMyNotesOnLaunch: true)
+        app.launch()
+
+        let currentReferenceState = requireElement("readerCurrentReferenceState", in: app, timeout: 10)
+        XCTAssertEqual(currentReferenceState.label, "Genesis 1")
+        XCTAssertTrue(requireElement("readerMyNotesTitle", in: app, timeout: 10).exists)
+
+        let backButton = requireElement("readerReturnFromMyNotesButton", in: app, timeout: 10)
+        backButton.tap()
+
+        let myNotesTitle = app.staticTexts["readerMyNotesTitle"]
+        let dismissedPredicate = NSPredicate(format: "exists == false")
+        expectation(for: dismissedPredicate, evaluatedWith: myNotesTitle)
+        waitForExpectations(timeout: 10)
+
+        XCTAssertEqual(currentReferenceState.label, "Genesis 1")
+        XCTAssertTrue(requireReaderMoreMenuButton(in: app).exists)
+    }
+
+    /**
      Verifies that selecting a seeded bookmark row dismisses the list and navigates the reader to
      that bookmark's chapter.
      *
@@ -1139,6 +1173,8 @@ final class AndBibleUITests: XCTestCase {
      *     launch.
      *   - openDailyReadingOnLaunch: Whether the app should present one seeded daily-reading view
      *     immediately on launch.
+     *   - openMyNotesOnLaunch: Whether the app should seed one chapter note and present My Notes
+     *     immediately on launch.
      *   - openWorkspacesOnLaunch: Whether the app should present Workspaces immediately on launch.
      * - Returns: App handle configured with deterministic launch arguments for the smoke suite.
      * - Side effects:
@@ -1188,6 +1224,8 @@ final class AndBibleUITests: XCTestCase {
      *     immediately after the reader hydrates
      *   - when `openDailyReadingOnLaunch` is `true`, configures the app to seed one reading plan
      *     and present its daily-reading view immediately after the reader hydrates
+     *   - when `openMyNotesOnLaunch` is `true`, configures the app to seed one chapter note and
+     *     present the native My Notes header immediately after the reader hydrates
      *   - when `openWorkspacesOnLaunch` is `true`, configures the app to present Workspaces
      *     immediately after the reader hydrates
      * - Failure modes: This helper cannot fail.
@@ -1214,6 +1252,7 @@ final class AndBibleUITests: XCTestCase {
         seedHistoryMultiRowWorkflowOnLaunch: Bool = false,
         openReadingPlansOnLaunch: Bool = false,
         openDailyReadingOnLaunch: Bool = false,
+        openMyNotesOnLaunch: Bool = false,
         openWorkspacesOnLaunch: Bool = false
     ) -> XCUIApplication {
         if let trackedApp, trackedApp.state != .notRunning {
@@ -1285,6 +1324,9 @@ final class AndBibleUITests: XCTestCase {
         }
         if openDailyReadingOnLaunch {
             app.launchArguments += ["UITEST_OPEN_DAILY_READING"]
+        }
+        if openMyNotesOnLaunch {
+            app.launchArguments += ["UITEST_OPEN_MY_NOTES"]
         }
         if openWorkspacesOnLaunch {
             app.launchArguments += ["UITEST_OPEN_WORKSPACES"]

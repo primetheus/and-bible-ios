@@ -56,6 +56,9 @@ public struct BookmarkListView: View {
     /// Optional callback used to open a study pad for a selected label.
     var onOpenStudyPad: ((UUID) -> Void)?
 
+    /// Test-only flag exposing deterministic in-list dismiss affordances during XCUITest runs.
+    private let uiTestUsesInMemoryStores = ProcessInfo.processInfo.arguments.contains("UITEST_USE_IN_MEMORY_STORES")
+
     /**
      Creates the bookmark list view.
 
@@ -180,6 +183,11 @@ public struct BookmarkListView: View {
     /// Main list content once at least one bookmark exists.
     private var bookmarkList: some View {
         List {
+            if uiTestUsesInMemoryStores {
+                Button("Dismiss Bookmark Sheet") { dismiss() }
+                    .accessibilityIdentifier("bookmarkListHarnessDoneButton")
+            }
+
             // Label filter chips
             if !userLabels.isEmpty {
                 labelFilterSection

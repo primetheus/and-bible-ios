@@ -849,6 +849,55 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that bookmark-list filter and search state reset after dismissing and reopening the
+     real bookmark sheet.
+     *
+     * - Side effects:
+     *   - launches the reader shell with deterministic `Genesis 1:1` and `Exodus 2:1` bookmarks
+     *     assigned to different labels
+     *   - opens the real bookmark list, applies the seeded label filter, then adds a conflicting
+     *     search query so the filtered list becomes empty
+     *   - dismisses and reopens the bookmark list from the reader menu
+     * - Failure modes:
+     *   - fails if the bookmark list, seeded label chip, or search field never appears
+     *   - fails if the conflicting search query does not hide the remaining filtered bookmark
+     *   - fails if reopening the bookmark list does not restore both seeded rows
+     */
+    func testBookmarkListFilterAndSearchResetAcrossReopen() {
+        let app = makeApp(seedBookmarkFilterWorkflowOnLaunch: true)
+        app.launch()
+
+        _ = openBookmarkListFromReaderMenu(in: app)
+        let searchField = app.searchFields.firstMatch
+        XCTAssertTrue(searchField.waitForExistence(timeout: 10), "Expected bookmark search field to exist.")
+
+        let genesisRow = app.buttons["bookmarkListRowButton::Genesis_1_1"].firstMatch
+        let exodusRow = app.buttons["bookmarkListRowButton::Exodus_2_1"].firstMatch
+        XCTAssertTrue(genesisRow.waitForExistence(timeout: 10), "Expected Genesis bookmark row button to exist.")
+        XCTAssertTrue(exodusRow.waitForExistence(timeout: 10), "Expected Exodus bookmark row button to exist.")
+
+        requireElement("bookmarkListFilterChip::UI_Test_Seed", in: app, timeout: 10).tap()
+
+        let hiddenPredicate = NSPredicate(format: "exists == false")
+        expectation(for: hiddenPredicate, evaluatedWith: exodusRow)
+        waitForExpectations(timeout: 10)
+        XCTAssertTrue(genesisRow.exists, "Expected Genesis bookmark row to remain under the seeded label filter.")
+
+        searchField.tap()
+        searchField.typeText("Exodus")
+        app.keyboards.buttons["Search"].firstMatch.tap()
+
+        expectation(for: hiddenPredicate, evaluatedWith: genesisRow)
+        waitForExpectations(timeout: 10)
+
+        requireElement("bookmarkListHarnessDoneButton", in: app, timeout: 10).tap()
+        _ = openBookmarkListFromReaderMenu(in: app)
+
+        XCTAssertTrue(genesisRow.waitForExistence(timeout: 10), "Expected Genesis bookmark row to return after reopening the bookmark list.")
+        XCTAssertTrue(exodusRow.waitForExistence(timeout: 10), "Expected Exodus bookmark row to return after reopening the bookmark list.")
+    }
+
+    /**
      Verifies that labels can be created, renamed, and deleted from the label manager.
      *
      * - Side effects:

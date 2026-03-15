@@ -312,6 +312,47 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that bookmark-list text search narrows the visible rows and that clearing the query
+     restores the full row set.
+     *
+     * - Side effects:
+     *   - launches the reader shell with deterministic `Exodus 2:1` and `Matthew 3:1` bookmarks
+     *   - opens the real bookmark list from the reader overflow menu
+     *   - types `Matthew` into the real bookmark search field, verifies the list narrows to the
+     *     matching row, then clears the query and verifies both rows return
+     * - Failure modes:
+     *   - fails if the bookmark list, search field, or either seeded bookmark row never appears
+     *   - fails if the search query does not hide the non-matching bookmark row
+     *   - fails if clearing the search query does not restore the full bookmark row set
+     */
+    func testBookmarkListSearchNarrowsAndClearsVisibleRows() {
+        let app = makeApp(seedBookmarkMultiRowWorkflowOnLaunch: true)
+        app.launch()
+
+        _ = openBookmarkListFromReaderMenu(in: app)
+        let searchField = app.searchFields.firstMatch
+        XCTAssertTrue(searchField.waitForExistence(timeout: 10), "Expected bookmark search field to exist.")
+
+        let exodusRow = app.buttons["bookmarkListRowButton::Exodus_2_1"].firstMatch
+        let matthewRow = app.buttons["bookmarkListRowButton::Matthew_3_1"].firstMatch
+        XCTAssertTrue(exodusRow.waitForExistence(timeout: 10), "Expected Exodus bookmark row button to exist.")
+        XCTAssertTrue(matthewRow.waitForExistence(timeout: 10), "Expected Matthew bookmark row button to exist.")
+
+        searchField.tap()
+        searchField.typeText("Matthew")
+
+        let hiddenPredicate = NSPredicate(format: "exists == false")
+        expectation(for: hiddenPredicate, evaluatedWith: exodusRow)
+        waitForExpectations(timeout: 10)
+        XCTAssertTrue(matthewRow.exists, "Expected Matthew bookmark row to remain visible for the active search query.")
+
+        replaceText(in: searchField, with: "")
+
+        XCTAssertTrue(exodusRow.waitForExistence(timeout: 10), "Expected Exodus bookmark row to return after clearing the search query.")
+        XCTAssertTrue(matthewRow.waitForExistence(timeout: 10), "Expected Matthew bookmark row to remain visible after clearing the search query.")
+    }
+
+    /**
      Verifies that bookmark-list label chips narrow the visible rows and that clearing the filter
      restores the full row set.
      *

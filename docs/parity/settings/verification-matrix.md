@@ -4,9 +4,9 @@ Date: 2026-03-11
 
 ## Scope and Method
 
-- Contract baseline: `docs/settings-parity-contract.md`.
+- Contract baseline: `docs/parity/settings/contract.md`.
 - Key inventory: `Sources/BibleCore/Sources/BibleCore/Database/AppPreferenceRegistry.swift` (`AppPreferenceKey.allCases` = 35).
-- Verification method: direct code inspection of iOS UI persistence points and runtime consumers, backed by simulator regression evidence in `docs/settings-parity-702-regression-report.md`.
+- Verification method: direct code inspection of iOS UI persistence points and runtime consumers, backed by simulator regression evidence in `docs/parity/settings/regression-report.md`.
 
 ## Status Legend
 
@@ -38,7 +38,7 @@ Date: 2026-03-11
 | `toolbar_button_actions` | `SettingsView.swift:352-377,767,1211-1217` | `BibleReaderView.swift:1459-1497,1499-1563` | Adapted Pass | Android chooser/activity concept adapted to iOS sheet/module picker. |
 | `disable_two_step_bookmarking` | `SettingsView.swift:379-397,765` | `BibleWindowPane.swift:395-447` | Pass | One-step and two-step bookmark flows implemented. |
 | `bible_view_swipe_mode` | `SettingsView.swift:399-424,769,1202-1208` | `BibleReaderView.swift:1656-1676`; `WebViewCoordinator.swift:82-109,122-137` | Adapted Pass | Native iOS swipe recognizers/scroll delegate bridge into chapter/page/none actions. |
-| `volume_keys_scroll` | `SettingsView.swift:426-451,770` | No runtime consumer; disposition in `settings-parity-ios-dispositions.md:5-20` | Documented Divergence | Kept for parity/sync continuity; iOS cannot intercept hardware volume keys for app actions. |
+| `volume_keys_scroll` | `SettingsView.swift:426-451,770` | No runtime consumer; disposition in `dispositions.md:5-20` | Documented Divergence | Kept for parity/sync continuity; iOS cannot intercept hardware volume keys for app actions. |
 | `night_mode_pref3` | `SettingsView.swift:832-857,773,1192-1200` | `BibleReaderView.swift:65,234-240,1612-1618`; `ContentView.swift:20,46-63`; `NightModeSettings.swift:19-60` | Adapted Pass | `automatic` mode excluded by platform constraint (`autoModeAvailable = false`). |
 | `locale_pref` | `SettingsView.swift:1024-1050,782-797,1241-1281` | Applied via `AppleLanguages` override in `SettingsView.swift:1043-1049` | Pass | Android locale-value mapping and legacy code normalization are implemented. |
 | `monochrome_mode` | `SettingsView.swift:860-877,751,867` | `BibleReaderController.swift:4069,4102` | Pass | Emitted into Vue appSettings payload. |
@@ -57,10 +57,10 @@ Date: 2026-03-11
 | `calculator_pin` | `SettingsView.swift:510-525` | `CalculatorView.swift:31-32,133-146` | Pass | Numeric PIN entry and unlock behavior are wired. |
 | `experimental_features` | `SettingsView.swift:551-571,771,818,1182-1189` | `BibleReaderController.swift:4076,4102` | Pass | Multi-select IDs are sanitized and emitted in appSettings. |
 | `enable_bluetooth_pref` | `SettingsView.swift:529-549,756,540` | `SpeakService.swift:85,107-113` | Adapted Pass | Android media-button behavior adapted to iOS `MPRemoteCommandCenter`. |
-| `request_sdcard_permission_pref` | Not surfaced in iOS settings UI | Disposition documented in `settings-parity-ios-dispositions.md:49-58` | Documented Divergence | No iOS SD-card permission model equivalent. |
+| `request_sdcard_permission_pref` | Not surfaced in iOS settings UI | Disposition documented in `dispositions.md:49-58` | Documented Divergence | No iOS SD-card permission model equivalent. |
 | `show_errorbox` | `SettingsView.swift:603-624,789` | `BibleReaderController.swift:4068,4102` | Adapted Pass | Visibility is now debug-only (`#if DEBUG`) to match Android beta-only visibility contract. |
-| `open_links` | `SettingsView.swift:595-617,1127-1131` | iOS adaptation in `settings-parity-ios-dispositions.md:60-72` | Adapted Pass | Opens iOS app settings as closest supported equivalent. |
-| `crash_app` | `SettingsView.swift:620-649,1134-1140` | iOS adaptation in `settings-parity-ios-dispositions.md:73-84` | Adapted Pass | Debug-only destructive action with 10-second delay and single-shot guard. |
+| `open_links` | `SettingsView.swift:595-617,1127-1131` | iOS adaptation in `dispositions.md:60-72` | Adapted Pass | Opens iOS app settings as closest supported equivalent. |
+| `crash_app` | `SettingsView.swift:620-649,1134-1140` | iOS adaptation in `dispositions.md:73-84` | Adapted Pass | Debug-only destructive action with 10-second delay and single-shot guard. |
 
 ## Open Gaps Identified by This Matrix
 

@@ -28,15 +28,15 @@ Observed output:
 
 - `tree mismatches: 0`
 - `ios_gap count: 0`
-- `android source: snapshot:.../docs/settings-localization-android-baseline.json`
+- `android source: snapshot:.../docs/parity/settings/baselines/localization-android.json`
 - `keys checked: 58`
 - `locales checked: 44`
 
 Evidence:
 
 - `scripts/check_settings_localization_guardrails.py`
-- `docs/settings-localization-android-baseline.json`
-- `docs/settings-localization-guardrail-baseline.json`
+- `docs/parity/settings/baselines/localization-android.json`
+- `docs/parity/settings/baselines/localization-guardrail.json`
 
 ### 2. Xcode simulator unit test run (explicit result bundle)
 
@@ -112,4 +112,4 @@ The CI workflow now includes the expected improvements and still runs guardrails
 
 ## Follow-up Inputs
 
-See `docs/settings-parity-701-verification-matrix.md` for current functional parity status by key. Current remaining items are only documented platform divergences.
+See `docs/parity/settings/verification-matrix.md` for current functional parity status by key. Current remaining items are only documented platform divergences.

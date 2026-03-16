@@ -20,7 +20,7 @@ By default the script uses live Android resources from:
 
 If that path is missing (for example in CI), it automatically falls back to:
 
-- `docs/settings-localization-android-baseline.json`
+- `docs/parity/settings/baselines/localization-android.json`
 
 ## Baseline Update
 
@@ -32,7 +32,7 @@ python3 scripts/check_settings_localization_guardrails.py --write-baseline
 
 This updates:
 
-- `docs/settings-localization-guardrail-baseline.json`
+- `docs/parity/settings/baselines/localization-guardrail.json`
 
 ## Android Snapshot Update
 
@@ -44,7 +44,7 @@ python3 scripts/check_settings_localization_guardrails.py --write-android-snapsh
 
 This updates:
 
-- `docs/settings-localization-android-baseline.json`
+- `docs/parity/settings/baselines/localization-android.json`
 
 ## Notes
 

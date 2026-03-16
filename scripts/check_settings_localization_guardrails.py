@@ -148,7 +148,7 @@ def default_android_root() -> Path:
 
 
 def default_android_snapshot() -> Path:
-    return default_repo_root() / "docs" / "settings-localization-android-baseline.json"
+    return default_repo_root() / "docs" / "parity" / "settings" / "baselines" / "localization-android.json"
 
 
 def parse_ios_strings(path: Path) -> dict[str, str]:
@@ -331,7 +331,7 @@ def main() -> int:
     parser.add_argument(
         "--baseline",
         type=Path,
-        default=repo_root_default / "docs" / "settings-localization-guardrail-baseline.json",
+        default=repo_root_default / "docs" / "parity" / "settings" / "baselines" / "localization-guardrail.json",
         help="Baseline JSON path",
     )
     parser.add_argument(

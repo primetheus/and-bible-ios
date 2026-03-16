@@ -128,6 +128,7 @@ Tests:
 
 ### Docs
 
-- Settings parity docs: `docs/settings-*`
-- Developer guides: `docs/`
+- Docs index: `docs/README.md`
+- Settings parity docs: `docs/parity/settings/`
+- Developer guides: `docs/howto/`
 - Backlog/task tracking outside repo history: `../parity-tasks/`

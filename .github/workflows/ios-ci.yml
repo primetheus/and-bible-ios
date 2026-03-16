@@ -127,9 +127,10 @@ jobs:
         run: python3 scripts/resolve_ios_simulator_destination.py --project AndBible.xcodeproj --scheme AndBible
 
       - name: Boot selected simulator
-        run: |
-          xcrun simctl boot "${{ steps.simulator.outputs.simulator_id }}" || true
-          xcrun simctl bootstatus "${{ steps.simulator.outputs.simulator_id }}" -b
+        run: >-
+          python3 scripts/wait_for_simulator_boot.py
+          --simulator-id "${{ steps.simulator.outputs.simulator_id }}"
+          --timeout-seconds 300
 
       - name: Build for testing
         run: >-

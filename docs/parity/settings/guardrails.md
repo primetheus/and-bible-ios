@@ -51,3 +51,19 @@ This updates:
 - Baseline is keyed to the current parity-key set and locale set.
 - If Android adds new locale translations, iOS will fail guardrails until matching translations are added (or explicitly updated via approved baseline process).
 - CI integration: `.github/workflows/ios-ci.yml` runs this guardrail on pull requests and `main` pushes.
+
+## Current Automation Status
+
+- This is the strongest machine-readable parity guardrail in the current repo.
+- Current protection is a combination of:
+  - `scripts/check_settings_localization_guardrails.py`
+  - committed Android snapshot and baseline files in `baselines/`
+  - CI execution through `.github/workflows/ios-ci.yml`
+  - settings verification and regression reports in this directory
+
+## Potential Improvements
+
+- add machine-readable guardrails for non-localization settings contracts if the
+  key surface grows materially
+- add a more focused standard rerun path for high-risk nested settings UI
+  workflows if that area expands further

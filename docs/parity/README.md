@@ -2,6 +2,11 @@
 
 This subtree holds cross-platform parity material.
 
+Recommended reading order:
+
+1. [status-overview.md](status-overview.md): current parity posture and automation state by domain
+2. domain `README.md` files: scoped reading order for each domain
+
 Use domain folders so each parity area can carry, as needed:
 
 - source-of-truth contract
@@ -12,17 +17,21 @@ Use domain folders so each parity area can carry, as needed:
 
 Current maturity:
 
-- `settings/` is the most complete domain and already includes guardrails,
-  verification, regression evidence, and baselines
-- higher-risk domains such as `bridge/`, `sync/`, `bookmarks/`, and `search/`
-  now also include explicit guardrails because their contract drift is hard to
-  catch after the fact
-- the remaining domains currently center on contract, dispositions,
-  verification, and regression evidence, with room to add guardrails or
-  baselines where they justify the maintenance cost
+- all current domains now carry:
+  - contract
+  - dispositions
+  - verification matrix
+  - regression report
+  - guardrails
+- `settings/` remains the most operationally mature domain because it also has
+  machine-readable baselines plus a dedicated localization guardrail script
+- the remaining domains currently rely on focused unit/UI coverage and
+  documentation guardrails, with room to add more machine-readable protection
+  where it is worth the maintenance cost
 
 Current domains:
 
+- [status-overview.md](status-overview.md)
 - [bridge/](bridge/README.md)
 - [reader/](reader/README.md)
 - [bookmarks/](bookmarks/README.md)

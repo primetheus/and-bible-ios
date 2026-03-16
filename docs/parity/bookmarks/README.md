@@ -9,6 +9,7 @@ My Notes.
 2. [dispositions.md](dispositions.md): explicit iOS adaptations and separations
 3. [verification-matrix.md](verification-matrix.md): current status by contract area
 4. [regression-report.md](regression-report.md): focused validation evidence
+5. [guardrails.md](guardrails.md): maintenance rules for high-risk bookmark changes
 
 Primary surfaces:
 

@@ -20,6 +20,9 @@ Current maturity:
 - `sync/` also now warrants explicit guardrails because backend keys, bootstrap
   markers, and patch/baseline semantics are easy to break without obvious local
   failures
+- `bookmarks/` now also includes guardrails because label semantics, note
+  persistence, and StudyPad/My Notes separation are easy to regress through
+  seemingly local UI or model changes
 - the remaining domains currently center on contract, dispositions,
   verification, and regression evidence, with room to add guardrails or
   baselines where they justify the maintenance cost

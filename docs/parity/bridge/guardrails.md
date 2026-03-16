@@ -94,12 +94,3 @@ indirect note/document workflows alone.
     `bridge-guide.md`
   - review discipline on `BibleBridge`, `BibleWebView`, `BridgeTypes`, and the
     corresponding `bibleview-js` types
-
-## Next Automation Candidates
-
-The next worthwhile automation for this domain would be one of:
-
-1. a generated snapshot of JS method names and emitted event names
-2. a lightweight parity checker for `BridgeTypes.swift` versus selected
-   TypeScript type definitions
-3. a dedicated focused test harness for `callId` request/response flows

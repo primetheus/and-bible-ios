@@ -8,6 +8,7 @@ This directory holds parity documentation for the main reading experience.
 2. [dispositions.md](dispositions.md): explicit iOS adaptations for those behaviors
 3. [verification-matrix.md](verification-matrix.md): current status by contract area
 4. [regression-report.md](regression-report.md): focused validation evidence
+5. [guardrails.md](guardrails.md): maintenance rules for high-risk reader changes
 
 Companion docs:
 

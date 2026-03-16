@@ -69,6 +69,9 @@ jobs:
   ios-build-and-test:
     name: Build And Test (Simulator, Unit + UI)
     runs-on: macos-15
+    needs:
+      - repo-standards
+      - localization-guardrails
     timeout-minutes: 90
     env:
       DERIVED_DATA_PATH: .derivedData

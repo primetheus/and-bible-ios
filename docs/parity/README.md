@@ -13,3 +13,4 @@ Use domain folders so each parity area can carry its own:
 Current domains:
 
 - [settings/](settings/README.md)
+- [sync/](sync/README.md)

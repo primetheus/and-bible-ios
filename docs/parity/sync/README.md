@@ -1,0 +1,25 @@
+# Sync Parity
+
+This directory holds Android-aligned sync parity documentation for iOS.
+
+## Reading Order
+
+1. [contract.md](contract.md): current sync contract and supported flows
+2. [dispositions.md](dispositions.md): explicit iOS deviations and operational constraints
+
+Operational companion docs:
+
+- [../../howto/google-drive-oauth-setup.md](../../howto/google-drive-oauth-setup.md):
+  developer/release guidance for the parked Google Drive OAuth dependency
+
+## Scope
+
+This subtree is for parity-sensitive sync behavior:
+
+- backend selection semantics
+- category coverage
+- bootstrap/adopt/create flows
+- initial-backup and patch behavior
+- explicit iOS divergences from Android
+
+It is not the place for one-off local task tracking or release checklists.

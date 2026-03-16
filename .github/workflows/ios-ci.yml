@@ -7,7 +7,7 @@ on:
       - main
 
 concurrency:
-  group: ios-ci-${{ github.ref }}
+  group: ios-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:

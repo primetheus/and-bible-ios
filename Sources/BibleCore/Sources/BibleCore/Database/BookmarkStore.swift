@@ -82,6 +82,20 @@ public final class BookmarkStore {
     }
 
     /**
+     * Fetches the note payload row for a Bible bookmark by bookmark identifier.
+     * - Parameter bookmarkId: UUID of the owning Bible bookmark.
+     * - Returns: The note row when found, otherwise `nil`.
+     * - Failure: Fetch errors are swallowed and reported as `nil`.
+     */
+    public func bibleBookmarkNotes(bookmarkId: UUID) -> BibleBookmarkNotes? {
+        var descriptor = FetchDescriptor<BibleBookmarkNotes>(
+            predicate: #Predicate { $0.bookmarkId == bookmarkId }
+        )
+        descriptor.fetchLimit = 1
+        return try? modelContext.fetch(descriptor).first
+    }
+
+    /**
      * Fetches Bible bookmarks whose stored KJVA ordinal range overlaps the given range.
      * - Parameters:
      *   - startOrdinal: Inclusive start of the query range.
@@ -144,6 +158,17 @@ public final class BookmarkStore {
     }
 
     /**
+     * Deletes a Bible bookmark note row and immediately saves the context.
+     * - Parameter notes: Note payload row to delete.
+     * - Side Effects: Deletes the note row and saves `modelContext`.
+     * - Failure: Save errors are swallowed.
+     */
+    public func delete(_ notes: BibleBookmarkNotes) {
+        modelContext.delete(notes)
+        save()
+    }
+
+    /**
      * Deletes a Bible bookmark by ID when it exists.
      * - Parameter id: Bookmark UUID.
      * - Side Effects: May delete a bookmark and save `modelContext`.
@@ -184,6 +209,20 @@ public final class BookmarkStore {
     }
 
     /**
+     * Fetches the note payload row for a generic bookmark by bookmark identifier.
+     * - Parameter bookmarkId: UUID of the owning generic bookmark.
+     * - Returns: The note row when found, otherwise `nil`.
+     * - Failure: Fetch errors are swallowed and reported as `nil`.
+     */
+    public func genericBookmarkNotes(bookmarkId: UUID) -> GenericBookmarkNotes? {
+        var descriptor = FetchDescriptor<GenericBookmarkNotes>(
+            predicate: #Predicate { $0.bookmarkId == bookmarkId }
+        )
+        descriptor.fetchLimit = 1
+        return try? modelContext.fetch(descriptor).first
+    }
+
+    /**
      * Inserts a new generic bookmark and immediately saves the context.
      * - Parameter bookmark: Bookmark to persist.
      * - Side Effects: Inserts the bookmark graph into SwiftData and saves `modelContext`.
@@ -213,6 +252,17 @@ public final class BookmarkStore {
      */
     public func delete(_ bookmark: GenericBookmark) {
         modelContext.delete(bookmark)
+        save()
+    }
+
+    /**
+     * Deletes a generic bookmark note row and immediately saves the context.
+     * - Parameter notes: Note payload row to delete.
+     * - Side Effects: Deletes the note row and saves `modelContext`.
+     * - Failure: Save errors are swallowed.
+     */
+    public func delete(_ notes: GenericBookmarkNotes) {
+        modelContext.delete(notes)
         save()
     }
 
@@ -490,7 +540,20 @@ public final class BookmarkStore {
      * - Side Effects: Flushes `modelContext` to disk.
      * - Failure: Save errors are swallowed.
      */
+    public func saveChanges() {
+        do {
+            try modelContext.save()
+        } catch {
+            print("BookmarkStore.saveChanges failed: \(error)")
+        }
+    }
+
+    /**
+     * Saves pending bookmark-related mutations through the shared eager-save implementation.
+     * - Side Effects: Flushes `modelContext` to disk.
+     * - Failure: Save errors are swallowed.
+     */
     private func save() {
-        try? modelContext.save()
+        saveChanges()
     }
 }

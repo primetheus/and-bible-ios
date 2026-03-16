@@ -6549,6 +6549,101 @@ final class AndBibleTests: XCTestCase {
         XCTAssertTrue(try modelContext.fetch(FetchDescriptor<GenericBookmarkToLabel>()).isEmpty)
     }
 
+    /**
+     Verifies that clearing a Bible bookmark note removes the persisted note row as well as the
+     in-memory relationship.
+     *
+     * Data dependencies:
+     * - creates an in-memory bookmark schema with one Bible bookmark and no pre-existing note row
+     *
+     * Side effects:
+     * - writes one note through `BookmarkService`
+     * - clears that note through `BookmarkService`, which should now save the context and delete
+     *   the detached `BibleBookmarkNotes` row
+     *
+     * Failure modes:
+     * - throws if the in-memory SwiftData container cannot be created or queried
+     * - fails if the bookmark still resolves a note relationship or if orphaned note rows remain
+     */
+    func testBookmarkServiceClearingBibleBookmarkNoteDeletesPersistedNoteRow() throws {
+        let container = try makeBookmarkRestoreModelContainer()
+        let modelContext = ModelContext(container)
+        let bookmarkStore = BookmarkStore(modelContext: modelContext)
+        let bookmarkService = BookmarkService(store: bookmarkStore)
+
+        let bookmark = BibleBookmark(
+            kjvOrdinalStart: 1,
+            kjvOrdinalEnd: 1,
+            ordinalStart: 1,
+            ordinalEnd: 1,
+            v11n: "KJVA"
+        )
+        modelContext.insert(bookmark)
+        try modelContext.save()
+
+        bookmarkService.saveBibleBookmarkNote(bookmarkId: bookmark.id, note: "Seeded note")
+
+        XCTAssertEqual(try modelContext.fetch(FetchDescriptor<BibleBookmarkNotes>()).count, 1)
+
+        let freshDeleteService = BookmarkService(store: BookmarkStore(modelContext: modelContext))
+        freshDeleteService.saveBibleBookmarkNote(bookmarkId: bookmark.id, note: nil)
+
+        let reloadedBookmark = try XCTUnwrap(
+            try modelContext.fetch(FetchDescriptor<BibleBookmark>()).first
+        )
+        XCTAssertNil(reloadedBookmark.notes)
+        XCTAssertTrue(try modelContext.fetch(FetchDescriptor<BibleBookmarkNotes>()).isEmpty)
+    }
+
+    /**
+     Verifies that the My Notes rebuild query stops returning a bookmark after its note is deleted
+     in the same live SwiftData context.
+     *
+     * Data dependencies:
+     * - creates one in-memory `Genesis 1:1` Bible bookmark with a persisted note
+     *
+     * Side effects:
+     * - loads the note-bearing bookmark through the same `bookmarks(for:endOrdinal:book:)` query
+     *   that `BibleReaderController.loadMyNotesDocument()` uses
+     * - clears the note through `BookmarkService`
+     * - rebuilds the same bookmark query in the same context after deletion
+     *
+     * Failure modes:
+     * - throws if the in-memory SwiftData container cannot be created or queried
+     * - fails if the rebuild query still returns a note-bearing bookmark after deletion
+     */
+    func testBookmarkServiceClearingBibleBookmarkNoteRemovesBookmarkFromMyNotesQuery() throws {
+        let container = try makeBookmarkRestoreModelContainer()
+        let modelContext = ModelContext(container)
+        let bookmarkStore = BookmarkStore(modelContext: modelContext)
+        let bookmarkService = BookmarkService(store: bookmarkStore)
+
+        let bookmark = BibleBookmark(
+            kjvOrdinalStart: 1,
+            kjvOrdinalEnd: 1,
+            ordinalStart: 1,
+            ordinalEnd: 1,
+            v11n: "KJVA"
+        )
+        bookmark.book = "Genesis"
+        modelContext.insert(bookmark)
+        try modelContext.save()
+
+        bookmarkService.saveBibleBookmarkNote(bookmarkId: bookmark.id, note: "Seeded note")
+
+        let initialMyNotesBookmarks = bookmarkService
+            .bookmarks(for: 1, endOrdinal: 40, book: "Genesis")
+            .filter { $0.notes != nil && !($0.notes?.notes.isEmpty ?? true) }
+        XCTAssertEqual(initialMyNotesBookmarks.map(\.id), [bookmark.id])
+
+        bookmarkService.saveBibleBookmarkNote(bookmarkId: bookmark.id, note: nil)
+
+        let rebuiltMyNotesBookmarks = bookmarkService
+            .bookmarks(for: 1, endOrdinal: 40, book: "Genesis")
+            .filter { $0.notes != nil && !($0.notes?.notes.isEmpty ?? true) }
+        XCTAssertTrue(rebuiltMyNotesBookmarks.isEmpty)
+    }
+
     private func makeInMemorySettingsStore() throws -> SettingsStore {
         SettingsStore(modelContext: ModelContext(try makeInMemorySettingsContainer()))
     }

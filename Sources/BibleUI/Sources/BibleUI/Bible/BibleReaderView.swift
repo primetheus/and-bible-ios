@@ -515,53 +515,66 @@ public struct BibleReaderView: View {
                     .allowsHitTesting(false)
             }
         }
-        .overlay(alignment: .topTrailing) {
+        .safeAreaInset(edge: .top) {
             if uiTestUsesInMemoryStores {
-                VStack(alignment: .trailing, spacing: 8) {
-                    if uiTestOpensSyncSettingsOnLaunch && !showSyncSettings {
-                        Button("Open Sync") {
-                            showSyncSettings = true
+                HStack {
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 8) {
+                        if uiTestOpensSyncSettingsOnLaunch && !showSyncSettings {
+                            Button("Open Sync") {
+                                showSyncSettings = true
+                            }
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .accessibilityIdentifier("uiTestReopenSyncSettingsButton")
                         }
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .accessibilityIdentifier("uiTestReopenSyncSettingsButton")
-                    }
 
-                    if focusedController?.showingMyNotes == true {
-                        Button("Update My Notes Note") {
-                            updateUITestMyNotesNote()
-                        }
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .accessibilityIdentifier("uiTestUpdateMyNotesNoteButton")
-                    } else if uiTestMyNotesBookmarkID != nil {
-                        Button("Reopen My Notes") {
-                            reopenMyNotesForUITests()
-                        }
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .accessibilityIdentifier("uiTestReopenMyNotesButton")
-                    }
+                        if focusedController?.showingMyNotes == true {
+                            Button("Delete My Notes Note") {
+                                deleteUITestMyNotesNote()
+                            }
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .accessibilityIdentifier("uiTestDeleteMyNotesNoteButton")
 
-                    if focusedController?.showingStudyPad == true {
-                        Button("Create StudyPad Note") {
-                            createUITestStudyPadNote()
+                            Button("Update My Notes Note") {
+                                updateUITestMyNotesNote()
+                            }
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .accessibilityIdentifier("uiTestUpdateMyNotesNoteButton")
+                        } else if uiTestMyNotesBookmarkID != nil {
+                            Button("Reopen My Notes") {
+                                reopenMyNotesForUITests()
+                            }
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .accessibilityIdentifier("uiTestReopenMyNotesButton")
                         }
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .accessibilityIdentifier("uiTestCreateStudyPadNoteButton")
+
+                        if focusedController?.showingStudyPad == true {
+                            Button("Create StudyPad Note") {
+                                createUITestStudyPadNote()
+                            }
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .accessibilityIdentifier("uiTestCreateStudyPadNoteButton")
+                        }
                     }
+                    .padding(.top, 12)
+                    .padding(.trailing, 12)
+                    .zIndex(10)
                 }
-                .padding(.top, 12)
-                .padding(.trailing, 12)
             }
         }
         .animation(.easeInOut(duration: 0.25), value: toastMessage)
@@ -2632,14 +2645,12 @@ public struct BibleReaderView: View {
     private func openMyNotesForUITests() {
         guard let bookmarkId = seedBookmarkForUITests(book: "Genesis", ordinalStart: 1) else { return }
         uiTestMyNotesBookmarkID = bookmarkId
-        let store = BookmarkStore(modelContext: modelContext)
-        let service = BookmarkService(store: store)
-        service.saveBibleBookmarkNote(bookmarkId: bookmarkId, note: "UI Test My Notes Note")
-        try? modelContext.save()
-        refreshUITestMyNotesNoteState()
         Task { @MainActor in
             for _ in 0..<20 {
-                if let controller = focusedController {
+                if let controller = focusedController,
+                   let service = controller.bookmarkService {
+                    service.saveBibleBookmarkNote(bookmarkId: bookmarkId, note: "UI Test My Notes Note")
+                    refreshUITestMyNotesNoteState()
                     controller.loadMyNotesDocument()
                     if controller.showingMyNotes {
                         break
@@ -2691,10 +2702,51 @@ public struct BibleReaderView: View {
             return
         }
 
-        let service = controller.bookmarkService ?? BookmarkService(store: BookmarkStore(modelContext: modelContext))
+        guard let service = controller.bookmarkService else {
+            uiTestMyNotesNoteState = "failed:verify"
+            return
+        }
         service.saveBibleBookmarkNote(bookmarkId: bookmarkId, note: "UI Test My Notes Updated Note")
         controller.loadMyNotesDocument()
         refreshUITestMyNotesNoteState()
+    }
+
+    /**
+     Deletes the seeded My Notes note body and reloads the active My Notes document.
+     *
+     * Side effects:
+     * - clears the seeded bookmark note through the focused controller's bookmark service so the
+     *   controller and persistence layer observe the same relationship mutation
+     * - reloads the active My Notes document in the focused reader controller so the WebView-backed
+     *   notes document reflects the deletion
+     * - exports the immediate delete action through `uiTestMyNotesNoteState`, with persistence
+     *   re-verified when the harness reopens My Notes
+     *
+     * Failure modes:
+     * - exports `failed:missingContext` when no seeded bookmark, focused controller, or bookmark
+     *   service exists
+     * - exports `failed:verify` only when the bookmark service is unavailable for the delete request
+     */
+    private func deleteUITestMyNotesNote() {
+        uiTestMyNotesNoteState = "deleteRequested"
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+
+            guard let bookmarkId = uiTestMyNotesBookmarkID,
+                  let controller = focusedController,
+                  controller.showingMyNotes else {
+                uiTestMyNotesNoteState = "failed:missingContext"
+                return
+            }
+
+            guard let service = controller.bookmarkService else {
+                uiTestMyNotesNoteState = "failed:verify"
+                return
+            }
+            service.saveBibleBookmarkNote(bookmarkId: bookmarkId, note: nil)
+            controller.loadMyNotesDocument()
+            refreshUITestMyNotesNoteState()
+        }
     }
 
     /**
@@ -2714,9 +2766,31 @@ public struct BibleReaderView: View {
             return
         }
 
-        let service = focusedController?.bookmarkService
-            ?? BookmarkService(store: BookmarkStore(modelContext: modelContext))
-        let note = service.bibleBookmark(id: bookmarkId)?.notes?.notes
+        if let controller = focusedController,
+           let service = controller.bookmarkService {
+            let verseCount = BibleReaderController.verseCount(for: controller.currentBook, chapter: controller.currentChapter)
+            let ordinalStart = (controller.currentChapter - 1) * 40 + 1
+            let ordinalEnd = (controller.currentChapter - 1) * 40 + verseCount
+            let noteBearingBookmarks = service
+                .bookmarks(for: ordinalStart, endOrdinal: ordinalEnd, book: controller.currentBook)
+                .filter { $0.notes != nil && !($0.notes?.notes.isEmpty ?? true) }
+            let note = noteBearingBookmarks.first(where: { $0.id == bookmarkId })?.notes?.notes
+            applyUITestMyNotesNoteState(for: note)
+            return
+        }
+
+        let note = makeUITestBookmarkService().bibleBookmark(id: bookmarkId)?.notes?.notes
+        applyUITestMyNotesNoteState(for: note)
+    }
+
+    /**
+     Maps a raw note body into the exported XCUITest My Notes state token.
+     *
+     * - Parameter note: Optional note body resolved from the active My Notes query path.
+     * - Side effects: Rewrites `uiTestMyNotesNoteState` to one deterministic token.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func applyUITestMyNotesNoteState(for note: String?) {
         switch note {
         case "UI Test My Notes Note":
             uiTestMyNotesNoteState = "seeded:UI_Test_My_Notes_Note"
@@ -2727,6 +2801,20 @@ public struct BibleReaderView: View {
         case .none:
             uiTestMyNotesNoteState = "deleted"
         }
+    }
+
+    /**
+     Builds a fresh bookmark service for XCUITest bookmark and My Notes workflows.
+     *
+     * Side effects:
+     * - creates a new `BookmarkStore` and `BookmarkService` bound to the current SwiftData
+     *   context so test assertions read persisted state instead of stale cached relationships
+     *
+     * Failure modes:
+     * - this helper cannot fail; callers still need to handle missing bookmark IDs or controllers
+     */
+    private func makeUITestBookmarkService() -> BookmarkService {
+        BookmarkService(store: BookmarkStore(modelContext: modelContext))
     }
 
     /**

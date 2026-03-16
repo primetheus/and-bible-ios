@@ -52,32 +52,44 @@ public final class BookmarkService {
         // Try Bible bookmark first
         if let bookmark = store.bibleBookmark(id: bookmarkId) {
             if let note, !note.isEmpty {
-                if let existing = bookmark.notes {
+                if let existing = bookmark.notes ?? store.bibleBookmarkNotes(bookmarkId: bookmarkId) {
+                    bookmark.notes = existing
                     existing.notes = note
                 } else {
                     let notes = BibleBookmarkNotes(bookmarkId: bookmarkId, notes: note)
                     bookmark.notes = notes
                 }
             } else {
+                if let existing = bookmark.notes ?? store.bibleBookmarkNotes(bookmarkId: bookmarkId) {
+                    bookmark.notes = nil
+                    store.delete(existing)
+                }
                 bookmark.notes = nil
             }
             bookmark.lastUpdatedOn = Date()
+            store.saveChanges()
             return
         }
 
         // Try generic bookmark
         if let bookmark = store.genericBookmark(id: bookmarkId) {
             if let note, !note.isEmpty {
-                if let existing = bookmark.notes {
+                if let existing = bookmark.notes ?? store.genericBookmarkNotes(bookmarkId: bookmarkId) {
+                    bookmark.notes = existing
                     existing.notes = note
                 } else {
                     let notes = GenericBookmarkNotes(bookmarkId: bookmarkId, notes: note)
                     bookmark.notes = notes
                 }
             } else {
+                if let existing = bookmark.notes ?? store.genericBookmarkNotes(bookmarkId: bookmarkId) {
+                    bookmark.notes = nil
+                    store.delete(existing)
+                }
                 bookmark.notes = nil
             }
             bookmark.lastUpdatedOn = Date()
+            store.saveChanges()
         }
     }
 

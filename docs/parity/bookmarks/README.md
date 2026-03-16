@@ -7,6 +7,8 @@ My Notes.
 
 1. [contract.md](contract.md): current bookmark-domain parity contract
 2. [dispositions.md](dispositions.md): explicit iOS adaptations and separations
+3. [verification-matrix.md](verification-matrix.md): current status by contract area
+4. [regression-report.md](regression-report.md): focused validation evidence
 
 Primary surfaces:
 

@@ -256,6 +256,11 @@ public struct SearchView: View {
                 performSearch()
             }
         }
+        .onChange(of: scopeOption) { _, _ in
+            if case .ready = viewState, !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                performSearch()
+            }
+        }
     }
 
     /// Navigation title derived from the active state and latest result summary.
@@ -284,7 +289,7 @@ public struct SearchView: View {
         case .creatingIndex: "creatingIndex"
         case .ready: "ready"
         }
-        return "state=\(stateToken);query=\(query);searching=\(isSearching);results=\(results.count)"
+        return "state=\(stateToken);query=\(query);searching=\(isSearching);results=\(results.count);scope=\(searchScopeToken(for: scopeOption))"
     }
 
     // MARK: - Index Prompt
@@ -482,6 +487,44 @@ public struct SearchView: View {
         )
         .foregroundStyle(scopeOption == choice ? Color.accentColor : Color.primary)
         .lineLimit(1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(scopeOption == choice ? "selected" : "unselected")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier(searchScopeIdentifier(for: choice))
+    }
+
+    /**
+     Returns a stable accessibility identifier for one Search scope selector.
+     *
+     * - Parameter choice: Scope value represented by the button.
+     * - Returns: Identifier formatted as `searchScopeButton::<scope>`.
+     * - Side effects: none.
+     * - Failure modes: none.
+     */
+    private func searchScopeIdentifier(for choice: ScopeChoice) -> String {
+        "searchScopeButton::\(searchScopeToken(for: choice))"
+    }
+
+    /**
+     Returns the stable exported token for one Search scope choice.
+     *
+     * - Parameter choice: Scope value to serialize for accessibility state and identifiers.
+     * - Returns: Deterministic lowercase token for the scope.
+     * - Side effects: none.
+     * - Failure modes: none.
+     */
+    private func searchScopeToken(for choice: ScopeChoice) -> String {
+        switch choice {
+        case .wholeBible:
+            return "wholeBible"
+        case .oldTestament:
+            return "oldTestament"
+        case .newTestament:
+            return "newTestament"
+        case .currentBook:
+            return "currentBook"
+        }
     }
 
     // MARK: - Results Sections

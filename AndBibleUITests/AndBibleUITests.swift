@@ -131,6 +131,77 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Verifies that changing Search scope reruns the current query and updates the result set.
+     *
+     * - Side effects:
+     *   - launches the app directly into Search with the initial query `jesus`
+     *   - switches Search scope from whole Bible to the Old Testament and then to the New
+     *     Testament
+     *   - waits for Search to rerun after each scope change and inspects the exported Search
+     *     state
+     * - Failure modes:
+     *   - fails if the visible `OT` or `NT` Search scope buttons are not accessible
+     *   - fails if the Old Testament scope does not reduce the `jesus` query to zero hits
+     *   - fails if the New Testament scope does not restore non-zero bundled hits
+     */
+    func testSearchScopeChangeRerunsQueryAndUpdatesResults() {
+        let app = makeApp(openSearchOnLaunch: true, searchQuery: "jesus")
+        app.launch()
+
+        let searchScreen = openSearch(in: app, launchedDirectly: true)
+        waitForSearchToFinish(on: searchScreen, timeout: 120)
+
+        let wholeBibleState = searchScreen.value as? String ?? ""
+        XCTAssertTrue(
+            wholeBibleState.contains("scope=wholeBible"),
+            "Expected Search to start in whole-Bible scope, got '\(wholeBibleState)'."
+        )
+        XCTAssertGreaterThan(
+            searchResultsCount(from: wholeBibleState),
+            0,
+            "Expected bundled whole-Bible hits for 'jesus', got '\(wholeBibleState)'."
+        )
+
+        let oldTestamentButton = app.buttons["OT"].firstMatch
+        XCTAssertTrue(
+            oldTestamentButton.waitForExistence(timeout: 10),
+            "Expected the visible OT Search scope button to exist."
+        )
+        oldTestamentButton.tap()
+        waitForSearchToFinish(on: searchScreen, timeout: 120)
+
+        let oldTestamentState = searchScreen.value as? String ?? ""
+        XCTAssertTrue(
+            oldTestamentState.contains("scope=oldTestament"),
+            "Expected Search to switch to Old Testament scope, got '\(oldTestamentState)'."
+        )
+        XCTAssertEqual(
+            searchResultsCount(from: oldTestamentState),
+            0,
+            "Expected no Old Testament hits for 'jesus', got '\(oldTestamentState)'."
+        )
+
+        let newTestamentButton = app.buttons["NT"].firstMatch
+        XCTAssertTrue(
+            newTestamentButton.waitForExistence(timeout: 10),
+            "Expected the visible NT Search scope button to exist."
+        )
+        newTestamentButton.tap()
+        waitForSearchToFinish(on: searchScreen, timeout: 120)
+
+        let newTestamentState = searchScreen.value as? String ?? ""
+        XCTAssertTrue(
+            newTestamentState.contains("scope=newTestament"),
+            "Expected Search to switch to New Testament scope, got '\(newTestamentState)'."
+        )
+        XCTAssertGreaterThan(
+            searchResultsCount(from: newTestamentState),
+            0,
+            "Expected bundled New Testament hits for 'jesus', got '\(newTestamentState)'."
+        )
+    }
+
+    /**
      Verifies that the real reader Search workflow can navigate to a bundled search hit.
      *
      * - Side effects:

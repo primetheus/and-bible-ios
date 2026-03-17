@@ -69,6 +69,19 @@ public struct HistoryView: View {
         return allHistory.filter { $0.window?.id == windowId }
     }
 
+    /// History rows exported through the deterministic in-memory XCUITest harness.
+    private var uiTestHistoryItems: [HistoryItem] {
+        uiTestUsesInMemoryStores ? allHistory : history
+    }
+
+    /// Stable XCUITest-only export of the currently visible history keys.
+    private var uiTestHistoryState: String {
+        let keys = uiTestHistoryItems
+            .map { sanitizedHistoryKey(for: $0) }
+            .sorted()
+        return keys.isEmpty ? "historyState=empty" : "historyState=\(keys.joined(separator: "|"))"
+    }
+
     /**
      Builds the empty state or filtered history list with destructive toolbar actions.
      */
@@ -118,10 +131,16 @@ public struct HistoryView: View {
             }
         }
         .accessibilityIdentifier("historyScreen")
+        .accessibilityValue(uiTestUsesInMemoryStores ? uiTestHistoryState : "")
         .navigationTitle(String(localized: "history"))
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .safeAreaInset(edge: .bottom) {
+            if uiTestUsesInMemoryStores {
+                uiTestHarness
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button(String(localized: "done")) { dismiss() }
@@ -142,6 +161,47 @@ public struct HistoryView: View {
                 }
             }
         }
+    }
+
+    /// Stable XCUITest-only controls that bypass toolbar and swipe-action flakiness in CI.
+    @ViewBuilder
+    private var uiTestHarness: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Button("Clear") {
+                    clearUITestHistory()
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("historyHarnessClearButton")
+
+                if let onUITestDismissAndReopen {
+                    Button("Reopen") {
+                        onUITestDismissAndReopen()
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("historyHarnessReopenButton")
+                }
+            }
+
+            if uiTestHistoryItems.contains(where: { $0.key == "Exod.2.1" }) {
+                HStack(spacing: 8) {
+                    Button("Delete Exodus") {
+                        deleteUITestHistoryItems(matchingKey: "Exod.2.1")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("historyHarnessDeleteButton::Exod_2_1")
+                }
+            }
+
+            Text(uiTestHistoryState)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("historyHarnessState")
+        }
+        .font(.caption.weight(.semibold))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.thinMaterial)
     }
 
     /**
@@ -219,6 +279,57 @@ public struct HistoryView: View {
     private func deleteItem(at index: Int) {
         guard history.indices.contains(index) else { return }
         modelContext.delete(history[index])
+        try? modelContext.save()
+    }
+
+    /**
+     Deletes every visible history row whose key matches the requested deterministic test key.
+     *
+     * - Parameter key: Persisted history key to remove from the current history scope.
+     * - Side effects:
+     *   - deletes all matching `HistoryItem` rows from SwiftData
+     *   - saves the mutated history state back to persistence
+     * - Failure modes:
+     *   - silently discards save failures because this helper only backs deterministic XCUITest
+     *     harness actions
+     */
+    private func deleteItems(matchingKey key: String) {
+        for item in history where item.key == key {
+            modelContext.delete(item)
+        }
+        try? modelContext.save()
+    }
+
+    /**
+     Deletes every XCUITest-visible history row.
+     *
+     * - Side effects:
+     *   - deletes the deterministic in-memory harness history rows from SwiftData
+     *   - saves the mutated history state back to persistence
+     * - Failure modes:
+     *   - silently discards save failures because this helper only backs XCUITest harness actions
+     */
+    private func clearUITestHistory() {
+        for item in uiTestHistoryItems {
+            modelContext.delete(item)
+        }
+        try? modelContext.save()
+    }
+
+    /**
+     Deletes every XCUITest-visible history row whose key matches the requested deterministic test key.
+     *
+     * - Parameter key: Persisted history key to remove from the current deterministic harness scope.
+     * - Side effects:
+     *   - deletes all matching `HistoryItem` rows from SwiftData
+     *   - saves the mutated history state back to persistence
+     * - Failure modes:
+     *   - silently discards save failures because this helper only backs XCUITest harness actions
+     */
+    private func deleteUITestHistoryItems(matchingKey key: String) {
+        for item in uiTestHistoryItems where item.key == key {
+            modelContext.delete(item)
+        }
         try? modelContext.save()
     }
 

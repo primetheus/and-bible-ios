@@ -169,7 +169,7 @@ public struct TextDisplaySettingsView: View {
                         .monospacedDigit()
                 }
                 if uiTestUsesInMemoryStores {
-                    Button(action: toggleJustifyText) {
+                    HStack {
                         HStack {
                             Text(String(localized: "justify_text"))
                             Spacer()
@@ -243,6 +243,8 @@ public struct TextDisplaySettingsView: View {
             toggleJustifyText()
         }
         .font(.caption.weight(.semibold))
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.ultraThinMaterial, in: Capsule())

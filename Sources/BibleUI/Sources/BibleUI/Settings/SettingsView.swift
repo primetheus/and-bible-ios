@@ -1435,42 +1435,44 @@ public struct SettingsView: View {
     /// Stable XCUITest-only navigation controls that bypass `Form` row virtualization.
     @ViewBuilder
     private var uiTestNavigationHarness: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
                 uiTestNavigationButton(
-                    title: String(localized: "downloads"),
+                    title: "Downloads",
                     identifier: "settingsHarnessDownloadsLink",
                     destination: .downloads
                 )
                 uiTestNavigationButton(
-                    title: String(localized: "import_export"),
+                    title: "Import/Export",
                     identifier: "settingsHarnessImportExportLink",
                     destination: .importExport
                 )
                 uiTestNavigationButton(
-                    title: String(localized: "icloud_sync"),
+                    title: "Sync",
                     identifier: "settingsHarnessSyncLink",
                     destination: .sync
                 )
+            }
+            HStack(spacing: 8) {
                 uiTestNavigationButton(
-                    title: String(localized: "labels"),
+                    title: "Labels",
                     identifier: "settingsHarnessLabelsLink",
                     destination: .labels
                 )
                 uiTestNavigationButton(
-                    title: String(localized: "settings_text_display"),
+                    title: "Text",
                     identifier: "settingsHarnessTextDisplayLink",
                     destination: .textDisplay
                 )
                 uiTestNavigationButton(
-                    title: String(localized: "settings_colors"),
+                    title: "Colors",
                     identifier: "settingsHarnessColorsLink",
                     destination: .colors
                 )
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
         .background(.thinMaterial)
     }
 
@@ -1483,6 +1485,10 @@ public struct SettingsView: View {
         Button(title) {
             uiTestNavigationDestination = destination
         }
+        .font(.caption.weight(.semibold))
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .frame(maxWidth: .infinity)
         .buttonStyle(.borderedProminent)
         .accessibilityIdentifier(identifier)
     }

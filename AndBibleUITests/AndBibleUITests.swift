@@ -890,20 +890,14 @@ final class AndBibleUITests: XCTestCase {
         let app = makeApp(openHistoryOnLaunch: true, seedHistoryWorkflowOnLaunch: true)
         app.launch()
 
-        openHistory(in: app, launchedDirectly: true)
-        let historyRow = app.buttons["historyRow::Exod_2_1"].firstMatch
-        XCTAssertTrue(historyRow.waitForExistence(timeout: 10), "Expected seeded history row button to exist.")
+        _ = openHistory(in: app, launchedDirectly: true)
+        waitForElementValue("historyScreen", toEqual: "historyState=Exod_2_1", in: app)
 
-        requireElement("historyClearButton", in: app, timeout: 10).tap()
-        let deletedPredicate = NSPredicate(format: "exists == false")
-        expectation(for: deletedPredicate, evaluatedWith: historyRow)
-        waitForExpectations(timeout: 10)
-        XCTAssertFalse(app.buttons["historyClearButton"].firstMatch.exists)
+        tapElementReliably(requireElement("historyHarnessClearButton", in: app, timeout: 10), timeout: 10)
+        waitForElementValue("historyScreen", toEqual: "historyState=empty", in: app)
 
-        requireElement("historyReopenButton", in: app, timeout: 10).tap()
-
-        XCTAssertFalse(app.buttons["historyRow::Exod_2_1"].firstMatch.exists)
-        XCTAssertFalse(app.buttons["historyClearButton"].firstMatch.exists)
+        tapElementReliably(requireElement("historyHarnessReopenButton", in: app, timeout: 10), timeout: 10)
+        waitForElementValue("historyScreen", toEqual: "historyState=empty", in: app)
     }
 
     /**
@@ -925,24 +919,14 @@ final class AndBibleUITests: XCTestCase {
         let app = makeApp(openHistoryOnLaunch: true, seedHistoryMultiRowWorkflowOnLaunch: true)
         app.launch()
 
-        openHistory(in: app, launchedDirectly: true)
-        let exodusRow = app.buttons["historyRow::Exod_2_1"].firstMatch
-        let matthewRow = app.buttons["historyRow::Matt_3_1"].firstMatch
-        XCTAssertTrue(exodusRow.waitForExistence(timeout: 10), "Expected Exodus history row button to exist.")
-        XCTAssertTrue(matthewRow.waitForExistence(timeout: 10), "Expected Matthew history row button to exist.")
+        _ = openHistory(in: app, launchedDirectly: true)
+        waitForElementValue("historyScreen", toEqual: "historyState=Exod_2_1|Matt_3_1", in: app)
 
-        exodusRow.swipeLeft()
-        requireElement("historyDeleteButton::Exod_2_1", in: app, timeout: 10).tap()
+        tapElementReliably(requireElement("historyHarnessDeleteButton::Exod_2_1", in: app, timeout: 10), timeout: 10)
+        waitForElementValue("historyScreen", toEqual: "historyState=Matt_3_1", in: app)
 
-        let deletedPredicate = NSPredicate(format: "exists == false")
-        expectation(for: deletedPredicate, evaluatedWith: exodusRow)
-        waitForExpectations(timeout: 10)
-        XCTAssertTrue(matthewRow.exists, "Expected Matthew history row to remain after deleting Exodus.")
-
-        requireElement("historyReopenButton", in: app, timeout: 10).tap()
-
-        XCTAssertFalse(app.buttons["historyRow::Exod_2_1"].firstMatch.exists)
-        XCTAssertTrue(app.buttons["historyRow::Matt_3_1"].firstMatch.exists)
+        tapElementReliably(requireElement("historyHarnessReopenButton", in: app, timeout: 10), timeout: 10)
+        waitForElementValue("historyScreen", toEqual: "historyState=Matt_3_1", in: app)
     }
 
     /**

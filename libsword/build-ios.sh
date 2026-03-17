@@ -35,6 +35,9 @@ SWORD_SVN_REVISION="${SWORD_SVN_REVISION:-3914}"
 IOS_MIN="17.0"
 MACOS_MIN="14.0"
 
+# Whether to include the macOS slice in the generated XCFramework.
+INCLUDE_MACOS_SLICE="${INCLUDE_MACOS_SLICE:-1}"
+
 # Number of parallel build jobs
 JOBS=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
@@ -148,18 +151,17 @@ build_for_platform "iphoneos" "arm64" "${IOS_MIN}"
 # iOS Simulator (arm64 + x86_64)
 build_for_platform "iphonesimulator" "arm64;x86_64" "${IOS_MIN}"
 
-# macOS (arm64 + x86_64)
-build_for_platform "macosx" "arm64;x86_64" "${MACOS_MIN}"
+if [ "${INCLUDE_MACOS_SLICE}" = "1" ]; then
+    # macOS (arm64 + x86_64)
+    build_for_platform "macosx" "arm64;x86_64" "${MACOS_MIN}"
+else
+    echo ">>> Skipping macOS slice (INCLUDE_MACOS_SLICE=${INCLUDE_MACOS_SLICE})"
+fi
 
 # --- Step 4: Create XCFramework ---
 
 echo ""
 echo ">>> Creating XCFramework..."
-
-# Find the built static libraries
-IOS_LIB="${BUILD_DIR}/iphoneos/install/lib/libsword.a"
-SIM_LIB="${BUILD_DIR}/iphonesimulator/install/lib/libsword.a"
-MAC_LIB="${BUILD_DIR}/macosx/install/lib/libsword.a"
 
 # Find the headers
 HEADERS="${BUILD_DIR}/iphoneos/install/include"
@@ -168,11 +170,19 @@ HEADERS="${BUILD_DIR}/iphoneos/install/include"
 rm -rf "${OUTPUT_DIR}/libsword.xcframework"
 
 # Create XCFramework
-xcodebuild -create-xcframework \
-    -library "${IOS_LIB}" -headers "${HEADERS}" \
-    -library "${SIM_LIB}" -headers "${HEADERS}" \
-    -library "${MAC_LIB}" -headers "${HEADERS}" \
-    -output "${OUTPUT_DIR}/libsword.xcframework"
+XCFRAMEWORK_ARGS=(
+    -create-xcframework
+    -library "${BUILD_DIR}/iphoneos/install/lib/libsword.a" -headers "${HEADERS}"
+    -library "${BUILD_DIR}/iphonesimulator/install/lib/libsword.a" -headers "${HEADERS}"
+)
+
+if [ "${INCLUDE_MACOS_SLICE}" = "1" ]; then
+    XCFRAMEWORK_ARGS+=(
+        -library "${BUILD_DIR}/macosx/install/lib/libsword.a" -headers "${HEADERS}"
+    )
+fi
+
+xcodebuild "${XCFRAMEWORK_ARGS[@]}" -output "${OUTPUT_DIR}/libsword.xcframework"
 
 echo ""
 echo "=== Build Complete ==="

@@ -97,6 +97,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-xcode-spm-
 
+      - name: Restore libsword build cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            libsword/sword-src
+            libsword/build
+            libsword/libsword.xcframework
+          key: ${{ runner.os }}-xcode-16.4-libsword-${{ hashFiles('libsword/build-ios.sh') }}
+
       - name: Show Xcode version
         run: xcodebuild -version
 
@@ -120,7 +129,14 @@ jobs:
 
       - name: Build libsword XCFramework
         working-directory: libsword
-        run: ./build-ios.sh
+        env:
+          INCLUDE_MACOS_SLICE: "0"
+        run: |
+          if [ -f libsword.xcframework/Info.plist ] && find libsword.xcframework -name libsword.a -print -quit | grep -q .; then
+            echo "Using cached libsword.xcframework"
+          else
+            ./build-ios.sh
+          fi
 
       - name: Resolve iOS simulator destination
         id: simulator

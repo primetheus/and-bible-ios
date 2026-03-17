@@ -320,15 +320,6 @@ public struct SyncSettingsView: View {
             }
             .accessibilityIdentifier("syncBackendPicker")
 
-            if isUITestHarnessEnabled {
-                ForEach(RemoteSyncBackend.allCases.filter { $0 != selectedBackend }, id: \.self) { backend in
-                    Button(syncBackendAutomationTitle(for: backend)) {
-                        selectedBackend = backend
-                    }
-                    .font(.caption)
-                    .accessibilityIdentifier("syncBackendSelect::\(backend.rawValue)")
-                }
-            }
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
                 Text(String(localized: "prefs_sync_introduction_summary1"))
@@ -566,30 +557,44 @@ public struct SyncSettingsView: View {
      These controls mirror the existing test-only backend and category mutation actions but avoid the
      flaky hit-testing behavior seen for nested row buttons on GitHub-hosted simulators.
 
-     - Returns: A bottom inset containing one stable action per enabled remote category.
+     - Returns: A bottom inset containing stable backend-switch and category-disable controls.
      - Side effects: Tapping a control invokes the same persistence helpers used by the inline
-       harness actions.
+       harness actions or backend picker.
      - Failure modes: Hidden when the XCUITest harness is not active.
      */
     @ViewBuilder
     private var uiTestHarnessControls: some View {
         let enabledCategories = RemoteSyncCategory.allCases.filter(isRemoteCategoryEnabled)
-        if !enabledCategories.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
+        let alternativeBackends = RemoteSyncBackend.allCases.filter { $0 != selectedBackend }
+        VStack(alignment: .leading, spacing: 8) {
+            if !alternativeBackends.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(alternativeBackends, id: \.self) { backend in
+                        Button(syncBackendAutomationTitle(for: backend)) {
+                            selectedBackend = backend
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("syncBackendSelect::\(backend.rawValue)")
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+            }
+
+            if !enabledCategories.isEmpty {
                 HStack(spacing: 8) {
                     ForEach(enabledCategories, id: \.self) { category in
                         Button("Disable \(category.rawValue)") {
                             disableRemoteSync(for: category)
                         }
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity)
                         .accessibilityIdentifier("syncCategoryDisableButton::\(category.rawValue)")
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.bottom, 8)
             }
         }
     }

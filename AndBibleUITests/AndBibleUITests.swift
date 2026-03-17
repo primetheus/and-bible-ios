@@ -882,23 +882,20 @@ final class AndBibleUITests: XCTestCase {
      * - Side effects:
      *   - launches the app with one deterministic persisted history row while staying on the real
      *     reader shell
-     *   - opens History from the actual reader overflow menu
-     *   - clears the visible history, dismisses the screen, then reopens History to verify the
-     *     persisted row remains deleted
+     *   - opens History through the direct-launch harness and verifies the seeded history state
+     *   - clears the seeded history through the deterministic harness action, dismisses the screen,
+     *     then reopens History to verify the persisted row remains deleted
      * - Failure modes:
-     *   - fails if the reader shell, History action, clear button, or empty state never appears
-     *   - fails if the seeded row still exists after clearing or if reopening History restores the
-     *     deleted row
+     *   - fails if the direct-launch History screen or clear harness control never appears
+     *   - fails if the exported history state never reaches `historyState=empty` after clearing or
+     *     after reopening
      */
     func testHistoryClearRemovesSeededRowAcrossReopen() {
         let app = makeApp(openHistoryOnLaunch: true, seedHistoryWorkflowOnLaunch: true)
         app.launch()
 
         _ = openHistory(in: app, launchedDirectly: true)
-        XCTAssertTrue(
-            app.buttons["historyRow::Exod_2_1"].firstMatch.waitForExistence(timeout: 10),
-            "Expected seeded Exodus history row to exist before clearing History."
-        )
+        waitForElementValue("historyHarnessState", toEqual: "historyState=Exod_2_1", in: app)
 
         tapElementReliably(requireElement("historyHarnessClearButton", in: app, timeout: 10), timeout: 10)
         waitForElementValue("historyHarnessState", toEqual: "historyState=empty", in: app)
@@ -913,27 +910,23 @@ final class AndBibleUITests: XCTestCase {
      * - Side effects:
      *   - launches the app with two deterministic persisted history rows while staying on the real
      *     reader shell
-     *   - opens History from the actual reader overflow menu
-     *   - deletes only the Exodus row through the row-level swipe action, dismisses the screen, and
-     *     reopens History to confirm the Matthew row persists
+     *   - opens History through the direct-launch harness and verifies the seeded multi-row state
+     *   - deletes only the Exodus row through the deterministic harness action, dismisses the
+     *     screen, and reopens History to confirm the Matthew row persists
      * - Failure modes:
-     *   - fails if the reader shell, History action, seeded rows, or row-level delete action never
-     *     appears
-     *   - fails if deleting the Exodus row also removes the Matthew row or if the Exodus row
-     *     returns after reopening History
+     *   - fails if the direct-launch History screen or delete harness control never appears
+     *   - fails if the exported history state does not collapse to `historyState=Matt_3_1` after
+     *     deletion or after reopening
      */
     func testHistoryRowDeletePreservesOtherRowsAcrossReopen() {
         let app = makeApp(openHistoryOnLaunch: true, seedHistoryMultiRowWorkflowOnLaunch: true)
         app.launch()
 
         _ = openHistory(in: app, launchedDirectly: true)
-        XCTAssertTrue(
-            app.buttons["historyRow::Exod_2_1"].firstMatch.waitForExistence(timeout: 10),
-            "Expected seeded Exodus history row to exist before deleting it."
-        )
-        XCTAssertTrue(
-            app.buttons["historyRow::Matt_3_1"].firstMatch.waitForExistence(timeout: 10),
-            "Expected seeded Matthew history row to exist before deleting Exodus."
+        waitForElementValue(
+            "historyHarnessState",
+            toEqual: "historyState=Exod_2_1|Matt_3_1",
+            in: app
         )
 
         tapElementReliably(requireElement("historyHarnessDeleteButton::Exod_2_1", in: app, timeout: 10), timeout: 10)
@@ -1407,7 +1400,7 @@ final class AndBibleUITests: XCTestCase {
         )
         XCTAssertTrue(requireElement("syncNextCloudServerURLField", in: app, timeout: 10).exists)
 
-        requireElement("syncBackendSelect::GOOGLE_DRIVE", in: app, timeout: 10).tap()
+        tapSyncBackend("GOOGLE_DRIVE", in: app)
         waitForElementValue(
             "syncSettingsScreen",
             toEqual: "backend=GOOGLE_DRIVE;enabled=none",
@@ -1444,7 +1437,7 @@ final class AndBibleUITests: XCTestCase {
             "backend=NEXT_CLOUD;enabled=none"
         )
 
-        requireElement("syncBackendSelect::GOOGLE_DRIVE", in: app, timeout: 10).tap()
+        tapSyncBackend("GOOGLE_DRIVE", in: app)
         waitForElementValue(
             "syncSettingsScreen",
             toEqual: "backend=GOOGLE_DRIVE;enabled=none",
@@ -2198,6 +2191,29 @@ final class AndBibleUITests: XCTestCase {
             tapSettingsElement("settingsSyncLink", in: app)
         }
         return requireElement("syncSettingsScreen", in: app, timeout: 10)
+    }
+
+    /**
+     Switches Sync Settings to one backend using the deterministic harness control when available.
+     *
+     * - Parameters:
+     *   - backendRawValue: Target backend raw value that should become active.
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to wait for the switch control to resolve and become
+     *     hittable.
+     * - Side effects:
+     *   - prefers the safe-area XCUITest harness backend control when present
+     *   - otherwise falls back to the production backend switch control
+     * - Failure modes:
+     *   - fails if no backend-switch control for the requested backend becomes available
+     */
+    private func tapSyncBackend(
+        _ backendRawValue: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10
+    ) {
+        let button = requireButton("syncBackendSelect::\(backendRawValue)", in: app, timeout: timeout)
+        tapElementReliably(button, timeout: timeout)
     }
 
     /**

@@ -38,6 +38,12 @@ public struct HistoryView: View {
     /// Optional XCUITest-only callback that dismisses and reopens the history sheet deterministically.
     var onUITestDismissAndReopen: (() -> Void)?
 
+    /// Deterministic direct-launch XCUITest history keys that survive sheet reopen within one app launch.
+    @Binding var uiTestHarnessKeys: [String]
+
+    /// Whether the History screen should export and mutate the bound XCUITest harness state.
+    var useUITestHarnessState: Bool
+
     /// Resolves an OSIS book ID to a human-readable name using the active controller's dynamic book list.
     var bookNameResolver: ((String) -> String?)?
 
@@ -50,15 +56,22 @@ public struct HistoryView: View {
      - Parameters:
        - onUITestDismissAndReopen: Optional XCUITest-only callback that dismisses and reopens the
          history sheet without relying on the reader overflow menu.
+       - uiTestHarnessKeys: Bound deterministic history keys for direct-launch XCUITests.
+       - useUITestHarnessState: Whether the History screen should export and mutate the bound
+         XCUITest harness state instead of relying only on SwiftData query timing.
        - bookNameResolver: Optional resolver that maps OSIS IDs to dynamic, module-aware book names.
        - onNavigate: Optional callback invoked with the stored history key when a row is selected.
      */
     public init(
         onUITestDismissAndReopen: (() -> Void)? = nil,
+        uiTestHarnessKeys: Binding<[String]> = .constant([]),
+        useUITestHarnessState: Bool = false,
         bookNameResolver: ((String) -> String?)? = nil,
         onNavigate: ((String) -> Void)? = nil
     ) {
         self.onUITestDismissAndReopen = onUITestDismissAndReopen
+        self._uiTestHarnessKeys = uiTestHarnessKeys
+        self.useUITestHarnessState = useUITestHarnessState
         self.bookNameResolver = bookNameResolver
         self.onNavigate = onNavigate
     }
@@ -76,9 +89,16 @@ public struct HistoryView: View {
 
     /// Stable XCUITest-only export of the currently visible history keys.
     private var uiTestHistoryState: String {
-        let keys = uiTestHistoryItems
-            .map { sanitizedHistoryKey(for: $0) }
-            .sorted()
+        let keys: [String]
+        if useUITestHarnessState {
+            keys = uiTestHarnessKeys
+                .map(sanitizedHistoryKey(from:))
+                .sorted()
+        } else {
+            keys = uiTestHistoryItems
+                .map { sanitizedHistoryKey(for: $0) }
+                .sorted()
+        }
         return keys.isEmpty ? "historyState=empty" : "historyState=\(keys.joined(separator: "|"))"
     }
 
@@ -183,7 +203,9 @@ public struct HistoryView: View {
                 }
             }
 
-            if uiTestHistoryItems.contains(where: { $0.key == "Exod.2.1" }) {
+            if useUITestHarnessState
+                ? uiTestHarnessKeys.contains("Exod.2.1")
+                : uiTestHistoryItems.contains(where: { $0.key == "Exod.2.1" }) {
                 HStack(spacing: 8) {
                     Button("Delete Exodus") {
                         deleteUITestHistoryItems(matchingKey: "Exod.2.1")
@@ -315,6 +337,9 @@ public struct HistoryView: View {
             modelContext.delete(item)
         }
         try? modelContext.save()
+        if useUITestHarnessState {
+            uiTestHarnessKeys.removeAll()
+        }
     }
 
     /**
@@ -332,6 +357,9 @@ public struct HistoryView: View {
             modelContext.delete(item)
         }
         try? modelContext.save()
+        if useUITestHarnessState {
+            uiTestHarnessKeys.removeAll { $0 == key }
+        }
     }
 
     /**
@@ -342,5 +370,17 @@ public struct HistoryView: View {
             modelContext.delete(item)
         }
         try? modelContext.save()
+    }
+
+    /**
+     Sanitizes one raw history key such as `Gen.1.1` into the accessibility-safe token `Gen_1_1`.
+     *
+     * - Parameter key: Raw persisted or harness-exported history key.
+     * - Returns: Accessibility-safe token stable across views for the same stored key.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func sanitizedHistoryKey(from key: String) -> String {
+        key.replacingOccurrences(of: ".", with: "_")
     }
 }

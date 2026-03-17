@@ -177,6 +177,9 @@ public struct BibleReaderView: View {
     /// Exported XCUITest-only history workflow state used to diagnose jump-back navigation.
     @State private var uiTestHistoryNavigationState = "idle"
 
+    /// Direct-launch XCUITest history keys exported through the deterministic History harness.
+    @State private var uiTestHistoryHarnessKeys: [String] = []
+
     /// Exported XCUITest-only bookmark workflow state used to diagnose reader navigation.
     @State private var uiTestBookmarkNavigationState = "idle"
 
@@ -871,6 +874,8 @@ public struct BibleReaderView: View {
                     onUITestDismissAndReopen: uiTestUsesInMemoryStores && uiTestOpensHistoryOnLaunch
                         ? reopenHistoryForUITests
                         : nil,
+                    uiTestHarnessKeys: $uiTestHistoryHarnessKeys,
+                    useUITestHarnessState: uiTestUsesInMemoryStores && uiTestOpensHistoryOnLaunch,
                     bookNameResolver: { [weak ctrl = focusedController] osisId in
                         ctrl?.bookName(forOsisId: osisId)
                     }
@@ -3130,11 +3135,13 @@ public struct BibleReaderView: View {
         } else if uiTestSeedsHistoryMultiRowWorkflowOnLaunch {
             await waitForUITestActiveWindow()
             resetHistoryForUITests()
+            uiTestHistoryHarnessKeys = ["Exod.2.1", "Matt.3.1"]
             seedHistoryForUITests(keys: ["Exod.2.1", "Matt.3.1"])
             await waitForUITestHistoryKeys(["Exod.2.1", "Matt.3.1"])
         } else if uiTestSeedsHistoryWorkflowOnLaunch {
             await waitForUITestActiveWindow()
             resetHistoryForUITests()
+            uiTestHistoryHarnessKeys = ["Exod.2.1"]
             seedHistoryForUITests(keys: ["Exod.2.1"])
             await waitForUITestHistoryKeys(["Exod.2.1"])
         }

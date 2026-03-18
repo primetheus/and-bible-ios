@@ -81,19 +81,69 @@ jobs:
             timeout_minutes: 60
             build_xcresult_bundle_path: .artifacts/AndBibleBuild-unit.xcresult
             test_xcresult_bundle_path: .artifacts/AndBibleTests-unit.xcresult
-            test_selection: -skip-testing:AndBibleUITests
-          - job_name: UI Tests (Simulator)
-            artifact_suffix: ui
-            timeout_minutes: 120
-            build_xcresult_bundle_path: .artifacts/AndBibleBuild-ui.xcresult
-            test_xcresult_bundle_path: .artifacts/AndBibleTests-ui.xcresult
-            test_selection: -only-testing:AndBibleUITests
+            test_selection_args: |
+              -skip-testing:AndBibleUITests
+          - job_name: UI Tests (Simulator, Shard 1)
+            artifact_suffix: ui-shard-1
+            timeout_minutes: 90
+            build_xcresult_bundle_path: .artifacts/AndBibleBuild-ui-shard-1.xcresult
+            test_xcresult_bundle_path: .artifacts/AndBibleTests-ui-shard-1.xcresult
+            test_selection_args: |
+              -only-testing:AndBibleUITests/AndBibleUITests/testAboutScreenOpensFromReaderMenu
+              -only-testing:AndBibleUITests/AndBibleUITests/testBookmarkListFilterAndSearchResetAcrossReopen
+              -only-testing:AndBibleUITests/AndBibleUITests/testBookmarkListLabelFilterNarrowsAndClearsVisibleRows
+              -only-testing:AndBibleUITests/AndBibleUITests/testBookmarkListOpensLabelAssignmentForSeededBookmark
+              -only-testing:AndBibleUITests/AndBibleUITests/testBookmarkListOpensStudyPadForSelectedLabel
+              -only-testing:AndBibleUITests/AndBibleUITests/testBookmarkListSortMenuReordersRows
+              -only-testing:AndBibleUITests/AndBibleUITests/testBookmarkRowDeletePreservesOtherRowsAcrossReopen
+              -only-testing:AndBibleUITests/AndBibleUITests/testBookmarkSelectionNavigatesReaderToSeededReference
+              -only-testing:AndBibleUITests/AndBibleUITests/testBookmarkStudyPadCreateNoteFromLabelWorkflow
+              -only-testing:AndBibleUITests/AndBibleUITests/testDownloadsRepositoryManagerAddSourceCancelFlow
+              -only-testing:AndBibleUITests/AndBibleUITests/testHistoryClearRemovesSeededRowAcrossReopen
+              -only-testing:AndBibleUITests/AndBibleUITests/testHistoryRowDeletePreservesOtherRowsAcrossReopen
+              -only-testing:AndBibleUITests/AndBibleUITests/testLabelManagerCreateRenameDeleteFlow
+              -only-testing:AndBibleUITests/AndBibleUITests/testMyNotesDirectLaunchShowsHeaderAndReturnsToBible
+              -only-testing:AndBibleUITests/AndBibleUITests/testMyNotesSeededNoteDeletePersistsAcrossReturnAndReopen
+              -only-testing:AndBibleUITests/AndBibleUITests/testSearchDirectLaunchBuildsIndexAndReturnsBundledResults
+              -only-testing:AndBibleUITests/AndBibleUITests/testSearchScopeChangeRerunsQueryAndUpdatesResults
+              -only-testing:AndBibleUITests/AndBibleUITests/testSearchWordModeChangeRerunsQueryAndUpdatesResults
+              -only-testing:AndBibleUITests/AndBibleUITests/testSettingsSyncLinkOpensSyncSettings
+              -only-testing:AndBibleUITests/AndBibleUITests/testTextDisplayFontFamilyButtonPresentsFontPicker
+              -only-testing:AndBibleUITests/AndBibleUITests/testTextDisplayJustifyToggleMutatesControlState
+          - job_name: UI Tests (Simulator, Shard 2)
+            artifact_suffix: ui-shard-2
+            timeout_minutes: 90
+            build_xcresult_bundle_path: .artifacts/AndBibleBuild-ui-shard-2.xcresult
+            test_xcresult_bundle_path: .artifacts/AndBibleTests-ui-shard-2.xcresult
+            test_selection_args: |
+              -only-testing:AndBibleUITests/AndBibleUITests/testBookmarkListLabelAssignmentCreatesAndAssignsNewLabel
+              -only-testing:AndBibleUITests/AndBibleUITests/testBookmarkListLabelAssignmentRemovalHidesBookmarkUnderFilter
+              -only-testing:AndBibleUITests/AndBibleUITests/testBookmarkListSearchNarrowsAndClearsVisibleRows
+              -only-testing:AndBibleUITests/AndBibleUITests/testBookmarksScreenOpensFromReaderMenu
+              -only-testing:AndBibleUITests/AndBibleUITests/testColorSettingsResetRestoresDefaultThemeColors
+              -only-testing:AndBibleUITests/AndBibleUITests/testDownloadsScreenOpensFromReaderMenu
+              -only-testing:AndBibleUITests/AndBibleUITests/testHistorySelectionNavigatesReaderToSeededReference
+              -only-testing:AndBibleUITests/AndBibleUITests/testLabelAssignmentTogglesFavouriteAndAssignment
+              -only-testing:AndBibleUITests/AndBibleUITests/testMyNotesSeededNoteUpdatePersistsAcrossReturnAndReopen
+              -only-testing:AndBibleUITests/AndBibleUITests/testReadingPlansStartPlanAndAdvanceDay
+              -only-testing:AndBibleUITests/AndBibleUITests/testSearchDirectLaunchRetainsSeededQuery
+              -only-testing:AndBibleUITests/AndBibleUITests/testSearchResultSelectionNavigatesReaderToBundledReference
+              -only-testing:AndBibleUITests/AndBibleUITests/testSettingsColorsLinkOpensColorEditor
+              -only-testing:AndBibleUITests/AndBibleUITests/testSettingsImportExportFullBackupPresentsShareSheet
+              -only-testing:AndBibleUITests/AndBibleUITests/testSettingsImportExportImportPresentsFilePickerState
+              -only-testing:AndBibleUITests/AndBibleUITests/testSettingsScreenShowsPrimaryNavigationRows
+              -only-testing:AndBibleUITests/AndBibleUITests/testSyncSettingsBackendSwitchMutatesVisibleSection
+              -only-testing:AndBibleUITests/AndBibleUITests/testSyncSettingsBackendSwitchPersistsAcrossDirectReopen
+              -only-testing:AndBibleUITests/AndBibleUITests/testSyncSettingsCategoryDisablePersistsAcrossDirectReopen
+              -only-testing:AndBibleUITests/AndBibleUITests/testSyncSettingsCategoryToggleMutatesExportedState
+              -only-testing:AndBibleUITests/AndBibleUITests/testSyncSettingsNextCloudInvalidURLShowsValidationStatus
+              -only-testing:AndBibleUITests/AndBibleUITests/testWorkspaceSelectorCreateRenameCloneDeleteFlow
     timeout-minutes: ${{ matrix.timeout_minutes }}
     env:
       DERIVED_DATA_PATH: .derivedData
       BUILD_XCRESULT_BUNDLE_PATH: ${{ matrix.build_xcresult_bundle_path }}
       TEST_XCRESULT_BUNDLE_PATH: ${{ matrix.test_xcresult_bundle_path }}
-      TEST_SELECTION: ${{ matrix.test_selection }}
+      TEST_SELECTION_ARGS: ${{ matrix.test_selection_args }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -166,31 +216,33 @@ jobs:
           --timeout-seconds 300
 
       - name: Build for testing
-        run: >-
-          mkdir -p .artifacts &&
-          xcodebuild
-          -project AndBible.xcodeproj
-          -scheme AndBible
-          -configuration Debug
-          -destination "${{ steps.simulator.outputs.destination }}"
-          -derivedDataPath "${DERIVED_DATA_PATH}"
-          -resultBundlePath "${BUILD_XCRESULT_BUNDLE_PATH}"
-          CODE_SIGNING_ALLOWED=NO
-          "${TEST_SELECTION}"
-          build-for-testing
+        run: |
+          mkdir -p .artifacts
+          mapfile -t test_selection_args <<< "${TEST_SELECTION_ARGS}"
+          xcodebuild \
+            -project AndBible.xcodeproj \
+            -scheme AndBible \
+            -configuration Debug \
+            -destination "${{ steps.simulator.outputs.destination }}" \
+            -derivedDataPath "${DERIVED_DATA_PATH}" \
+            -resultBundlePath "${BUILD_XCRESULT_BUNDLE_PATH}" \
+            CODE_SIGNING_ALLOWED=NO \
+            "${test_selection_args[@]}" \
+            build-for-testing
 
       - name: Run selected simulator tests without rebuilding
-        run: >-
-          xcodebuild
-          -project AndBible.xcodeproj
-          -scheme AndBible
-          -configuration Debug
-          -destination "${{ steps.simulator.outputs.destination }}"
-          -derivedDataPath "${DERIVED_DATA_PATH}"
-          -resultBundlePath "${TEST_XCRESULT_BUNDLE_PATH}"
-          CODE_SIGNING_ALLOWED=NO
-          "${TEST_SELECTION}"
-          test-without-building
+        run: |
+          mapfile -t test_selection_args <<< "${TEST_SELECTION_ARGS}"
+          xcodebuild \
+            -project AndBible.xcodeproj \
+            -scheme AndBible \
+            -configuration Debug \
+            -destination "${{ steps.simulator.outputs.destination }}" \
+            -derivedDataPath "${DERIVED_DATA_PATH}" \
+            -resultBundlePath "${TEST_XCRESULT_BUNDLE_PATH}" \
+            CODE_SIGNING_ALLOWED=NO \
+            "${test_selection_args[@]}" \
+            test-without-building
 
       - name: Upload xcodebuild test result bundle
         if: always()

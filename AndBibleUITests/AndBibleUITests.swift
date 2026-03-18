@@ -1472,18 +1472,20 @@ final class AndBibleUITests: XCTestCase {
         let app = makeApp(openTextDisplayOnLaunch: true)
         app.launch()
 
-        _ = openTextDisplaySettings(in: app, launchedDirectly: true)
+        let textDisplayScreen = openTextDisplaySettings(in: app, launchedDirectly: true)
 
         let justifyToggle = requireElement("textDisplayJustifyTextToggle", in: app, timeout: 10)
-        let justifyState = app.staticTexts["textDisplayJustifyTextState"].firstMatch
-        XCTAssertTrue(justifyState.waitForExistence(timeout: 10), "Expected justify text state label to exist.")
-        let initialValue = justifyState.label
-        let expectedValue = initialValue == "justifyTextOn" ? "justifyTextOff" : "justifyTextOn"
-        justifyToggle.tap()
-
-        let valuePredicate = NSPredicate(format: "label == %@", expectedValue)
-        expectation(for: valuePredicate, evaluatedWith: justifyState)
-        waitForExpectations(timeout: 10)
+        let initialScreenState = textDisplayScreen.value as? String ?? ""
+        let expectedJustifyState = initialScreenState.contains("justifyTextOn")
+            ? "justifyTextOff|fontPickerHidden"
+            : "justifyTextOn|fontPickerHidden"
+        tapElementReliably(justifyToggle, timeout: 10)
+        waitForElementValue(
+            "textDisplaySettingsScreen",
+            toEqual: expectedJustifyState,
+            in: app,
+            timeout: 10
+        )
     }
 
     /**

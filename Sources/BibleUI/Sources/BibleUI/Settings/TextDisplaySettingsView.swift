@@ -242,14 +242,11 @@ public struct TextDisplaySettingsView: View {
         Button("Toggle Justify Text") {
             toggleJustifyText()
         }
-        .font(.caption.weight(.semibold))
-        .lineLimit(1)
-        .minimumScaleFactor(0.8)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial, in: Capsule())
+        .buttonStyle(.borderedProminent)
+        .frame(maxWidth: .infinity)
         .accessibilityIdentifier("textDisplayJustifyTextToggle")
         .accessibilityValue(uiTestJustifyStateLabel)
+        .padding(.horizontal, 16)
         .padding(.vertical, 8)
     }
 

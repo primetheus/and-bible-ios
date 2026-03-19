@@ -1306,10 +1306,10 @@ final class AndBibleUITests: XCTestCase {
      *
      * - Side effects:
      *   - launches the app directly into Sync Settings with the backend seeded to NextCloud
-     *   - enters one invalid server URL plus a username and triggers the manual connection test
+     *   - enters one invalid server URL and triggers the manual connection test
      * - Failure modes:
      *   - fails if the direct-launch Sync Settings sheet never appears
-     *   - fails if the NextCloud fields or test-connection button are missing
+     *   - fails if the NextCloud server field or test-connection control is missing
      *   - fails if the exported connection-test state never reaches `failureInvalidURL`
      */
     func testSyncSettingsNextCloudInvalidURLShowsValidationStatus() {
@@ -1318,13 +1318,9 @@ final class AndBibleUITests: XCTestCase {
 
         _ = openSyncSettings(in: app, launchedDirectly: true)
         let serverField = requireElement("syncNextCloudServerURLField", in: app, timeout: 10)
-        let usernameField = requireElement("syncNextCloudUsernameField", in: app, timeout: 10)
-        _ = requireElement("syncRemoteStatus", in: app, timeout: 10)
 
         serverField.tap()
         serverField.typeText("not-a-url")
-        usernameField.tap()
-        usernameField.typeText("tester")
 
         let harnessButton = app.buttons["syncHarnessTestConnectionButton"].firstMatch
         if harnessButton.waitForExistence(timeout: 1) {

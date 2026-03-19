@@ -207,7 +207,7 @@ public struct BookmarkListView: View {
                 )
             }
         }
-        .safeAreaInset(edge: .bottom) {
+        .safeAreaInset(edge: .top) {
             if uiTestUsesInMemoryStores {
                 uiTestBookmarkHarness
             }
@@ -341,35 +341,35 @@ public struct BookmarkListView: View {
     @ViewBuilder
     private var uiTestBookmarkHarness: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Button("Bible") {
-                    sortOrder = .bibleOrder
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("bookmarkListHarnessSortOption::bibleOrder")
-
-                Button("Created") {
-                    sortOrder = .createdAtDesc
-                }
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("bookmarkListHarnessSortOption::createdAtDesc")
+            Button("Bible") {
+                sortOrder = .bibleOrder
             }
+            .buttonStyle(.borderedProminent)
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier("bookmarkListHarnessSortOption::bibleOrder")
+
+            Button("Created") {
+                sortOrder = .createdAtDesc
+            }
+            .buttonStyle(.bordered)
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier("bookmarkListHarnessSortOption::createdAtDesc")
 
             if let seedLabel = userLabels.first(where: { $0.name == "UI Test Seed" }) {
-                HStack(spacing: 8) {
-                    Button("Seed") {
-                        selectedLabelId = seedLabel.id
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("bookmarkListHarnessFilterChip::UI_Test_Seed")
+                Button("Seed") {
+                    selectedLabelId = seedLabel.id
+                }
+                .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("bookmarkListHarnessFilterChip::UI_Test_Seed")
 
-                    if onOpenStudyPad != nil {
-                        Button("StudyPad") {
-                            onOpenStudyPad?(seedLabel.id)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("bookmarkListHarnessOpenStudyPadButton::UI_Test_Seed")
+                if onOpenStudyPad != nil {
+                    Button("StudyPad") {
+                        onOpenStudyPad?(seedLabel.id)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("bookmarkListHarnessOpenStudyPadButton::UI_Test_Seed")
                 }
             }
 
@@ -378,6 +378,7 @@ public struct BookmarkListView: View {
                     editingLabelsBookmarkId = seedBookmark.id
                 }
                 .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity)
                 .accessibilityIdentifier("bookmarkListHarnessEditLabelsButton::Genesis_1_1")
             }
 
@@ -388,6 +389,7 @@ public struct BookmarkListView: View {
                     onNavigate?(bookName, chapter)
                 }
                 .buttonStyle(.borderedProminent)
+                .frame(maxWidth: .infinity)
                 .accessibilityIdentifier("bookmarkListHarnessNavigateButton::Exodus_2_1")
             }
 
@@ -400,6 +402,7 @@ public struct BookmarkListView: View {
                     }
                 }
                 .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity)
                 .accessibilityIdentifier("bookmarkListHarnessDeleteButton::Exodus_2_1")
             }
 
@@ -411,7 +414,8 @@ public struct BookmarkListView: View {
         }
         .font(.caption.weight(.semibold))
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
         .background(.thinMaterial)
     }
 

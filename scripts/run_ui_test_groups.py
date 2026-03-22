@@ -113,7 +113,7 @@ def run_command(
     capture_output: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Run one subprocess and echo the exact command line."""
-    print("Running:", shlex.join(command))
+    print("Running:", shlex.join(command), flush=True)
     return subprocess.run(
         list(command),
         check=True,
@@ -227,6 +227,11 @@ def run_grouped_ui_tests(
 
     total_groups = len(groups)
     for group_index, (scenario, group_selection_args) in enumerate(groups, start=1):
+        print(
+            f"Running fixture group {group_index}/{total_groups}: {scenario} "
+            f"({len(group_selection_args)} test(s))",
+            flush=True,
+        )
         subprocess.run(
             ["xcrun", "simctl", "terminate", simulator_id, bundle_identifier],
             check=False,

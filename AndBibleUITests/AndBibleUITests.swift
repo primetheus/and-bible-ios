@@ -2182,7 +2182,7 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
-     Waits for one resolved element to become hittable, then taps its center point directly.
+     Waits for one resolved element to become tappable, then taps its center point directly.
      *
      * - Parameters:
      *   - element: Resolved XCUI element that should be tapped.
@@ -2190,10 +2190,12 @@ final class AndBibleUITests: XCTestCase {
      *   - file: Source file used for XCTest failure attribution.
      *   - line: Source line used for XCTest failure attribution.
      * - Side effects:
-     *   - waits for the live element to report `hittable == true`
-     *   - performs a coordinate-based center tap that bypasses XCUI's scroll-to-visible path
+     *   - waits for the live element to appear and prefers a `hittable == true` state when the
+     *     simulator reports one in time
+     *   - falls back to a coordinate-based center tap when the element exposes a stable frame but
+     *     XCTest never reports it as hittable
      * - Failure modes:
-     *   - records an XCTest failure if the element never becomes hittable
+     *   - records an XCTest failure if the element never appears or never exposes a stable frame
      *   - records an XCTest failure if the element does not expose a non-empty frame for tapping
      */
     private func tapElementReliably(
@@ -2202,16 +2204,15 @@ final class AndBibleUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let hittablePredicate = NSPredicate(format: "hittable == true")
-        let expectation = XCTNSPredicateExpectation(predicate: hittablePredicate, object: element)
-        let result = XCTWaiter().wait(for: [expectation], timeout: timeout)
-        XCTAssertEqual(
-            result,
-            .completed,
-            "Expected element '\(element.identifier)' to become hittable within \(timeout) seconds.",
+        XCTAssertTrue(
+            element.waitForExistence(timeout: timeout),
+            "Expected element '\(element.identifier)' to exist within \(timeout) seconds before tapping.",
             file: file,
             line: line
         )
+        let hittablePredicate = NSPredicate(format: "hittable == true")
+        let expectation = XCTNSPredicateExpectation(predicate: hittablePredicate, object: element)
+        _ = XCTWaiter().wait(for: [expectation], timeout: timeout)
         XCTAssertFalse(
             element.frame.isEmpty,
             "Expected element '\(element.identifier)' to expose a non-empty frame before tapping.",

@@ -93,7 +93,7 @@ jobs:
       - name: Generate UI shard matrix
         id: plan
         run: >-
-          python3 scripts/build_ui_test_shards.py
+          python3 -u scripts/build_ui_test_shards.py
           --test-file AndBibleUITests/AndBibleUITests.swift
           --timings-file "${UI_TEST_TIMINGS_FILE}"
           --shard-count "${UI_TEST_MIN_SHARD_COUNT}"
@@ -176,18 +176,18 @@ jobs:
 
       - name: Resolve iOS simulator destination
         id: simulator
-        run: python3 scripts/resolve_ios_simulator_destination.py --project AndBible.xcodeproj --scheme AndBible
+        run: python3 -u scripts/resolve_ios_simulator_destination.py --project AndBible.xcodeproj --scheme AndBible
 
       - name: Boot selected simulator
         run: >-
-          python3 scripts/wait_for_simulator_boot.py
+          python3 -u scripts/wait_for_simulator_boot.py
           --simulator-id "${{ steps.simulator.outputs.simulator_id }}"
           --timeout-seconds 300
 
       - name: Build for testing
         run: |
           mkdir -p .artifacts
-          python3 scripts/run_xcodebuild_with_test_selection.py \
+          python3 -u scripts/run_xcodebuild_with_test_selection.py \
             --project AndBible.xcodeproj \
             --scheme AndBible \
             --configuration Debug \
@@ -199,7 +199,7 @@ jobs:
 
       - name: Run selected simulator tests without rebuilding
         run: |
-          python3 scripts/run_xcodebuild_with_test_selection.py \
+          python3 -u scripts/run_xcodebuild_with_test_selection.py \
             --project AndBible.xcodeproj \
             --scheme AndBible \
             --configuration Debug \
@@ -306,7 +306,7 @@ jobs:
       - name: Build for testing
         run: |
           mkdir -p .artifacts
-          python3 scripts/run_xcodebuild_with_test_selection.py \
+          python3 -u scripts/run_xcodebuild_with_test_selection.py \
             --project AndBible.xcodeproj \
             --scheme AndBible \
             --configuration Debug \
@@ -321,7 +321,7 @@ jobs:
 
       - name: Run selected simulator tests without rebuilding
         run: |
-          python3 scripts/run_ui_test_groups.py \
+          python3 -u scripts/run_ui_test_groups.py \
             --project AndBible.xcodeproj \
             --scheme AndBible \
             --configuration Debug \

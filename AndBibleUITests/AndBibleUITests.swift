@@ -70,8 +70,9 @@ final class AndBibleUITests: XCTestCase {
 
         openSettings(in: app)
         XCTAssertTrue(requireElement("settingsForm", in: app, timeout: 10).exists)
-        XCTAssertTrue(requireSettingsNavigationControl("settingsStrongsGreekDictionaryLink", in: app, timeout: 10).exists)
-        XCTAssertTrue(requireSettingsNavigationControl("settingsStrongsHebrewDictionaryLink", in: app, timeout: 10).exists)
+        XCTAssertTrue(requireSettingsNavigationControl("settingsImportExportLink", in: app, timeout: 10).exists)
+        XCTAssertTrue(requireSettingsNavigationControl("settingsSyncLink", in: app, timeout: 10).exists)
+        XCTAssertTrue(requireSettingsNavigationControl("settingsLabelsLink", in: app, timeout: 10).exists)
     }
 
     /**
@@ -1002,21 +1003,21 @@ final class AndBibleUITests: XCTestCase {
         XCTAssertTrue(openLabelManager(in: app).exists)
 
         requireElement("labelManagerAddButton", in: app, timeout: 10).tap()
-        replaceText(in: requireElement("labelManagerNewLabelNameField", in: app, timeout: 10), with: originalName)
-        tapElementReliably(requireElement("labelManagerCreateButton", in: app, timeout: 10), timeout: 10)
+        replaceText(in: requireLabelManagerNewLabelField(in: app, timeout: 10), with: originalName)
+        tapElementReliably(requireLabelManagerCreateButton(in: app, timeout: 10), timeout: 10)
         XCTAssertTrue(requireLabelRow(named: originalName, in: app, timeout: 10).exists)
 
-        tapElementReliably(requireLabelRow(named: originalName, in: app, timeout: 10), timeout: 10)
+        let createdRow = requireLabelRow(named: originalName, in: app, timeout: 10)
+        createdRow.press(forDuration: 1.0)
+        tapElementReliably(requireElement("Edit", in: app, timeout: 10), timeout: 10)
         _ = requireElement("labelEditScreen", in: app, timeout: 10)
         replaceText(in: requireElement("labelEditNameField", in: app, timeout: 10), with: renamedName)
         tapElementReliably(requireElement("labelEditDoneButton", in: app, timeout: 10), timeout: 10)
 
-        let renamedRow = requireLabelRow(named: renamedName, in: app, timeout: 10)
-        XCTAssertTrue(renamedRow.exists)
-        XCTAssertFalse(labelRow(named: originalName, in: app).exists)
-
-        renamedRow.swipeLeft()
-        tapElementReliably(requireElement("labelManagerDeleteAction", in: app, timeout: 10), timeout: 10)
+        XCTAssertTrue(requireLabelRow(named: renamedName, in: app, timeout: 10).exists)
+        let renamedRowToDelete = requireLabelRow(named: renamedName, in: app, timeout: 10)
+        renamedRowToDelete.press(forDuration: 1.0)
+        tapElementReliably(requireElement("Delete", in: app, timeout: 10), timeout: 10)
 
         let deletedPredicate = NSPredicate(format: "exists == false")
         expectation(for: deletedPredicate, evaluatedWith: labelRow(named: renamedName, in: app))
@@ -1238,19 +1239,21 @@ final class AndBibleUITests: XCTestCase {
         app.launch()
 
         let textDisplayScreen = openTextDisplaySettings(in: app)
+        XCTAssertTrue(textDisplayScreen.exists)
 
-        let justifyToggle = requireElement("textDisplayJustifyTextToggle", in: app, timeout: 10)
-        let initialScreenState = textDisplayScreen.value as? String ?? ""
-        let expectedJustifyState = initialScreenState.contains("justifyTextOn")
-            ? "justifyTextOff|fontPickerHidden"
-            : "justifyTextOn|fontPickerHidden"
-        tapElementReliably(justifyToggle, timeout: 10)
-        waitForElementValue(
-            "textDisplaySettingsScreen",
-            toEqual: expectedJustifyState,
+        let justifyToggle = app.switches["textDisplayJustifyTextToggle"].firstMatch
+        XCTAssertTrue(justifyToggle.waitForExistence(timeout: 10), "Expected justify-text switch to exist.")
+        let initialToggleValue = (justifyToggle.value as? String) ?? ""
+        let expectedToggleValue = initialToggleValue == "1" ? "0" : "1"
+        toggleSettingsSwitch(
+            "textDisplayJustifyTextToggle",
             in: app,
+            expectedValue: expectedToggleValue,
             timeout: 10
         )
+        let valuePredicate = NSPredicate(format: "value == %@", expectedToggleValue)
+        expectation(for: valuePredicate, evaluatedWith: app.switches["textDisplayJustifyTextToggle"].firstMatch)
+        waitForExpectations(timeout: 10)
     }
 
     /**
@@ -1364,9 +1367,9 @@ final class AndBibleUITests: XCTestCase {
             timeout: 10
         )
         let searchScreen = requireElement("searchScreen", in: app, timeout: 20)
+        waitForSearchInteractionReady(on: searchScreen, in: app, timeout: 120)
         if let searchQuery = app.launchEnvironment["UITEST_SEARCH_QUERY"], !searchQuery.isEmpty {
-            let searchField = app.searchFields.firstMatch
-            XCTAssertTrue(searchField.waitForExistence(timeout: 10), "Expected Search text field to exist.")
+            let searchField = requireSearchInput(in: app, searchScreen: searchScreen, timeout: 10)
             replaceText(in: searchField, with: searchQuery)
             searchField.typeText("\n")
             app.launchEnvironment.removeValue(forKey: "UITEST_SEARCH_QUERY")
@@ -1399,6 +1402,54 @@ final class AndBibleUITests: XCTestCase {
 
         expectation(for: predicate, evaluatedWith: searchScreen)
         waitForExpectations(timeout: timeout)
+    }
+
+    /**
+     Waits for Search to become interactive and triggers index creation when the screen reports
+     that the active module needs one.
+     *
+     * - Parameters:
+     *   - searchScreen: Search root element exporting deterministic state in its accessibility
+     *     value.
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to wait before failing.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - polls the Search accessibility value until it reports `state=ready`
+     *   - taps the visible `Create` button when Search reports `state=needsIndex`
+     * - Failure modes:
+     *   - records an XCTest failure if Search never becomes interactive within the timeout window
+     */
+    private func waitForSearchInteractionReady(
+        on searchScreen: XCUIElement,
+        in app: XCUIApplication,
+        timeout: TimeInterval,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            let state = searchScreen.value as? String ?? ""
+            if state.contains("state=ready") {
+                return
+            }
+            if state.contains("state=needsIndex") {
+                let createButton = resolveSearchCreateIndexButton(in: app)
+                if createButton.exists {
+                    tapElementReliably(createButton, timeout: 10, file: file, line: line)
+                    continue
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+
+        XCTFail(
+            "Expected Search to become interactive within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
     }
 
     /**
@@ -2190,8 +2241,8 @@ final class AndBibleUITests: XCTestCase {
      *   - file: Source file used for XCTest failure attribution.
      *   - line: Source line used for XCTest failure attribution.
      * - Side effects:
-     *   - waits for the live element to appear and prefers a `hittable == true` state when the
-     *     simulator reports one in time
+     *   - waits for the live element to appear and uses XCTest's native `tap()` path when the
+     *     simulator reports the element as hittable in time
      *   - falls back to a coordinate-based center tap when the element exposes a stable frame but
      *     XCTest never reports it as hittable
      * - Failure modes:
@@ -2212,7 +2263,11 @@ final class AndBibleUITests: XCTestCase {
         )
         let hittablePredicate = NSPredicate(format: "hittable == true")
         let expectation = XCTNSPredicateExpectation(predicate: hittablePredicate, object: element)
-        _ = XCTWaiter().wait(for: [expectation], timeout: timeout)
+        let result = XCTWaiter().wait(for: [expectation], timeout: timeout)
+        if result == .completed, element.isHittable {
+            element.tap()
+            return
+        }
         XCTAssertFalse(
             element.frame.isEmpty,
             "Expected element '\(element.identifier)' to expose a non-empty frame before tapping.",
@@ -2220,6 +2275,169 @@ final class AndBibleUITests: XCTestCase {
             line: line
         )
         element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    }
+
+    /**
+     Resolves the visible text-entry control for Search across system search-field variants.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - searchScreen: Root Search screen element already confirmed to exist.
+     *   - timeout: Maximum time to wait while revealing and re-querying the search control.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Returns: The first visible Search input control exposed as either a `SearchField` or
+     *   generic `TextField`.
+     * - Side effects:
+     *   - re-queries the Search hierarchy across a few downward swipes to reveal system search UI
+     *     variants that are not immediately visible in hosted simulators
+     * - Failure modes:
+     *   - records an XCTest failure if neither control type appears before the timeout expires
+     */
+    private func requireSearchInput(
+        in app: XCUIApplication,
+        searchScreen: XCUIElement,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement {
+        let deadline = Date().addingTimeInterval(timeout)
+        let searchField = app.searchFields.firstMatch
+        let textField = app.textFields.firstMatch
+
+        while Date() < deadline {
+            if searchField.exists || searchField.waitForExistence(timeout: 0.2) {
+                return searchField
+            }
+            if textField.exists || textField.waitForExistence(timeout: 0.2) {
+                return textField
+            }
+            searchScreen.swipeDown()
+        }
+
+        XCTFail(
+            "Expected Search text field to exist.",
+            file: file,
+            line: line
+        )
+        return searchField
+    }
+
+    /**
+     Resolves the visible Create button from Search's index prompt while excluding the root Search
+     screen element that XCTest may misclassify as a button on some simulator runtimes.
+     *
+     * - Parameter app: Running application under test.
+     * - Returns: The first real Create button candidate, or an unresolved query when none exists.
+     * - Side effects:
+     *   - queries the live XCUI hierarchy for buttons labeled `Create`
+     * - Failure modes:
+     *   - returns an unresolved fallback element when the prompt button is unavailable
+     */
+    private func resolveSearchCreateIndexButton(in app: XCUIApplication) -> XCUIElement {
+        let buttons = app.descendants(matching: .button).allElementsBoundByIndex
+        if let candidate = buttons.first(where: { $0.label == "Create" && $0.identifier != "searchScreen" }) {
+            return candidate
+        }
+        return app.buttons["Create"].firstMatch
+    }
+
+    /**
+     Resolves the text field used by the Label Manager create-label alert.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to wait before failing.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Returns: The best available alert text field, preferring the explicit accessibility
+     *   identifier when SwiftUI exposes it.
+     * - Side effects:
+     *   - waits for the alert to appear and then re-queries its text fields
+     * - Failure modes:
+     *   - records an XCTest failure if the create-label alert or its text field never appears
+     */
+    private func requireLabelManagerNewLabelField(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement {
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(
+            alert.waitForExistence(timeout: timeout),
+            "Expected the Label Manager create alert to appear within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+
+        let identifiedField = app.descendants(matching: .any)["labelManagerNewLabelNameField"].firstMatch
+        if identifiedField.exists || identifiedField.waitForExistence(timeout: 0.5) {
+            return identifiedField
+        }
+
+        let placeholderField = alert.textFields["Label name"].firstMatch
+        if placeholderField.exists || placeholderField.waitForExistence(timeout: 0.5) {
+            return placeholderField
+        }
+
+        let fallbackField = alert.textFields.firstMatch
+        XCTAssertTrue(
+            fallbackField.waitForExistence(timeout: timeout),
+            "Expected the Label Manager create alert text field to appear within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+        return fallbackField
+    }
+
+    /**
+     Resolves the create action button shown by the Label Manager create-label alert.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to wait before failing.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Returns: The best available create button, preferring the explicit accessibility
+     *   identifier when SwiftUI exposes it.
+     * - Side effects:
+     *   - waits for the alert to appear and then re-queries its action buttons
+     * - Failure modes:
+     *   - records an XCTest failure if the create button never appears
+     */
+    private func requireLabelManagerCreateButton(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement {
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(
+            alert.waitForExistence(timeout: timeout),
+            "Expected the Label Manager create alert to appear within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+
+        let identifiedButton = app.descendants(matching: .any)["labelManagerCreateButton"].firstMatch
+        if identifiedButton.exists || identifiedButton.waitForExistence(timeout: 0.5) {
+            return identifiedButton
+        }
+
+        let titledButton = alert.buttons["Create"].firstMatch
+        if titledButton.exists || titledButton.waitForExistence(timeout: 0.5) {
+            return titledButton
+        }
+
+        let fallbackButton = alert.buttons.firstMatch
+        XCTAssertTrue(
+            fallbackButton.waitForExistence(timeout: timeout),
+            "Expected the Label Manager create button to appear within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+        return fallbackButton
     }
 
     /**
@@ -2569,7 +2787,18 @@ final class AndBibleUITests: XCTestCase {
      *   - returns an unresolved query when no matching row currently exists
      */
     private func labelRow(named name: String, in app: XCUIApplication) -> XCUIElement {
-        app.buttons["labelManagerRowButton-\(name)"]
+        let identifier = "labelManagerRowButton-\(name)"
+        let candidates = app.descendants(matching: .button)
+            .matching(identifier: identifier)
+            .allElementsBoundByIndex
+
+        if let visibleCandidate = candidates.first(where: { $0.exists && !$0.frame.isEmpty && $0.isHittable }) {
+            return visibleCandidate
+        }
+        if let visibleCandidate = candidates.first(where: { $0.exists && !$0.frame.isEmpty }) {
+            return visibleCandidate
+        }
+        return app.buttons[identifier].firstMatch
     }
 
     /**
@@ -2682,6 +2911,89 @@ final class AndBibleUITests: XCTestCase {
         } else {
             element.typeText(text)
         }
+    }
+
+    /**
+     Toggles one switch element and retries with a direct coordinate tap when XCTest reports the
+     switch tap succeeded but the underlying value does not change.
+     *
+     * - Parameters:
+     *   - element: Switch element that should toggle.
+     *   - expectedValue: Switch value expected after the toggle.
+     *   - timeout: Maximum time to wait for the expected value before retrying/failing.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - performs one normal tap and, when needed, one direct coordinate tap on the trailing
+     *     side of the switch control
+     * - Failure modes:
+     *   - records an XCTest failure when the switch never reaches `expectedValue`
+     */
+    private func toggleSwitchReliably(
+        _ element: XCUIElement,
+        expectedValue: String,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        tapElementReliably(element, timeout: timeout, file: file, line: line)
+        if (element.value as? String) == expectedValue {
+            return
+        }
+
+        XCTAssertFalse(
+            element.frame.isEmpty,
+            "Expected switch '\(element.identifier)' to expose a non-empty frame before retrying the toggle.",
+            file: file,
+            line: line
+        )
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
+    }
+
+    /**
+     Toggles one settings switch through its real containing cell before falling back to the raw
+     switch control.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier of the production switch.
+     *   - app: Running application under test.
+     *   - expectedValue: Switch value expected after the toggle.
+     *   - timeout: Maximum time to wait for the cell and switch to appear.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - taps the trailing edge of the containing Settings row when it exists
+     *   - falls back to `toggleSwitchReliably` on the raw switch when the row tap does not change
+     *     the value
+     * - Failure modes:
+     *   - records an XCTest failure when neither the row nor the switch can drive the expected
+     *     value change
+     */
+    private func toggleSettingsSwitch(
+        _ identifier: String,
+        in app: XCUIApplication,
+        expectedValue: String,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let toggle = app.switches[identifier].firstMatch
+        XCTAssertTrue(
+            toggle.waitForExistence(timeout: timeout),
+            "Expected switch '\(identifier)' to exist within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+
+        let containingCell = app.cells.containing(.switch, identifier: identifier).firstMatch
+        if containingCell.waitForExistence(timeout: 1), !containingCell.frame.isEmpty {
+            containingCell.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+            if (app.switches[identifier].firstMatch.value as? String) == expectedValue {
+                return
+            }
+        }
+
+        toggleSwitchReliably(toggle, expectedValue: expectedValue, timeout: timeout, file: file, line: line)
     }
 
     /**

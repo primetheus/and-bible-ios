@@ -1245,15 +1245,20 @@ final class AndBibleUITests: XCTestCase {
         XCTAssertTrue(justifyToggle.waitForExistence(timeout: 10), "Expected justify-text switch to exist.")
         let initialToggleValue = (justifyToggle.value as? String) ?? ""
         let expectedToggleValue = initialToggleValue == "1" ? "0" : "1"
-        toggleSettingsSwitch(
-            "textDisplayJustifyTextToggle",
+        let initialScreenValue = (textDisplayScreen.value as? String) ?? ""
+        let expectedScreenToken = initialScreenValue.contains("justifyTextOn") ? "justifyTextOff" : "justifyTextOn"
+        toggleTextDisplayJustifySwitch(
             in: app,
-            expectedValue: expectedToggleValue,
+            expectedToggleValue: expectedToggleValue,
+            expectedScreenToken: expectedScreenToken,
             timeout: 10
         )
-        let valuePredicate = NSPredicate(format: "value == %@", expectedToggleValue)
-        expectation(for: valuePredicate, evaluatedWith: app.switches["textDisplayJustifyTextToggle"].firstMatch)
-        waitForExpectations(timeout: 10)
+        waitForElementValue(
+            "textDisplaySettingsScreen",
+            toContain: expectedScreenToken,
+            in: app,
+            timeout: 10
+        )
     }
 
     /**
@@ -2147,6 +2152,52 @@ final class AndBibleUITests: XCTestCase {
         )
     }
 
+    /**
+     Waits for one accessibility-identified element value to contain a token.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier expected to appear in the UI hierarchy.
+     *   - expectedToken: Token that should appear inside the element value or label.
+     *   - app: Running application under test.
+     *   - timeout: Maximum time to keep polling before failing.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - repeatedly re-queries the live XCUI hierarchy until the requested token appears in the
+     *     element value or label
+     * - Failure modes:
+     *   - fails when the element disappears or never reports the requested token before timeout
+     */
+    private func waitForElementValue(
+        _ identifier: String,
+        toContain expectedToken: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let currentElement = app.descendants(matching: .any)[identifier].firstMatch
+            let currentValue = currentElement.value as? String
+            let currentLabel = currentElement.label
+            if currentElement.exists,
+               (currentValue?.contains(expectedToken) == true || currentLabel.contains(expectedToken)) {
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        let finalElement = app.descendants(matching: .any)[identifier].firstMatch
+        let finalValue = finalElement.value as? String
+        XCTAssertTrue(
+            (finalValue?.contains(expectedToken) == true || finalElement.label.contains(expectedToken)),
+            "Expected element '\(identifier)' to contain token '\(expectedToken)' within \(timeout) seconds. Final value: '\(finalValue ?? finalElement.label)'.",
+            file: file,
+            line: line
+        )
+    }
+
 
     /**
      Waits for the reader shell's overflow-menu button, allowing extra time for the first cold app
@@ -2228,8 +2279,61 @@ final class AndBibleUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let button = requireButton(identifier, in: app, timeout: timeout, file: file, line: line)
+        let button = requireReaderActionControl(identifier, in: app, timeout: timeout, file: file, line: line)
         tapElementReliably(button, timeout: timeout, file: file, line: line)
+    }
+
+    /**
+     Resolves one reader-shell menu action, scrolling the live menu surface when the requested
+     action starts below the fold.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier of the reader action to resolve.
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to keep searching and scrolling.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Returns: The resolved reader action button.
+     * - Side effects:
+     *   - re-queries the live accessibility hierarchy while swiping the visible menu container
+     *     upward to reveal actions lower in the overflow menu
+     * - Failure modes:
+     *   - records an XCTest failure when the requested action never appears before the timeout
+     */
+    private func requireReaderActionControl(
+        _ identifier: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement {
+        let button = app.buttons[identifier].firstMatch
+        if button.waitForExistence(timeout: 1) {
+            return button
+        }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if button.exists {
+                return button
+            }
+
+            let swipeContainerCandidates = [
+                app.sheets.firstMatch,
+                app.scrollViews.firstMatch,
+                app.tables.firstMatch,
+                app.collectionViews.firstMatch,
+            ]
+            if let container = swipeContainerCandidates.first(where: { $0.exists && !$0.frame.isEmpty }) {
+                container.swipeUp()
+            } else {
+                app.swipeUp()
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        return requireButton(identifier, in: app, timeout: 1, file: file, line: line)
     }
 
     /**
@@ -2994,6 +3098,68 @@ final class AndBibleUITests: XCTestCase {
         }
 
         toggleSwitchReliably(toggle, expectedValue: expectedValue, timeout: timeout, file: file, line: line)
+    }
+
+    /**
+     Toggles the real justify-text setting and treats the screen-level exported state as the
+     authoritative mutation signal.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - expectedToggleValue: Raw switch value expected after the toggle.
+     *   - expectedScreenToken: Screen accessibility token expected after the toggle.
+     *   - timeout: Maximum time to keep retrying the real UI interaction.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - re-queries the visible Text Display row containing the justify-text switch
+     *   - taps the real containing row first and falls back to the raw switch when needed
+     * - Failure modes:
+     *   - records an XCTest failure if neither the row nor the switch drives the screen state to
+     *     the requested token within the timeout window
+     */
+    private func toggleTextDisplayJustifySwitch(
+        in app: XCUIApplication,
+        expectedToggleValue: String,
+        expectedScreenToken: String,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let screen = app.otherElements["textDisplaySettingsScreen"].firstMatch
+            let toggle = app.switches["textDisplayJustifyTextToggle"].firstMatch
+            let tableCell = app.tables.cells.containing(.switch, identifier: "textDisplayJustifyTextToggle").firstMatch
+            let genericCell = app.cells.containing(.switch, identifier: "textDisplayJustifyTextToggle").firstMatch
+
+            if (screen.value as? String)?.contains(expectedScreenToken) == true {
+                return
+            }
+
+            if tableCell.exists, !tableCell.frame.isEmpty {
+                tableCell.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+            } else if genericCell.exists, !genericCell.frame.isEmpty {
+                genericCell.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+            } else if toggle.exists {
+                toggleSwitchReliably(toggle, expectedValue: expectedToggleValue, timeout: 2, file: file, line: line)
+            }
+
+            if (screen.value as? String)?.contains(expectedScreenToken) == true {
+                return
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        } while Date() < deadline
+
+        waitForElementValue(
+            "textDisplaySettingsScreen",
+            toContain: expectedScreenToken,
+            in: app,
+            timeout: 1,
+            file: file,
+            line: line
+        )
     }
 
     /**

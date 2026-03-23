@@ -101,6 +101,64 @@ jobs:
           --timeout-minutes "${UI_TEST_TIMEOUT_MINUTES}"
           --github-output "${GITHUB_OUTPUT}"
 
+  ios-ui-foundation:
+    name: Prepare UI Test Foundation
+    runs-on: macos-15
+    needs:
+      - repo-standards
+      - localization-guardrails
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Select Xcode version
+        uses: maxim-lobanov/setup-xcode@v1.6.0
+        with:
+          xcode-version: '16.4'
+
+      - name: Restore libsword build cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            libsword/sword-src
+            libsword/build
+            libsword/libsword.xcframework
+          key: ${{ runner.os }}-xcode-16.4-libsword-hosttool-${{ hashFiles('libsword/build-ios.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-16.4-libsword-hosttool-
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Ensure libsword build prerequisites
+        run: |
+          if ! command -v cmake >/dev/null 2>&1; then
+            brew install cmake
+          fi
+          if ! command -v svn >/dev/null 2>&1; then
+            brew install subversion
+          fi
+
+      - name: Build libsword XCFramework
+        working-directory: libsword
+        env:
+          INCLUDE_MACOS_SLICE: "1"
+        run: |
+          if [ -f libsword.xcframework/macos-arm64_x86_64/libsword.a ] && [ -f libsword.xcframework/ios-arm64/libsword.a ] && [ -f libsword.xcframework/ios-arm64_x86_64-simulator/libsword.a ]; then
+            echo "Using cached libsword.xcframework"
+          else
+            ./build-ios.sh
+          fi
+
+      - name: Upload prepared libsword XCFramework
+        uses: actions/upload-artifact@v6
+        with:
+          name: libsword-hosttool-xcframework
+          path: libsword/libsword.xcframework
+          if-no-files-found: error
+          retention-days: 1
+
   ios-simulator-unit-tests:
     name: Unit Tests (Simulator)
     runs-on: macos-15
@@ -141,6 +199,8 @@ jobs:
             libsword/build
             libsword/libsword.xcframework
           key: ${{ runner.os }}-xcode-16.4-libsword-iosonly-${{ hashFiles('libsword/build-ios.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-16.4-libsword-iosonly-
 
       - name: Show Xcode version
         run: xcodebuild -version
@@ -223,6 +283,7 @@ jobs:
     runs-on: macos-15
     needs:
       - ui-shard-plan
+      - ios-ui-foundation
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.ui-shard-plan.outputs.matrix) }}
@@ -260,6 +321,14 @@ jobs:
             libsword/build
             libsword/libsword.xcframework
           key: ${{ runner.os }}-xcode-16.4-libsword-hosttool-${{ hashFiles('libsword/build-ios.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-16.4-libsword-hosttool-
+
+      - name: Download prepared libsword XCFramework
+        uses: actions/download-artifact@v5
+        with:
+          name: libsword-hosttool-xcframework
+          path: libsword
 
       - name: Show Xcode version
         run: xcodebuild -version
@@ -295,7 +364,12 @@ jobs:
 
       - name: Resolve iOS simulator destination
         id: simulator
-        run: python3 scripts/resolve_ios_simulator_destination.py --project AndBible.xcodeproj --scheme AndBible
+        run: >-
+          python3 scripts/resolve_ios_simulator_destination.py
+          --project AndBible.xcodeproj
+          --scheme AndBible
+          --create-dedicated-device
+          --device-name-prefix "AndBible CI UI"
 
       - name: Boot selected simulator
         run: >-
@@ -342,3 +416,7 @@ jobs:
           path: .artifacts/*.xcresult
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Delete dedicated simulator
+        if: always() && steps.simulator.outputs.simulator_created == 'true'
+        run: xcrun simctl delete "${{ steps.simulator.outputs.simulator_id }}"

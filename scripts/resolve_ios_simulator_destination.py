@@ -176,7 +176,12 @@ def choose_existing_device(
     return devices[0]
 
 
-def provision_simulator(preferred_order: list[str] | None = None) -> str | None:
+def provision_simulator(
+    preferred_order: list[str] | None = None,
+    *,
+    reuse_existing: bool = True,
+    device_name_prefix: str = "AndBible CI",
+) -> str | None:
     runtimes_payload = read_simctl_json("runtimes", "available")
     runtime = choose_runtime(runtimes_payload)
     if runtime is None:
@@ -185,20 +190,21 @@ def provision_simulator(preferred_order: list[str] | None = None) -> str | None:
 
     runtime_identifier = str(runtime.get("identifier", ""))
     devices_payload = read_simctl_json("devices", "available")
-    existing_device = choose_existing_device(devices_payload, runtime_identifier, preferred_order)
-    if existing_device is not None:
-        print(
-            "Reusing existing simulator: "
-            f"{existing_device.get('name')} ({runtime.get('name', runtime.get('version', 'unknown runtime'))})"
-        )
-        return str(existing_device.get("udid", ""))
+    if reuse_existing:
+        existing_device = choose_existing_device(devices_payload, runtime_identifier, preferred_order)
+        if existing_device is not None:
+            print(
+                "Reusing existing simulator: "
+                f"{existing_device.get('name')} ({runtime.get('name', runtime.get('version', 'unknown runtime'))})"
+            )
+            return str(existing_device.get("udid", ""))
 
     device_type = choose_device_type(runtime, preferred_order)
     if device_type is None:
         print("No supported iPhone device type was available for the installed iOS runtime.")
         return None
 
-    device_name = f"AndBible CI {device_type['name']}"
+    device_name = f"{device_name_prefix} {device_type['name']}"
     command = [
         "xcrun",
         "simctl",
@@ -219,21 +225,46 @@ def provision_simulator(preferred_order: list[str] | None = None) -> str | None:
     return simulator_id or None
 
 
-def write_github_output(output_path: Path, destination: str, device_name: str, os_version: str) -> None:
+def find_candidate_by_simulator_id(
+    candidates: list[tuple[str, str, str]],
+    simulator_id: str,
+) -> tuple[str, str, str] | None:
+    for candidate in candidates:
+        if candidate[2] == simulator_id:
+            return candidate
+    return None
+
+
+def write_github_output(
+    output_path: Path,
+    destination: str,
+    device_name: str,
+    os_version: str,
+    *,
+    simulator_created: bool,
+) -> None:
     simulator_id = destination.removeprefix("id=")
     with output_path.open("a", encoding="utf-8") as file_handle:
         file_handle.write(f"destination={destination}\n")
         file_handle.write(f"simulator_id={simulator_id}\n")
         file_handle.write(f"device_name={device_name}\n")
         file_handle.write(f"os_version={os_version}\n")
+        file_handle.write(f"simulator_created={'true' if simulator_created else 'false'}\n")
 
 
-def print_resolved_output(destination: str, device_name: str, os_version: str) -> None:
+def print_resolved_output(
+    destination: str,
+    device_name: str,
+    os_version: str,
+    *,
+    simulator_created: bool,
+) -> None:
     simulator_id = destination.removeprefix("id=")
     print(f"destination={destination}")
     print(f"simulator_id={simulator_id}")
     print(f"device_name={device_name}")
     print(f"os_version={os_version}")
+    print(f"simulator_created={'true' if simulator_created else 'false'}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -242,6 +273,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scheme", default="AndBible", help="Xcode scheme name")
     parser.add_argument("--retries", type=int, default=3, help="Number of xcodebuild retries")
     parser.add_argument("--delay-seconds", type=float, default=2.0, help="Delay between retries")
+    parser.add_argument(
+        "--create-dedicated-device",
+        action="store_true",
+        help="Create a fresh simulator device for this run instead of reusing an existing one",
+    )
+    parser.add_argument(
+        "--device-name-prefix",
+        default="AndBible CI",
+        help="Prefix to use when creating a dedicated simulator device",
+    )
     parser.add_argument(
         "--github-output",
         default=os.environ.get("GITHUB_OUTPUT"),
@@ -252,6 +293,16 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    created_simulator_id: str | None = None
+
+    if args.create_dedicated_device:
+        created_simulator_id = provision_simulator(
+            reuse_existing=False,
+            device_name_prefix=args.device_name_prefix,
+        )
+        if created_simulator_id:
+            time.sleep(args.delay_seconds)
+
     candidates, output_text = discover_candidates(
         project=args.project,
         scheme=args.scheme,
@@ -259,7 +310,7 @@ def main() -> int:
         delay_seconds=args.delay_seconds,
     )
 
-    if not candidates and has_simulator_placeholder(output_text):
+    if not candidates and has_simulator_placeholder(output_text) and created_simulator_id is None:
         print("No concrete iPhone simulator destinations were available; attempting to provision one.")
         if provision_simulator():
             time.sleep(args.delay_seconds)
@@ -275,15 +326,37 @@ def main() -> int:
         print(output_text)
         return 1
 
-    name, os_version, simulator_id = choose_candidate(candidates)
+    selected_candidate = None
+    if created_simulator_id is not None:
+        selected_candidate = find_candidate_by_simulator_id(candidates, created_simulator_id)
+        if selected_candidate is None:
+            print(
+                "Created simulator did not appear in xcodebuild -showdestinations output:"
+                f" {created_simulator_id}"
+            )
+            print(output_text)
+            return 1
+
+    name, os_version, simulator_id = selected_candidate or choose_candidate(candidates)
     destination = f"id={simulator_id}"
 
     print(f"Selected simulator: {name} (iOS {os_version})")
 
     if args.github_output:
-        write_github_output(Path(args.github_output), destination, name, os_version)
+        write_github_output(
+            Path(args.github_output),
+            destination,
+            name,
+            os_version,
+            simulator_created=created_simulator_id is not None,
+        )
     else:
-        print_resolved_output(destination, name, os_version)
+        print_resolved_output(
+            destination,
+            name,
+            os_version,
+            simulator_created=created_simulator_id is not None,
+        )
     return 0
 
 

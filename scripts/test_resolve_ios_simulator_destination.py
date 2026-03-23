@@ -11,6 +11,7 @@ from resolve_ios_simulator_destination import (
     choose_device_type,
     choose_existing_device,
     choose_runtime,
+    find_candidate_by_simulator_id,
     has_simulator_placeholder,
     parse_candidates,
     print_resolved_output,
@@ -90,16 +91,29 @@ class ResolveIosSimulatorDestinationTests(unittest.TestCase):
         self.assertIsNotNone(device)
         self.assertEqual(device["udid"], "ID-16P")
 
+    def test_find_candidate_by_simulator_id_matches_created_device(self) -> None:
+        candidates = [
+            ("iPhone 15", "17.5", "ID-15"),
+            ("iPhone 16 Pro", "18.2", "ID-16P"),
+        ]
+
+        self.assertEqual(
+            find_candidate_by_simulator_id(candidates, "ID-16P"),
+            ("iPhone 16 Pro", "18.2", "ID-16P"),
+        )
+        self.assertIsNone(find_candidate_by_simulator_id(candidates, "MISSING"))
+
     def test_print_resolved_output_emits_local_cli_values(self) -> None:
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
-            print_resolved_output("id=ABC-123", "iPhone 16 Pro", "18.2")
+            print_resolved_output("id=ABC-123", "iPhone 16 Pro", "18.2", simulator_created=True)
 
         self.assertEqual(
             stdout.getvalue(),
             "destination=id=ABC-123\n"
             "simulator_id=ABC-123\n"
             "device_name=iPhone 16 Pro\n"
-            "os_version=18.2\n",
+            "os_version=18.2\n"
+            "simulator_created=true\n",
         )
 
 

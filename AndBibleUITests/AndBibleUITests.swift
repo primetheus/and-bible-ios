@@ -579,12 +579,16 @@ final class AndBibleUITests: XCTestCase {
         let searchField = app.searchFields.firstMatch
         XCTAssertTrue(searchField.waitForExistence(timeout: 10), "Expected bookmark search field to exist.")
 
-        let exodusRow = requireBookmarkRow("Exodus_2_1", in: app, timeout: 10)
-        let matthewRow = requireBookmarkRow("Matthew_3_1", in: app, timeout: 10)
+        let exodusRow = app.descendants(matching: .any)["bookmarkListRowButton::Exodus_2_1"]
+        let matthewRow = app.descendants(matching: .any)["bookmarkListRowButton::Matthew_3_1"]
 
         searchField.tap()
         searchField.typeText("Matthew")
 
+        XCTAssertTrue(
+            matthewRow.waitForExistence(timeout: 10),
+            "Expected Matthew bookmark row to appear after filtering."
+        )
         let hiddenPredicate = NSPredicate(format: "exists == false")
         expectation(for: hiddenPredicate, evaluatedWith: exodusRow)
         waitForExpectations(timeout: 10)

@@ -18,6 +18,7 @@ from run_ui_test_groups import (
     create_argument_parser,
     derive_group_result_bundle_path,
     group_selection_args_by_fixture,
+    install_app_with_retry,
     infer_app_path,
     load_fixture_manifest,
     main,
@@ -137,6 +138,50 @@ class SimctlTerminationTests(unittest.TestCase):
             "simctl terminate timed out after 15s for org.andbible.ios; continuing.",
             flush=True,
         )
+
+    def test_install_app_with_retry_retries_after_timeout(self) -> None:
+        with mock.patch(
+            "run_ui_test_groups.run_command",
+            side_effect=[
+                subprocess.TimeoutExpired(cmd=["xcrun", "simctl", "install"], timeout=120),
+                mock.Mock(),
+            ],
+        ) as run_command_mock:
+            with mock.patch("run_ui_test_groups.terminate_app_if_running") as terminate_mock:
+                with mock.patch("run_ui_test_groups.uninstall_app_if_installed") as uninstall_mock:
+                    install_app_with_retry(
+                        simulator_id="SIM-1",
+                        app_path=pathlib.Path("/tmp/AndBible.app"),
+                        bundle_identifier="org.andbible.ios",
+                    )
+
+        self.assertEqual(run_command_mock.call_count, 2)
+        terminate_mock.assert_called_once_with(
+            simulator_id="SIM-1",
+            bundle_identifier="org.andbible.ios",
+        )
+        uninstall_mock.assert_called_once_with(
+            simulator_id="SIM-1",
+            bundle_identifier="org.andbible.ios",
+        )
+
+    def test_install_app_with_retry_raises_after_second_failure(self) -> None:
+        failure = subprocess.CalledProcessError(
+            returncode=1,
+            cmd=["xcrun", "simctl", "install"],
+        )
+        with mock.patch(
+            "run_ui_test_groups.run_command",
+            side_effect=[failure, failure],
+        ):
+            with mock.patch("run_ui_test_groups.terminate_app_if_running"):
+                with mock.patch("run_ui_test_groups.uninstall_app_if_installed"):
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        install_app_with_retry(
+                            simulator_id="SIM-1",
+                            app_path=pathlib.Path("/tmp/AndBible.app"),
+                            bundle_identifier="org.andbible.ios",
+                        )
 
 
 class CliTests(unittest.TestCase):

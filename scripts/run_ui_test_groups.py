@@ -20,6 +20,9 @@ from run_xcodebuild_with_test_selection import (
 ONLY_TEST_PREFIX = "-only-testing:"
 DEFAULT_BUNDLE_IDENTIFIER = "org.andbible.ios"
 SIMCTL_TERMINATE_TIMEOUT_SECONDS = 15
+SIMCTL_UNINSTALL_TIMEOUT_SECONDS = 30
+SIMCTL_INSTALL_TIMEOUT_SECONDS = 120
+SIMCTL_GET_CONTAINER_TIMEOUT_SECONDS = 30
 
 
 def selection_arg_to_identifier(selection_arg: str) -> str:
@@ -112,6 +115,7 @@ def run_command(
     command: Sequence[str],
     *,
     capture_output: bool = False,
+    timeout_seconds: int | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run one subprocess and echo the exact command line."""
     print("Running:", shlex.join(command), flush=True)
@@ -120,6 +124,7 @@ def run_command(
         check=True,
         text=True,
         capture_output=capture_output,
+        timeout=timeout_seconds,
     )
 
 
@@ -149,6 +154,79 @@ def terminate_app_if_running(
         )
 
 
+def uninstall_app_if_installed(
+    *,
+    simulator_id: str,
+    bundle_identifier: str,
+    timeout_seconds: int = SIMCTL_UNINSTALL_TIMEOUT_SECONDS,
+) -> None:
+    """Best-effort uninstall the app on the target simulator without allowing indefinite hangs."""
+    command = ["xcrun", "simctl", "uninstall", simulator_id, bundle_identifier]
+    print(f"Running: {shlex.join(command)} (best-effort)", flush=True)
+    try:
+        subprocess.run(
+            command,
+            check=False,
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        print(
+            "simctl uninstall timed out after "
+            f"{timeout_seconds}s for {bundle_identifier}; continuing.",
+            flush=True,
+        )
+
+
+def install_app_with_retry(
+    *,
+    simulator_id: str,
+    app_path: Path,
+    bundle_identifier: str,
+    timeout_seconds: int = SIMCTL_INSTALL_TIMEOUT_SECONDS,
+) -> None:
+    """Install the app on the target simulator, retrying once after a clean uninstall."""
+    command = ["xcrun", "simctl", "install", simulator_id, str(app_path)]
+    last_error: subprocess.TimeoutExpired | subprocess.CalledProcessError | None = None
+
+    for attempt in (1, 2):
+        try:
+            run_command(command, timeout_seconds=timeout_seconds)
+            return
+        except subprocess.TimeoutExpired as exc:
+            last_error = exc
+            print(
+                "simctl install timed out after "
+                f"{timeout_seconds}s on attempt {attempt}; "
+                f"{'retrying after uninstall' if attempt == 1 else 'failing.'}",
+                flush=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            last_error = exc
+            print(
+                "simctl install failed on attempt "
+                f"{attempt} with exit code {exc.returncode}; "
+                f"{'retrying after uninstall' if attempt == 1 else 'failing.'}",
+                flush=True,
+            )
+
+        if attempt == 1:
+            terminate_app_if_running(
+                simulator_id=simulator_id,
+                bundle_identifier=bundle_identifier,
+            )
+            uninstall_app_if_installed(
+                simulator_id=simulator_id,
+                bundle_identifier=bundle_identifier,
+            )
+            continue
+
+        assert last_error is not None
+        raise last_error
+
+
 def ensure_app_installed(
     *,
     simulator_id: str,
@@ -169,10 +247,19 @@ def ensure_app_installed(
         simulator_id=simulator_id,
         bundle_identifier=bundle_identifier,
     )
-    run_command(["xcrun", "simctl", "install", simulator_id, str(app_path)])
+    uninstall_app_if_installed(
+        simulator_id=simulator_id,
+        bundle_identifier=bundle_identifier,
+    )
+    install_app_with_retry(
+        simulator_id=simulator_id,
+        app_path=app_path,
+        bundle_identifier=bundle_identifier,
+    )
     container = run_command(
         ["xcrun", "simctl", "get_app_container", simulator_id, bundle_identifier, "data"],
         capture_output=True,
+        timeout_seconds=SIMCTL_GET_CONTAINER_TIMEOUT_SECONDS,
     )
     container_path = Path(container.stdout.strip())
     if not container_path.exists():

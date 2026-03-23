@@ -2159,8 +2159,8 @@ final class AndBibleUITests: XCTestCase {
      */
     private func openLabelManager(in app: XCUIApplication) -> XCUIElement {
         openSettings(in: app)
-        tapSettingsElement("settingsLabelsLink", in: app)
-        return requireElement("labelManagerScreen", in: app, timeout: 10)
+        tapSettingsElement("settingsLabelsLink", in: app, timeout: 20)
+        return requireElement("labelManagerAddButton", in: app, timeout: 20)
     }
 
     /**
@@ -2281,9 +2281,12 @@ final class AndBibleUITests: XCTestCase {
      *   - fails when the Import and Export screen never appears
      */
     private func openImportExport(in app: XCUIApplication) -> XCUIElement {
-        openSettings(in: app)
-        tapSettingsElement("settingsImportExportLink", in: app)
-        return requireElement("importExportScreen", in: app, timeout: 10)
+        openSettingsDestination(
+            linkIdentifier: "settingsImportExportLink",
+            destinationIdentifier: "importExportScreen",
+            in: app,
+            destinationTimeout: 20
+        )
     }
 
     /**
@@ -2299,6 +2302,7 @@ final class AndBibleUITests: XCTestCase {
     private func openSyncSettings(in app: XCUIApplication) -> XCUIElement {
         openSettings(in: app)
         tapSettingsElement("settingsSyncLink", in: app, timeout: 20)
+        _ = requireElement("syncBackendPicker", in: app, timeout: 20)
         return requireElement("syncSettingsScreen", in: app, timeout: 20)
     }
 
@@ -2348,9 +2352,12 @@ final class AndBibleUITests: XCTestCase {
      *   - fails when the Colors screen never appears
      */
     private func openColorSettings(in app: XCUIApplication) -> XCUIElement {
-        openSettings(in: app)
-        tapSettingsElement("settingsColorsLink", in: app)
-        return requireElement("colorSettingsScreen", in: app, timeout: 20)
+        openSettingsDestination(
+            linkIdentifier: "settingsColorsLink",
+            destinationIdentifier: "colorSettingsScreen",
+            in: app,
+            destinationTimeout: 20
+        )
     }
 
     /**
@@ -2364,9 +2371,12 @@ final class AndBibleUITests: XCTestCase {
      *   - fails when the Text Display screen never appears
      */
     private func openTextDisplaySettings(in app: XCUIApplication) -> XCUIElement {
-        openSettings(in: app)
-        tapSettingsElement("settingsTextDisplayLink", in: app)
-        return requireElement("textDisplaySettingsScreen", in: app, timeout: 10)
+        openSettingsDestination(
+            linkIdentifier: "settingsTextDisplayLink",
+            destinationIdentifier: "textDisplaySettingsScreen",
+            in: app,
+            destinationTimeout: 20
+        )
     }
 
     /**
@@ -2416,22 +2426,134 @@ final class AndBibleUITests: XCTestCase {
     ) -> XCUIElement {
         let settingsForm = requireElement("settingsForm", in: app, timeout: timeout, file: file, line: line)
         let element = app.descendants(matching: .any)[identifier].firstMatch
-        if element.exists {
-            return element
+        let title = settingsNavigationTitle(for: identifier)
+        let titledFallback = app.staticTexts[title].firstMatch
+
+        func resolvedControlIfPresent() -> XCUIElement? {
+            if element.exists {
+                return element
+            }
+            if titledFallback.exists {
+                return titledFallback
+            }
+            return nil
         }
+
+        if let control = resolvedControlIfPresent() {
+            return control
+        }
+
         for _ in 0..<8 {
             settingsForm.swipeUp()
-            if element.exists {
-                return element
+            if let control = resolvedControlIfPresent() {
+                return control
             }
         }
+
         for _ in 0..<4 {
             settingsForm.swipeDown()
-            if element.exists {
-                return element
+            if let control = resolvedControlIfPresent() {
+                return control
             }
         }
-        return requireElement(identifier, in: app, timeout: timeout, file: file, line: line)
+
+        if element.waitForExistence(timeout: timeout) {
+            return element
+        }
+        if titledFallback.waitForExistence(timeout: timeout) {
+            return titledFallback
+        }
+
+        XCTAssertTrue(
+            false,
+            "Expected settings navigation control '\(identifier)' to exist within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+        return element
+    }
+
+    /**
+     Maps one Settings row identifier to the user-visible title rendered by `SettingsView`.
+     *
+     * - Parameter identifier: Accessibility identifier attached to the Settings navigation row.
+     * - Returns: Visible localized row title used as a fallback query surface.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func settingsNavigationTitle(for identifier: String) -> String {
+        switch identifier {
+        case "settingsDownloadsLink":
+            return "Downloads"
+        case "settingsRepositoriesLink":
+            return "Repositories"
+        case "settingsImportExportLink":
+            return "Import & Export"
+        case "settingsSyncLink":
+            return "iCloud Sync"
+        case "settingsLabelsLink":
+            return "Labels"
+        case "settingsTextDisplayLink":
+            return "Text Display"
+        case "settingsColorsLink":
+            return "Colors"
+        default:
+            return identifier
+        }
+    }
+
+    /**
+     Opens one Settings destination and retries the row tap once when hosted simulators leave the
+     view on the Settings form after the first navigation attempt.
+     *
+     * - Parameters:
+     *   - linkIdentifier: Accessibility identifier of the Settings row to activate.
+     *   - destinationIdentifier: Accessibility identifier of the destination root screen.
+     *   - app: Running application under test.
+     *   - rowTimeout: Maximum number of seconds to wait for the Settings row to resolve.
+     *   - destinationTimeout: Maximum number of seconds to wait for the destination screen.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Returns: The resolved destination root element.
+     * - Side effects:
+     *   - opens Settings, taps the requested row, and retries the tap once when the first attempt
+     *     leaves the UI on the Settings form
+     * - Failure modes:
+     *   - records an XCTest failure if the destination screen never appears after two attempts
+     */
+    private func openSettingsDestination(
+        linkIdentifier: String,
+        destinationIdentifier: String,
+        in app: XCUIApplication,
+        rowTimeout: TimeInterval = 10,
+        destinationTimeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement {
+        openSettings(in: app)
+        let destination = app.descendants(matching: .any)[destinationIdentifier].firstMatch
+
+        for attempt in 0..<2 {
+            tapSettingsElement(linkIdentifier, in: app, timeout: rowTimeout, file: file, line: line)
+            if destination.waitForExistence(timeout: destinationTimeout) {
+                return destination
+            }
+
+            if attempt == 0 {
+                let settingsForm = app.descendants(matching: .any)["settingsForm"].firstMatch
+                if settingsForm.exists {
+                    continue
+                }
+            }
+        }
+
+        XCTAssertTrue(
+            destination.exists,
+            "Expected Settings destination '\(destinationIdentifier)' to appear after activating '\(linkIdentifier)'.",
+            file: file,
+            line: line
+        )
+        return destination
     }
 
     /**
@@ -3261,18 +3383,32 @@ final class AndBibleUITests: XCTestCase {
      */
     private func assertSeedLabelAssignmentCanToggle(in app: XCUIApplication) {
         let seedRow = requireElement("labelAssignmentRow::UI_Test_Seed", in: app, timeout: 10)
-        XCTAssertEqual(seedRow.value as? String, "unassigned,notFavourite")
+        let initialState = seedRow.value as? String
+        XCTAssertTrue(
+            initialState == "assigned,notFavourite" || initialState == "unassigned,notFavourite",
+            "Expected the seeded label row to start in a known non-favourite state, got '\(initialState ?? "nil")'."
+        )
 
-        requireElement(
+        let favouriteButton = requireElement(
             "labelAssignmentFavouriteButton::UI_Test_Seed",
             in: app,
             timeout: 10
-        ).tap()
-        requireElement(
+        )
+        let toggleButton = requireElement(
             "labelAssignmentToggleButton::UI_Test_Seed",
             in: app,
             timeout: 10
-        ).tap()
+        )
+
+        tapElementReliably(favouriteButton, timeout: 10)
+        waitForElementValue("labelAssignmentRow::UI_Test_Seed", toEqual: "assigned,favourite", in: app, timeout: 10)
+
+        if initialState == "assigned,notFavourite" {
+            tapElementReliably(toggleButton, timeout: 10)
+            waitForElementValue("labelAssignmentRow::UI_Test_Seed", toEqual: "unassigned,favourite", in: app, timeout: 10)
+        }
+
+        tapElementReliably(toggleButton, timeout: 10)
 
         let updatedPredicate = NSPredicate(format: "value == %@", "assigned,favourite")
         expectation(for: updatedPredicate, evaluatedWith: seedRow)

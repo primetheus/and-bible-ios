@@ -1,4 +1,5 @@
 import io
+import os
 import unittest
 from pathlib import Path
 import sys
@@ -127,11 +128,12 @@ class ResolveIosSimulatorDestinationTests(unittest.TestCase):
                 return_value=([("iPhone 16 Pro", "26.2", "OTHER-SIM")], ""),
             ):
                 with patch("resolve_ios_simulator_destination.time.sleep"):
-                    with patch("sys.stdout", new_callable=io.StringIO) as stdout:
-                        self.assertEqual(
-                            main(["--create-dedicated-device"]),
-                            0,
-                        )
+                    with patch.dict(os.environ, {}, clear=True):
+                        with patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                            self.assertEqual(
+                                main(["--create-dedicated-device"]),
+                                0,
+                            )
 
         self.assertIn(
             "Created simulator did not appear in xcodebuild -showdestinations output; using the created simulator directly.",

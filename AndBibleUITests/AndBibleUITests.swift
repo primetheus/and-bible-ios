@@ -1965,10 +1965,7 @@ final class AndBibleUITests: XCTestCase {
      *   - fails when the Search screen never appears
      */
     private func openSearch(in app: XCUIApplication) -> XCUIElement {
-        tapElementReliably(
-            requireButton("readerSearchButton", in: app, timeout: 10),
-            timeout: 10
-        )
+        tapElementReliably(requireButton("readerSearchButton", in: app, timeout: 10), timeout: 10)
         let searchScreen = requireElement("searchScreen", in: app, timeout: 20)
         waitForSearchInteractionReady(on: searchScreen, in: app, timeout: 120)
         if let searchQuery = app.launchEnvironment["UITEST_SEARCH_QUERY"], !searchQuery.isEmpty {
@@ -3087,7 +3084,7 @@ final class AndBibleUITests: XCTestCase {
         let button = requireReaderMoreMenuButton(in: app, timeout: timeout, file: file, line: line)
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
-            if button.exists, !button.frame.isEmpty {
+            if !button.frame.isEmpty {
                 button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
                 return
             }
@@ -3095,7 +3092,7 @@ final class AndBibleUITests: XCTestCase {
         } while Date() < deadline
 
         XCTAssertTrue(
-            button.exists && !button.frame.isEmpty,
+            !button.frame.isEmpty,
             "Expected reader overflow button '\(button.identifier)' to expose a stable frame within \(timeout) seconds.",
             file: file,
             line: line
@@ -3126,18 +3123,7 @@ final class AndBibleUITests: XCTestCase {
         line: UInt = #line
     ) {
         let button = requireReaderActionControl(identifier, in: app, timeout: timeout, file: file, line: line)
-        switch button.elementType {
-        case .button, .staticText:
-            XCTAssertTrue(
-                button.waitForExistence(timeout: timeout),
-                "Expected reader action '\(identifier)' to exist before tapping.",
-                file: file,
-                line: line
-            )
-            button.tap()
-        default:
-            tapElementReliably(button, timeout: timeout, file: file, line: line)
-        }
+        tapElementReliably(button, timeout: timeout, file: file, line: line)
     }
 
     /**
@@ -3314,19 +3300,23 @@ final class AndBibleUITests: XCTestCase {
     ) -> XCUIElement {
         let title = readerActionTitle(for: identifier)
         let container = largestVisibleReaderActionContainer(in: app)
-        let containerButtons = container?.descendants(matching: .button)
+        if let container {
+            let visibleButtons = container.descendants(matching: .button).allElementsBoundByIndex.filter {
+                !$0.frame.isEmpty
+            }
+            if let identifiedButton = visibleButtons.first(where: { $0.identifier == identifier }) {
+                return identifiedButton
+            }
+            if let titledButton = visibleButtons.first(where: { $0.label == title || $0.identifier == title }) {
+                return titledButton
+            }
+        }
 
-        let identifierMatch = containerButtons?[identifier].firstMatch ?? app.buttons[identifier].firstMatch
+        let identifierMatch = app.buttons[identifier].firstMatch
         if identifierMatch.exists {
             return identifierMatch
         }
-
-        let buttonMatch = containerButtons?[title].firstMatch ?? app.buttons[title].firstMatch
-        if buttonMatch.exists {
-            return buttonMatch
-        }
-
-        return identifierMatch
+        return app.buttons[title].firstMatch
     }
 
     /**
@@ -3423,7 +3413,7 @@ final class AndBibleUITests: XCTestCase {
     ) {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
-            if element.exists, !element.frame.isEmpty {
+            if !element.frame.isEmpty {
                 if element.isHittable {
                     element.tap()
                 } else {
@@ -3439,14 +3429,8 @@ final class AndBibleUITests: XCTestCase {
         } while Date() < deadline
 
         XCTAssertTrue(
-            element.exists,
-            "Expected element '\(element.identifier)' to exist within \(timeout) seconds before tapping.",
-            file: file,
-            line: line
-        )
-        XCTAssertFalse(
-            element.frame.isEmpty,
-            "Expected element '\(element.identifier)' to expose a non-empty frame before tapping.",
+            !element.frame.isEmpty,
+            "Expected element '\(element.identifier)' to expose a non-empty frame before tapping within \(timeout) seconds.",
             file: file,
             line: line
         )
@@ -3572,14 +3556,14 @@ final class AndBibleUITests: XCTestCase {
             line: line
         )
 
-        let identifiedField = alert.descendants(matching: .any)["labelManagerNewLabelNameField"].firstMatch
-        if identifiedField.exists || identifiedField.waitForExistence(timeout: 0.5) {
-            return identifiedField
-        }
-
         let placeholderField = alert.textFields["Label name"].firstMatch
         if placeholderField.exists || placeholderField.waitForExistence(timeout: 0.5) {
             return placeholderField
+        }
+
+        let identifiedField = alert.descendants(matching: .any)["labelManagerNewLabelNameField"].firstMatch
+        if identifiedField.exists || identifiedField.waitForExistence(timeout: 0.5) {
+            return identifiedField
         }
 
         let fallbackField = alert.textFields.firstMatch

@@ -22,6 +22,8 @@ from run_ui_test_groups import (
     infer_app_path,
     load_fixture_manifest,
     main,
+    read_simctl_json,
+    run_grouped_ui_tests,
     selection_arg_to_identifier,
     terminate_app_if_running,
 )
@@ -117,6 +119,27 @@ class PathDerivationTests(unittest.TestCase):
 
 
 class SimctlTerminationTests(unittest.TestCase):
+    def test_read_simctl_json_retries_after_transient_failure(self) -> None:
+        success = subprocess.CompletedProcess(
+            args=["xcrun", "simctl", "list", "devices", "available", "-j"],
+            returncode=0,
+            stdout='{"devices": {}}',
+            stderr="",
+        )
+        failure = subprocess.CompletedProcess(
+            args=["xcrun", "simctl", "list", "devices", "available", "-j"],
+            returncode=1,
+            stdout="",
+            stderr="Connection invalid",
+        )
+        with mock.patch("run_ui_test_groups.subprocess.run", side_effect=[failure, success]) as run_mock:
+            with mock.patch("run_ui_test_groups.time.sleep") as sleep_mock:
+                payload = read_simctl_json("devices", "available")
+
+        self.assertEqual(payload, {"devices": {}})
+        self.assertEqual(run_mock.call_count, 2)
+        sleep_mock.assert_called_once()
+
     def test_terminate_app_if_running_continues_after_timeout(self) -> None:
         with mock.patch(
             "run_ui_test_groups.subprocess.run",
@@ -223,6 +246,129 @@ class CliTests(unittest.TestCase):
             ]
         )
         self.assertEqual(args.bundle_id, DEFAULT_BUNDLE_IDENTIFIER)
+
+
+class GroupedExecutionTests(unittest.TestCase):
+    def test_run_grouped_ui_tests_waits_between_groups_and_terminates_apps(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manifest_path = pathlib.Path(temp_dir) / "manifest.json"
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "AndBibleUITests/AndBibleUITests/testOne": "alpha",
+                        "AndBibleUITests/AndBibleUITests/testTwo": "beta",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            fixture_tool_path = pathlib.Path(temp_dir) / "UITestFixtureTool"
+            fixture_tool_path.write_text("", encoding="utf-8")
+
+            with mock.patch("run_ui_test_groups.build_xcodebuild_command", side_effect=[["xcodebuild", "alpha"], ["xcodebuild", "beta"]]):
+                with mock.patch("run_ui_test_groups.run_command") as run_command_mock:
+                    with mock.patch("run_ui_test_groups.terminate_app_if_running") as terminate_mock:
+                        with mock.patch("run_ui_test_groups.time.sleep") as sleep_mock:
+                            result = run_grouped_ui_tests(
+                                project="AndBible.xcodeproj",
+                                scheme="AndBible",
+                                configuration="Debug",
+                                destination="id=SIM-1",
+                                simulator_id="SIM-1",
+                                derived_data_path=pathlib.Path(".derivedData"),
+                                result_bundle_path=pathlib.Path(".artifacts/AndBibleTests-ui.xcresult"),
+                                code_signing_allowed="NO",
+                                selection_args_text=(
+                                    "-only-testing:AndBibleUITests/AndBibleUITests/testOne\n"
+                                    "-only-testing:AndBibleUITests/AndBibleUITests/testTwo"
+                                ),
+                                fixture_manifest_path=manifest_path,
+                                fixture_tool_path=fixture_tool_path,
+                                bundle_identifier="org.andbible.ios",
+                                app_path=None,
+                            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(run_command_mock.call_count, 2)
+        self.assertEqual(
+            terminate_mock.call_args_list,
+            [
+                mock.call(simulator_id="SIM-1", bundle_identifier="org.andbible.ios"),
+                mock.call(simulator_id="SIM-1", bundle_identifier="org.andbible.AndBibleUITests.xctrunner"),
+                mock.call(simulator_id="SIM-1", bundle_identifier="org.andbible.ios"),
+                mock.call(simulator_id="SIM-1", bundle_identifier="org.andbible.AndBibleUITests.xctrunner"),
+            ],
+        )
+        sleep_mock.assert_called_once_with(15)
+
+    def test_run_grouped_ui_tests_can_create_fresh_simulator_per_group(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manifest_path = pathlib.Path(temp_dir) / "manifest.json"
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "AndBibleUITests/AndBibleUITests/testOne": "alpha",
+                        "AndBibleUITests/AndBibleUITests/testTwo": "beta",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            fixture_tool_path = pathlib.Path(temp_dir) / "UITestFixtureTool"
+            fixture_tool_path.write_text("", encoding="utf-8")
+
+            with mock.patch(
+                "run_ui_test_groups.build_xcodebuild_command",
+                side_effect=[["xcodebuild", "alpha"], ["xcodebuild", "beta"]],
+            ):
+                with mock.patch("run_ui_test_groups.create_group_simulator", side_effect=[("SIM-A", "id=SIM-A"), ("SIM-B", "id=SIM-B")]) as create_mock:
+                    with mock.patch("run_ui_test_groups.run_command") as run_command_mock:
+                        with mock.patch("run_ui_test_groups.terminate_app_if_running") as terminate_mock:
+                            with mock.patch("run_ui_test_groups.shutdown_simulator_if_running") as shutdown_mock:
+                                with mock.patch("run_ui_test_groups.delete_simulator_if_present") as delete_mock:
+                                    with mock.patch("run_ui_test_groups.time.sleep") as sleep_mock:
+                                        result = run_grouped_ui_tests(
+                                            project="AndBible.xcodeproj",
+                                            scheme="AndBible",
+                                            configuration="Debug",
+                                            destination="id=BASE",
+                                            simulator_id="BASE",
+                                            derived_data_path=pathlib.Path(".derivedData"),
+                                            result_bundle_path=pathlib.Path(".artifacts/AndBibleTests-ui.xcresult"),
+                                            code_signing_allowed="NO",
+                                            selection_args_text=(
+                                                "-only-testing:AndBibleUITests/AndBibleUITests/testOne\n"
+                                                "-only-testing:AndBibleUITests/AndBibleUITests/testTwo"
+                                            ),
+                                            fixture_manifest_path=manifest_path,
+                                            fixture_tool_path=fixture_tool_path,
+                                            bundle_identifier="org.andbible.ios",
+                                            app_path=None,
+                                            fresh_simulator_per_group=True,
+                                        )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(create_mock.call_count, 2)
+        self.assertEqual(run_command_mock.call_count, 2)
+        terminate_mock.assert_has_calls(
+            [
+                mock.call(simulator_id="SIM-A", bundle_identifier="org.andbible.ios"),
+                mock.call(simulator_id="SIM-A", bundle_identifier="org.andbible.AndBibleUITests.xctrunner"),
+                mock.call(simulator_id="SIM-B", bundle_identifier="org.andbible.ios"),
+                mock.call(simulator_id="SIM-B", bundle_identifier="org.andbible.AndBibleUITests.xctrunner"),
+            ]
+        )
+        shutdown_mock.assert_has_calls(
+            [
+                mock.call(simulator_id="SIM-A"),
+                mock.call(simulator_id="SIM-B"),
+            ]
+        )
+        delete_mock.assert_has_calls(
+            [
+                mock.call(simulator_id="SIM-A"),
+                mock.call(simulator_id="SIM-B"),
+            ]
+        )
+        sleep_mock.assert_not_called()
 
 
 if __name__ == "__main__":

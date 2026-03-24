@@ -2285,17 +2285,22 @@ final class AndBibleUITests: XCTestCase {
      *
      * - Parameter app: Running application whose bookmark sheet should be reopened.
      * - Side effects:
-     *   - dismisses the bookmark sheet through the real swipe-down gesture, which remains valid
-     *     even when live search temporarily takes over the sheet header controls
+     *   - dismisses the bookmark sheet through the real Done button when available and falls back
+     *     to a top-edge sheet drag gesture otherwise
      *   - opens the bookmark list again through the standard reader navigation path
      * - Failure modes:
      *   - fails when the bookmark list cannot be dismissed or reopened
      */
     private func reopenBookmarkList(in app: XCUIApplication) {
-        requireElement("bookmarkListScreen", in: app, timeout: 10).swipeDown()
+        let doneButton = app.buttons["bookmarkListDoneButton"].firstMatch
+        if doneButton.exists || doneButton.waitForExistence(timeout: 2) {
+            tapElementReliably(doneButton, timeout: 10)
+        } else {
+            dismissSheetByDraggingDown(requireElement("bookmarkListScreen", in: app, timeout: 10))
+        }
         XCTAssertTrue(
             requireReaderMoreMenuButton(in: app, timeout: 20).exists,
-            "Expected bookmark list swipe-down dismissal to return to the reader shell."
+            "Expected bookmark list dismissal to return to the reader shell."
         )
         _ = openBookmarkList(in: app, timeout: 20)
     }
@@ -3441,6 +3446,32 @@ final class AndBibleUITests: XCTestCase {
             file: file,
             line: line
         )
+    }
+
+    /**
+     Performs a direct top-edge drag to dismiss a presented sheet.
+     *
+     * - Parameter element: Visible sheet-root element that should respond to the dismissal drag.
+     * - Side effects:
+     *   - drags from near the sheet's top edge toward the bottom of the screen, which dismisses
+     *     the sheet instead of scrolling the sheet content
+     * - Failure modes:
+     *   - records an XCTest failure if the element never exposes a usable frame
+     */
+    private func dismissSheetByDraggingDown(
+        _ element: XCUIElement,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertFalse(
+            element.frame.isEmpty,
+            "Expected sheet element '\(element.identifier)' to expose a non-empty frame before dismissal.",
+            file: file,
+            line: line
+        )
+        let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.03))
+        let finish = element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+        start.press(forDuration: 0.05, thenDragTo: finish)
     }
 
     /**

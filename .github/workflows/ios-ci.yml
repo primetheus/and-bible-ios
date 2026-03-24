@@ -406,6 +406,7 @@ jobs:
             --fixture-manifest scripts/ui_test_fixture_manifest.json \
             --fixture-tool-path .build/debug/UITestFixtureTool \
             --code-signing-allowed NO \
+            --fresh-simulator-per-group \
             --app-path "${DERIVED_DATA_PATH}/Build/Products/Debug-iphonesimulator/AndBible.app"
 
       - name: Upload xcodebuild test result bundle

@@ -24,6 +24,11 @@ import BibleCore
  - swipe and context-menu actions can route into the StudyPad flow for a specific label
  */
 public struct LabelManagerView: View {
+    /// Stable selection token used to navigate to one label edit screen across SwiftData refreshes.
+    private struct EditingSelection: Identifiable, Hashable {
+        let id: UUID
+    }
+
     /// SwiftData context used for label creation, deletion, and persistence.
     @Environment(\.modelContext) private var modelContext
 
@@ -36,8 +41,8 @@ public struct LabelManagerView: View {
     /// Pending name for the new label being created from the alert.
     @State private var newLabelName = ""
 
-    /// Label currently being edited in the modal edit sheet.
-    @State private var editingLabel: BibleCore.Label?
+    /// Label selected for context-menu-driven edit navigation.
+    @State private var editingSelection: EditingSelection?
 
     /// Optional callback used to open the selected label in StudyPad.
     var onOpenStudyPad: ((UUID) -> Void)?
@@ -58,7 +63,7 @@ public struct LabelManagerView: View {
     }
 
     /**
-     Builds the label list, create-label alert, and edit-label sheet presentation flow.
+     Builds the label list, create-label alert, and edit-label navigation flow.
      */
     public var body: some View {
         ZStack {
@@ -92,10 +97,11 @@ public struct LabelManagerView: View {
                 .accessibilityIdentifier("labelManagerCreateButton")
             Button(String(localized: "cancel"), role: .cancel) { newLabelName = "" }
         }
-        .sheet(item: $editingLabel) { label in
-            NavigationStack {
-                LabelEditView(label: label)
-            }
+        .navigationDestination(item: $editingSelection) { selection in
+            labelEditDestination(for: selection.id)
+        }
+        .navigationDestination(for: EditingSelection.self) { selection in
+            labelEditDestination(for: selection.id)
         }
     }
 
@@ -116,12 +122,12 @@ public struct LabelManagerView: View {
      * - Parameter label: Label represented by the selectable row body.
      * - Returns: A button that opens the label editor for the requested label.
      * - Side effects:
-     *   - stores the selected label in local state and presents the edit sheet
+     *   - stores the selected label in local state and navigates to the edit destination
      * - Failure modes: This helper cannot fail.
      */
     private func labelSelectionButton(_ label: BibleCore.Label) -> some View {
-        Button {
-            editingLabel = label
+        NavigationLink {
+            labelEditDestination(for: label.id)
         } label: {
             HStack(spacing: 10) {
                 if let icon = label.customIcon, !icon.isEmpty {
@@ -178,7 +184,7 @@ public struct LabelManagerView: View {
         }
         .contextMenu {
             Button {
-                editingLabel = label
+                editingSelection = EditingSelection(id: label.id)
             } label: {
                 SwiftUI.Label(String(localized: "edit"), systemImage: "pencil")
             }
@@ -194,6 +200,17 @@ public struct LabelManagerView: View {
             } label: {
                 SwiftUI.Label(String(localized: "delete"), systemImage: "trash")
             }
+        }
+    }
+
+    /**
+     Builds the label-edit destination from a stable identifier instead of retaining one live
+     SwiftData object across navigation updates.
+     */
+    @ViewBuilder
+    private func labelEditDestination(for id: UUID) -> some View {
+        if let label = allLabels.first(where: { $0.id == id }) {
+            LabelEditView(label: label)
         }
     }
 

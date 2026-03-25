@@ -1040,16 +1040,15 @@ final class AndBibleUITests: XCTestCase {
         XCTAssertTrue(requireLabelRow(named: originalName, in: app, timeout: 10).exists)
 
         let createdRow = requireLabelRow(named: originalName, in: app, timeout: 10)
-        createdRow.press(forDuration: 1.0)
-        tapElementReliably(requireElement("Edit", in: app, timeout: 10), timeout: 10)
+        tapElementReliably(createdRow, timeout: 10)
         _ = requireElement("labelEditScreen", in: app, timeout: 10)
         replaceText(in: requireElement("labelEditNameField", in: app, timeout: 10), with: renamedName)
         tapElementReliably(requireElement("labelEditDoneButton", in: app, timeout: 10), timeout: 10)
 
         XCTAssertTrue(requireLabelRow(named: renamedName, in: app, timeout: 10).exists)
         let renamedRowToDelete = requireLabelRow(named: renamedName, in: app, timeout: 10)
-        renamedRowToDelete.press(forDuration: 1.0)
-        tapElementReliably(requireElement("Delete", in: app, timeout: 10), timeout: 10)
+        renamedRowToDelete.swipeLeft()
+        tapElementReliably(requireElement("labelManagerDeleteAction", in: app, timeout: 10), timeout: 10)
 
         let deletedPredicate = NSPredicate(format: "exists == false")
         expectation(for: deletedPredicate, evaluatedWith: labelRow(named: renamedName, in: app))
@@ -1493,7 +1492,7 @@ final class AndBibleUITests: XCTestCase {
         line: UInt = #line
     ) -> String? {
         let environment = ProcessInfo.processInfo.environment
-        let simulatorID = environment["UITEST_SIMULATOR_ID"]
+        let simulatorID = environment["UITEST_SIMULATOR_ID"] ?? environment["SIMULATOR_UDID"]
 
         if let simulatorID,
            let existingPath = resolveInstalledAppDataContainer(
@@ -1512,27 +1511,34 @@ final class AndBibleUITests: XCTestCase {
         }
 
         print("Bootstrapping app container for bundle '\(bundleIdentifier)' before fixture seeding.")
+        var usedXCTestBootstrap = simulatorID == nil
         if let simulatorID {
             let launchResult = runHostProcess(
                 executablePath: "/usr/bin/xcrun",
                 arguments: ["simctl", "launch", simulatorID, bundleIdentifier],
                 timeout: 20
             )
-            XCTAssertEqual(
-                launchResult.status,
-                0,
-                "Expected simctl bootstrap launch to succeed before fixture seeding.\nstdout:\n\(launchResult.stdout)\nstderr:\n\(launchResult.stderr)",
-                file: file,
-                line: line
-            )
-            defer {
+            if launchResult.status == 0 {
                 _ = runHostProcess(
                     executablePath: "/usr/bin/xcrun",
                     arguments: ["simctl", "terminate", simulatorID, bundleIdentifier],
                     timeout: 10
                 )
+            } else {
+                print(
+                    """
+                    simctl bootstrap launch failed for '\(bundleIdentifier)'; falling back to XCTest launch.
+                    stdout:
+                    \(launchResult.stdout)
+                    stderr:
+                    \(launchResult.stderr)
+                    """
+                )
+                usedXCTestBootstrap = true
             }
-        } else {
+        }
+
+        if usedXCTestBootstrap {
             app.launch()
             XCTAssertTrue(
                 app.wait(for: .runningForeground, timeout: 20),
@@ -2522,19 +2528,22 @@ final class AndBibleUITests: XCTestCase {
     ) -> XCUIElement {
         let settingsForm = requireElement("settingsForm", in: app, timeout: timeout, file: file, line: line)
         let title = settingsNavigationTitle(for: identifier)
-        let identifiedButton = settingsForm.buttons[identifier].firstMatch
-        let titledButton = settingsForm.buttons[title].firstMatch
-        let identifiedElement = settingsForm.descendants(matching: .any)[identifier].firstMatch
 
         func resolvedControlIfPresent() -> XCUIElement? {
-            if identifiedButton.exists, !identifiedButton.frame.isEmpty {
-                return identifiedButton
-            }
-            if titledButton.exists, !titledButton.frame.isEmpty {
-                return titledButton
-            }
-            if identifiedElement.exists, !identifiedElement.frame.isEmpty {
-                return identifiedElement
+            let candidates: [XCUIElement] = [
+                settingsForm.links[identifier].firstMatch,
+                settingsForm.buttons[identifier].firstMatch,
+                settingsForm.cells[identifier].firstMatch,
+                settingsForm.otherElements[identifier].firstMatch,
+                settingsForm.links[title].firstMatch,
+                settingsForm.buttons[title].firstMatch,
+                settingsForm.cells[title].firstMatch,
+                settingsForm.staticTexts[title].firstMatch,
+                settingsForm.otherElements[title].firstMatch,
+            ]
+
+            for candidate in candidates where candidate.exists && !candidate.frame.isEmpty {
+                return candidate
             }
             return nil
         }
@@ -2557,14 +2566,16 @@ final class AndBibleUITests: XCTestCase {
             }
         }
 
-        if identifiedButton.waitForExistence(timeout: timeout) {
-            return identifiedButton
-        }
-        if titledButton.waitForExistence(timeout: timeout) {
-            return titledButton
-        }
-        if identifiedElement.waitForExistence(timeout: timeout) {
-            return identifiedElement
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let control = resolvedControlIfPresent() {
+                return control
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        if let control = resolvedControlIfPresent() {
+            return control
         }
 
         XCTAssertTrue(
@@ -2573,7 +2584,7 @@ final class AndBibleUITests: XCTestCase {
             file: file,
             line: line
         )
-        return identifiedButton
+        return settingsForm.buttons[identifier].firstMatch
     }
 
     /**
@@ -2635,7 +2646,7 @@ final class AndBibleUITests: XCTestCase {
         line: UInt = #line
     ) -> XCUIElement {
         openSettings(in: app)
-        let destination = app.descendants(matching: .any)[destinationIdentifier].firstMatch
+        let destination = unresolvedElement(destinationIdentifier, in: app)
         let readinessCandidates = [destinationIdentifier] + readinessIdentifiers
 
         for attempt in 0..<2 {
@@ -2676,6 +2687,113 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Produces a small ordered set of typed XCUI candidates for one accessibility identifier.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier to resolve.
+     *   - app: Running application under test.
+     * - Returns: Typed query candidates ordered from most-specific controls to broader containers.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func elementCandidates(
+        for identifier: String,
+        in app: XCUIApplication
+    ) -> [XCUIElement] {
+        preferredElementCandidates(for: identifier, in: app) + [
+            app.buttons[identifier].firstMatch,
+            app.links[identifier].firstMatch,
+            app.otherElements[identifier].firstMatch,
+            app.scrollViews[identifier].firstMatch,
+            app.staticTexts[identifier].firstMatch,
+            app.textFields[identifier].firstMatch,
+            app.searchFields[identifier].firstMatch,
+            app.secureTextFields[identifier].firstMatch,
+            app.switches[identifier].firstMatch,
+            app.tables[identifier].firstMatch,
+            app.collectionViews[identifier].firstMatch,
+            app.cells[identifier].firstMatch,
+            app.navigationBars[identifier].firstMatch,
+            app.alerts[identifier].firstMatch,
+            app.sheets[identifier].firstMatch,
+        ]
+    }
+
+    /**
+     Provides fast typed candidates for screen-root identifiers that recur across grouped UI runs.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier to resolve.
+     *   - app: Running application under test.
+     * - Returns: Narrow typed candidates ordered by the production control types used for the
+     *   requested screen.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func preferredElementCandidates(
+        for identifier: String,
+        in app: XCUIApplication
+    ) -> [XCUIElement] {
+        switch identifier {
+        case "readerOverflowMenu", "aboutScreen":
+            return [app.scrollViews[identifier].firstMatch]
+        case
+            "settingsForm",
+            "bookmarkListScreen",
+            "labelAssignmentScreen",
+            "labelManagerScreen",
+            "labelEditScreen",
+            "syncSettingsScreen",
+            "colorSettingsScreen",
+            "textDisplaySettingsScreen",
+            "importExportScreen",
+            "historyScreen",
+            "moduleBrowserScreen":
+            return [app.collectionViews[identifier].firstMatch]
+        default:
+            return []
+        }
+    }
+
+    /**
+     Resolves the first live typed XCUI element for one accessibility identifier.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier to resolve.
+     *   - app: Running application under test.
+     * - Returns: The first existing typed candidate, preferring one with a stable frame.
+     * - Side effects: none.
+     * - Failure modes: returns `nil` when the identifier is not currently exposed.
+     */
+    private func resolvedElement(
+        _ identifier: String,
+        in app: XCUIApplication
+    ) -> XCUIElement? {
+        let candidates = elementCandidates(for: identifier, in: app)
+        if let visible = candidates.first(where: { $0.exists && !$0.frame.isEmpty }) {
+            return visible
+        }
+        return candidates.first(where: { $0.exists })
+    }
+
+    /**
+     Returns a stable fallback query for one accessibility identifier without forcing broad queries.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier to resolve.
+     *   - app: Running application under test.
+     * - Returns: The first typed candidate for the identifier.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func unresolvedElement(
+        _ identifier: String,
+        in app: XCUIApplication
+    ) -> XCUIElement {
+        elementCandidates(for: identifier, in: app).first ?? app.otherElements[identifier].firstMatch
+    }
+
+    /**
      Waits for an accessibility-identified element and records a precise failure when it never appears.
      *
      * - Parameters:
@@ -2698,9 +2816,17 @@ final class AndBibleUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) -> XCUIElement {
-        let element = app.descendants(matching: .any)[identifier].firstMatch
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let element = resolvedElement(identifier, in: app) {
+                return element
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        let element = unresolvedElement(identifier, in: app)
         XCTAssertTrue(
-            element.waitForExistence(timeout: timeout),
+            element.exists,
             "Expected element '\(identifier)' to exist within \(timeout) seconds.",
             file: file,
             line: line
@@ -2732,8 +2858,7 @@ final class AndBibleUITests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
             for identifier in identifiers {
-                let candidate = app.descendants(matching: .any)[identifier].firstMatch
-                if candidate.exists || candidate.waitForExistence(timeout: 0.2) {
+                if let candidate = resolvedElement(identifier, in: app) {
                     return candidate
                 }
             }
@@ -2984,15 +3109,16 @@ final class AndBibleUITests: XCTestCase {
     ) {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
-            let currentElement = app.descendants(matching: .any)[identifier].firstMatch
-            let currentValue = currentElement.value as? String
-            if currentElement.exists, currentValue == expectedValue || currentElement.label == expectedValue {
-                return
+            if let currentElement = resolvedElement(identifier, in: app) {
+                let currentValue = currentElement.value as? String
+                if currentValue == expectedValue || currentElement.label == expectedValue {
+                    return
+                }
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
-        let finalElement = app.descendants(matching: .any)[identifier].firstMatch
+        let finalElement = unresolvedElement(identifier, in: app)
         let finalValue = finalElement.value as? String
         XCTAssertEqual(
             finalValue ?? finalElement.label,
@@ -3029,17 +3155,17 @@ final class AndBibleUITests: XCTestCase {
     ) {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
-            let currentElement = app.descendants(matching: .any)[identifier].firstMatch
-            let currentValue = currentElement.value as? String
-            let currentLabel = currentElement.label
-            if currentElement.exists,
-               (currentValue?.contains(expectedToken) == true || currentLabel.contains(expectedToken)) {
-                return
+            if let currentElement = resolvedElement(identifier, in: app) {
+                let currentValue = currentElement.value as? String
+                let currentLabel = currentElement.label
+                if currentValue?.contains(expectedToken) == true || currentLabel.contains(expectedToken) {
+                    return
+                }
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
-        let finalElement = app.descendants(matching: .any)[identifier].firstMatch
+        let finalElement = unresolvedElement(identifier, in: app)
         let finalValue = finalElement.value as? String
         XCTAssertTrue(
             (finalValue?.contains(expectedToken) == true || finalElement.label.contains(expectedToken)),
@@ -3103,18 +3229,24 @@ final class AndBibleUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let button = requireReaderMoreMenuButton(in: app, timeout: timeout, file: file, line: line)
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
+            let button = requireReaderMoreMenuButton(
+                in: app,
+                timeout: min(2, max(0.5, deadline.timeIntervalSinceNow)),
+                file: file,
+                line: line
+            )
             if !button.frame.isEmpty {
                 button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-                if waitForReaderActionSurface(in: app, timeout: min(3, max(1, deadline.timeIntervalSinceNow))) {
+                if waitForReaderOverflowMenu(in: app, timeout: min(3, max(1, deadline.timeIntervalSinceNow))) {
                     return
                 }
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
+        let button = app.buttons["readerMoreMenuButton"].firstMatch
         XCTAssertTrue(
             !button.frame.isEmpty,
             "Expected reader overflow button '\(button.identifier)' to expose a stable frame within \(timeout) seconds.",
@@ -3124,33 +3256,32 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
-     Waits for the real reader overflow menu surface to expose at least one known action button.
+     Waits for the custom reader overflow sheet to appear.
      *
      * - Parameters:
      *   - app: Running application under test.
-     *   - timeout: Maximum time to wait for a reader action to appear.
-     * - Returns: `true` when the action surface becomes visible before timeout.
+     *   - timeout: Maximum time to wait for the overflow sheet.
+     * - Returns: `true` when the production `readerOverflowMenu` scroll view appears.
      * - Side effects:
-     *   - inspects the live visible button hierarchy for known reader action titles/identifiers.
+     *   - polls the explicit overflow-sheet accessibility identifier instead of scanning the full
+     *     app hierarchy for guessed menu containers.
      * - Failure modes:
-     *   - returns `false` when no known reader action appears before timeout.
+     *   - returns `false` when the overflow sheet never appears before timeout.
      */
-    private func waitForReaderActionSurface(
+    private func waitForReaderOverflowMenu(
         in app: XCUIApplication,
         timeout: TimeInterval
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
-            let visibleButtons = app.descendants(matching: .button).allElementsBoundByIndex.filter {
-                !$0.frame.isEmpty
-            }
-            if visibleButtons.contains(where: isKnownReaderActionButton) {
+            if let overflowMenu = resolvedElement("readerOverflowMenu", in: app),
+               !overflowMenu.frame.isEmpty {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
-        return false
+        return resolvedElement("readerOverflowMenu", in: app) != nil
     }
 
     /**
@@ -3220,8 +3351,7 @@ final class AndBibleUITests: XCTestCase {
             }
 
             if attempt == 1 {
-                let aboutAction = app.descendants(matching: .any)["readerOpenAboutAction"].firstMatch
-                if aboutAction.exists {
+                if resolvedElement("readerOverflowMenu", in: app) != nil {
                     continue
                 }
                 tapReaderMoreMenuButton(
@@ -3263,17 +3393,17 @@ final class AndBibleUITests: XCTestCase {
         line: UInt = #line
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
-        let aboutScreen = app.descendants(matching: .any)["aboutScreen"].firstMatch
         let aboutTitle = app.staticTexts["AndBible"].firstMatch
+        let doneButton = app.navigationBars.buttons["Done"].firstMatch
 
         repeat {
-            if aboutScreen.exists || aboutTitle.exists {
+            if resolvedElement("aboutScreen", in: app) != nil || aboutTitle.exists || doneButton.exists {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         } while Date() < deadline
 
-        return aboutScreen.exists || aboutTitle.exists
+        return resolvedElement("aboutScreen", in: app) != nil || aboutTitle.exists || doneButton.exists
     }
 
     /**
@@ -3307,62 +3437,6 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
-     Determines whether one visible button matches a production reader overflow action.
-     *
-     * - Parameter element: Live XCUI button candidate.
-     * - Returns: `true` when the button matches one known reader action title or identifier.
-     * - Side effects: none.
-     * - Failure modes: This helper cannot fail.
-     */
-    private func isKnownReaderActionButton(_ element: XCUIElement) -> Bool {
-        let knownIdentifiers = [
-            "readerOpenBookmarksAction",
-            "readerOpenHistoryAction",
-            "readerOpenReadingPlansAction",
-            "readerOpenSettingsAction",
-            "readerOpenWorkspacesAction",
-            "readerOpenDownloadsAction",
-            "readerOpenAboutAction",
-        ]
-        let knownTitles = Set(knownIdentifiers.map(readerActionTitle(for:)))
-        return knownIdentifiers.contains(element.identifier) ||
-            knownTitles.contains(element.label) ||
-            knownTitles.contains(element.identifier)
-    }
-
-    /**
-     Resolves the largest currently visible container that can reveal additional reader overflow
-     actions when swiped.
-     *
-     * - Parameter app: Running application under test.
-     * - Returns: Best candidate container, preferring the largest visible frame.
-     * - Side effects: none.
-     * - Failure modes: returns `nil` when XCTest exposes no suitable visible container.
-     */
-    private func largestVisibleReaderActionContainer(in app: XCUIApplication) -> XCUIElement? {
-        let collectionView = app.collectionViews.firstMatch
-        if collectionView.exists && !collectionView.frame.isEmpty {
-            return collectionView
-        }
-
-        let table = app.tables.firstMatch
-        if table.exists && !table.frame.isEmpty {
-            return table
-        }
-
-        let candidates = app.scrollViews.allElementsBoundByIndex.filter {
-            $0.exists &&
-            !$0.frame.isEmpty &&
-            $0.frame.height >= 200 &&
-            $0.descendants(matching: .button).allElementsBoundByIndex.contains(where: isKnownReaderActionButton)
-        }
-
-        return candidates.max { lhs, rhs in
-            (lhs.frame.width * lhs.frame.height) < (rhs.frame.width * rhs.frame.height)
-        }
-    }
-
-    /**
      Resolves one reader overflow action from either its stable accessibility identifier or its
      visible menu title.
      *
@@ -3375,27 +3449,27 @@ final class AndBibleUITests: XCTestCase {
      */
     private func resolveReaderActionElement(
         _ identifier: String,
-        in app: XCUIApplication
+        in app: XCUIApplication,
+        overflowMenu: XCUIElement
     ) -> XCUIElement {
-        let title = readerActionTitle(for: identifier)
-        let container = largestVisibleReaderActionContainer(in: app)
-        if let container {
-            let visibleButtons = container.descendants(matching: .button).allElementsBoundByIndex.filter {
-                !$0.frame.isEmpty
-            }
-            if let identifiedButton = visibleButtons.first(where: { $0.identifier == identifier }) {
-                return identifiedButton
-            }
-            if let titledButton = visibleButtons.first(where: { $0.label == title || $0.identifier == title }) {
-                return titledButton
-            }
+        let scopedIdentifiedButton = overflowMenu.buttons[identifier].firstMatch
+        if scopedIdentifiedButton.exists && !scopedIdentifiedButton.frame.isEmpty {
+            return scopedIdentifiedButton
         }
 
-        let identifierMatch = app.buttons[identifier].firstMatch
-        if identifierMatch.exists {
-            return identifierMatch
+        let title = readerActionTitle(for: identifier)
+        let scopedTitledButton = overflowMenu.buttons[title].firstMatch
+        if scopedTitledButton.exists && !scopedTitledButton.frame.isEmpty {
+            return scopedTitledButton
         }
-        return app.buttons[title].firstMatch
+
+        if scopedIdentifiedButton.exists {
+            return scopedIdentifiedButton
+        }
+        if scopedTitledButton.exists {
+            return scopedTitledButton
+        }
+        return overflowMenu.buttons[identifier].firstMatch
     }
 
     /**
@@ -3423,46 +3497,50 @@ final class AndBibleUITests: XCTestCase {
         line: UInt = #line
     ) -> XCUIElement {
         let deadline = Date().addingTimeInterval(timeout)
+        let title = readerActionTitle(for: identifier)
         repeat {
-            let action = resolveReaderActionElement(identifier, in: app)
-            if action.exists {
-                if let container = largestVisibleReaderActionContainer(in: app),
-                   !action.frame.isEmpty {
-                    let visibleTapRegion = container.frame.insetBy(dx: 0, dy: 16)
-                    let actionMidPoint = CGPoint(x: action.frame.midX, y: action.frame.midY)
-                    if visibleTapRegion.contains(actionMidPoint) {
-                        return action
-                    }
-                    container.swipeUp()
-                    RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-                    continue
-                }
-                return action
-            }
-
-            let remaining = deadline.timeIntervalSinceNow
-            if remaining > 0 {
-                _ = action.waitForExistence(timeout: min(0.5, remaining))
+            if let overflowMenu = resolvedElement("readerOverflowMenu", in: app) {
+                let action = resolveReaderActionElement(identifier, in: app, overflowMenu: overflowMenu)
                 if action.exists {
-                    continue
+                    if !action.frame.isEmpty {
+                        let visibleTapRegion = overflowMenu.frame.insetBy(dx: 0, dy: 16)
+                        let actionMidPoint = CGPoint(x: action.frame.midX, y: action.frame.midY)
+                        if visibleTapRegion.contains(actionMidPoint) {
+                            return action
+                        }
+                        overflowMenu.swipeUp()
+                        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+                        continue
+                    }
+                    return action
                 }
-            }
-
-            if let container = largestVisibleReaderActionContainer(in: app) {
-                container.swipeUp()
+                if overflowMenu.exists, !overflowMenu.frame.isEmpty {
+                    overflowMenu.swipeUp()
+                }
             }
 
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
-        let finalAction = resolveReaderActionElement(identifier, in: app)
+        if let overflowMenu = resolvedElement("readerOverflowMenu", in: app) {
+            let finalAction = resolveReaderActionElement(identifier, in: app, overflowMenu: overflowMenu)
+            XCTAssertTrue(
+                finalAction.exists,
+                "Expected reader action '\(identifier)' (\(title)) to exist within \(timeout) seconds.",
+                file: file,
+                line: line
+            )
+            return finalAction
+        }
+
+        let overflowMenu = unresolvedElement("readerOverflowMenu", in: app)
         XCTAssertTrue(
-            finalAction.exists,
-            "Expected reader action '\(identifier)' to exist within \(timeout) seconds.",
+            overflowMenu.exists,
+            "Expected the reader overflow menu to appear within \(timeout) seconds before resolving '\(identifier)'.",
             file: file,
             line: line
         )
-        return finalAction
+        return overflowMenu.buttons[identifier].firstMatch
     }
 
     /**
@@ -3597,10 +3675,16 @@ final class AndBibleUITests: XCTestCase {
      *   - returns an unresolved fallback element when the prompt button is unavailable
      */
     private func resolveSearchCreateIndexButton(in app: XCUIApplication) -> XCUIElement {
-        let buttons = app.descendants(matching: .button).allElementsBoundByIndex
-        if let candidate = buttons.first(where: { $0.label == "Create" && $0.identifier != "searchScreen" }) {
-            return candidate
+        let alertCreateButton = app.alerts.firstMatch.buttons["Create"].firstMatch
+        if alertCreateButton.exists || alertCreateButton.waitForExistence(timeout: 0.5) {
+            return alertCreateButton
         }
+
+        let sheetCreateButton = app.sheets.firstMatch.buttons["Create"].firstMatch
+        if sheetCreateButton.exists || sheetCreateButton.waitForExistence(timeout: 0.5) {
+            return sheetCreateButton
+        }
+
         return app.buttons["Create"].firstMatch
     }
 
@@ -3633,12 +3717,7 @@ final class AndBibleUITests: XCTestCase {
             line: line
         )
 
-        let placeholderField = alert.textFields["Label name"].firstMatch
-        if placeholderField.exists || placeholderField.waitForExistence(timeout: 0.5) {
-            return placeholderField
-        }
-
-        let identifiedField = alert.descendants(matching: .any)["labelManagerNewLabelNameField"].firstMatch
+        let identifiedField = alert.textFields["labelManagerNewLabelNameField"].firstMatch
         if identifiedField.exists || identifiedField.waitForExistence(timeout: 0.5) {
             return identifiedField
         }
@@ -3682,7 +3761,7 @@ final class AndBibleUITests: XCTestCase {
             line: line
         )
 
-        let identifiedButton = alert.descendants(matching: .any)["labelManagerCreateButton"].firstMatch
+        let identifiedButton = alert.buttons["labelManagerCreateButton"].firstMatch
         if identifiedButton.exists || identifiedButton.waitForExistence(timeout: 0.5) {
             return identifiedButton
         }
@@ -3723,7 +3802,6 @@ final class AndBibleUITests: XCTestCase {
         line: UInt = #line
     ) -> Bool {
         let readyIdentifiers = [
-            "settingsForm",
             "settingsImportExportLink",
             "settingsSyncLink",
             "settingsLabelsLink",
@@ -3731,15 +3809,41 @@ final class AndBibleUITests: XCTestCase {
             "settingsTextDisplayLink",
         ]
         let deadline = Date().addingTimeInterval(timeout)
+        let settingsForm = app.collectionViews["settingsForm"].firstMatch
 
         repeat {
-            let okButton = app.buttons["OK"].firstMatch
-            if okButton.exists, !okButton.frame.isEmpty {
+            if settingsForm.exists && !settingsForm.frame.isEmpty {
+                return true
+            }
+
+            if settingsForm.exists {
+                for identifier in readyIdentifiers {
+                    let link = settingsForm.links[identifier].firstMatch
+                    if link.exists && !link.frame.isEmpty {
+                        return true
+                    }
+
+                    let button = settingsForm.buttons[identifier].firstMatch
+                    if button.exists && !button.frame.isEmpty {
+                        return true
+                    }
+
+                    let cell = settingsForm.cells[identifier].firstMatch
+                    if cell.exists && !cell.frame.isEmpty {
+                        return true
+                    }
+                }
+            }
+
+            if settingsForm.waitForExistence(timeout: 0.2) {
+                return true
+            }
+
+            let alert = app.alerts.firstMatch
+            let okButton = alert.buttons["OK"].firstMatch
+            if alert.exists && okButton.exists && !okButton.frame.isEmpty {
                 tapElementReliably(okButton, timeout: 2, file: file, line: line)
                 continue
-            }
-            if waitForAnyElement(readyIdentifiers, in: app, timeout: 0.5, file: file, line: line) != nil {
-                return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
@@ -4108,15 +4212,19 @@ final class AndBibleUITests: XCTestCase {
      */
     private func labelRow(named name: String, in app: XCUIApplication) -> XCUIElement {
         let identifier = "labelManagerRowButton-\(name)"
-        let candidates = app.descendants(matching: .button)
-            .matching(identifier: identifier)
-            .allElementsBoundByIndex
-
-        if let visibleCandidate = candidates.first(where: { $0.exists && !$0.frame.isEmpty && $0.isHittable }) {
-            return visibleCandidate
+        if let labelManagerScreen = resolvedElement("labelManagerScreen", in: app) {
+            let scopedLink = labelManagerScreen.links[identifier].firstMatch
+            if scopedLink.exists || scopedLink.waitForExistence(timeout: 0.5) {
+                return scopedLink
+            }
+            let scopedButton = labelManagerScreen.buttons[identifier].firstMatch
+            if scopedButton.exists || scopedButton.waitForExistence(timeout: 0.5) {
+                return scopedButton
+            }
         }
-        if let visibleCandidate = candidates.first(where: { $0.exists && !$0.frame.isEmpty }) {
-            return visibleCandidate
+        let globalLink = app.links[identifier].firstMatch
+        if globalLink.exists || globalLink.waitForExistence(timeout: 0.5) {
+            return globalLink
         }
         return app.buttons[identifier].firstMatch
     }
@@ -4385,7 +4493,7 @@ final class AndBibleUITests: XCTestCase {
     ) {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
-            let screen = app.descendants(matching: .any)["textDisplaySettingsScreen"].firstMatch
+            let screen = unresolvedElement("textDisplaySettingsScreen", in: app)
             let toggle = app.switches["textDisplayJustifyTextToggle"].firstMatch
             let tableCell = app.tables.cells.containing(.switch, identifier: "textDisplayJustifyTextToggle").firstMatch
             let genericCell = app.cells.containing(.switch, identifier: "textDisplayJustifyTextToggle").firstMatch
@@ -4447,8 +4555,8 @@ final class AndBibleUITests: XCTestCase {
     ) {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
-            let upperElement = app.descendants(matching: .any)[upperIdentifier].firstMatch
-            let lowerElement = app.descendants(matching: .any)[lowerIdentifier].firstMatch
+            let upperElement = unresolvedElement(upperIdentifier, in: app)
+            let lowerElement = unresolvedElement(lowerIdentifier, in: app)
             if upperElement.exists,
                lowerElement.exists,
                upperElement.frame.minY < lowerElement.frame.minY {
@@ -4457,8 +4565,8 @@ final class AndBibleUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
-        let finalUpperElement = app.descendants(matching: .any)[upperIdentifier].firstMatch
-        let finalLowerElement = app.descendants(matching: .any)[lowerIdentifier].firstMatch
+        let finalUpperElement = unresolvedElement(upperIdentifier, in: app)
+        let finalLowerElement = unresolvedElement(lowerIdentifier, in: app)
         XCTAssertTrue(
             finalUpperElement.exists && finalLowerElement.exists &&
                 finalUpperElement.frame.minY < finalLowerElement.frame.minY,

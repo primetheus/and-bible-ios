@@ -95,6 +95,36 @@ func presentCompareView(book: String, chapter: Int, currentModuleName: String, s
    display updates into active pane controllers
  */
 public struct BibleReaderView: View {
+    /// Top-level sheets launched from the reader shell or its global shortcuts.
+    private enum ReaderSheet: String, Identifiable {
+        case bookmarks
+        case settings
+        case downloads
+        case history
+        case readingPlans
+        case workspaces
+        case about
+
+        var id: String { rawValue }
+    }
+
+    /// Internal reader-overflow destinations that should run only after the overflow sheet dismisses.
+    private enum ReaderOverflowPresentation {
+        case labelManager
+        case compare
+        case bookmarks
+        case history
+        case readingPlans
+        case settings
+        case workspaces
+        case downloads
+        case epubLibrary
+        case epubBrowser
+        case epubSearch
+        case help
+        case about
+    }
+
     /// Shared workspace/window coordinator that owns panes, focus, and controller registration.
     @Environment(WindowManager.self) private var windowManager
 
@@ -113,11 +143,17 @@ public struct BibleReaderView: View {
     /// Presents the full-text search sheet for the focused module.
     @State private var showSearch = false
 
-    /// Presents bookmark browsing and navigation UI.
-    @State private var showBookmarks = false
+    /// Presents the current top-level reader sheet driven by the overflow menu and shortcuts.
+    @State private var activeReaderSheet: ReaderSheet?
 
-    /// Presents the consolidated settings screen.
-    @State private var showSettings = false
+    /// Presents the reader's overflow action sheet.
+    @State private var showReaderOverflowMenu = false
+
+    /// Queues one follow-up presentation until the reader overflow sheet finishes dismissing.
+    @State private var pendingReaderOverflowPresentation: ReaderOverflowPresentation?
+
+    /// Queues one side-effect-only reader overflow action until the sheet finishes dismissing.
+    @State private var pendingReaderOverflowCallback: (() -> Void)?
 
     /// Presents the sync settings editor directly for focused workflow testing.
     @State private var showSyncSettings = false
@@ -131,17 +167,11 @@ public struct BibleReaderView: View {
     /// Presents import and export management UI.
     @State private var showImportExport = false
 
-    /// Presents module download and install management.
-    @State private var showDownloads = false
 
-    /// Presents reading history for jump-back navigation.
-    @State private var showHistory = false
 
     /// Presents the compare-translations sheet.
     @State private var showCompare = false
 
-    /// Presents reading-plan management UI.
-    @State private var showReadingPlans = false
 
     /// Presents the expanded speech controls sheet.
     @State private var showSpeakControls = false
@@ -170,8 +200,6 @@ public struct BibleReaderView: View {
     /// Active module category that the picker should display.
     @State private var pickerCategory: DocumentCategory = .bible
 
-    /// Presents workspace selection and management UI.
-    @State private var showWorkspaces = false
 
     /// Transient toast text shown above the bottom edge of the reader.
     @State private var toastMessage: String?
@@ -254,8 +282,6 @@ public struct BibleReaderView: View {
     /// Presents the in-app help and tips screen.
     @State private var showHelp = false
 
-    /// Presents the about screen.
-    @State private var showAbout = false
 
     /// Presents the reference chooser used by bridge-driven dialogs.
     @State private var showRefChooser = false
@@ -540,33 +566,89 @@ public struct BibleReaderView: View {
                 )
             }
         }
-        .sheet(isPresented: $showBookmarks) {
-            NavigationStack {
-                BookmarkListView(
-                    onNavigate: { book, chapter in
-                        showBookmarks = false
-                        focusedController?.navigateTo(book: book, chapter: chapter)
-                    },
-                    onOpenStudyPad: { labelId in
-                        focusedController?.loadStudyPadDocument(labelId: labelId)
-                    }
-                )
-            }
-        }
-        .sheet(isPresented: $showSettings) {
-            NavigationStack {
-                SettingsView(
-                    displaySettings: $displaySettings,
-                    nightMode: $nightMode,
-                    nightModeMode: $nightModeMode,
-                    onSettingsChanged: applyDisplaySettingsChange
-                )
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(String(localized: "done")) { showSettings = false }
+        .sheet(item: $activeReaderSheet) { presentedSheet in
+            switch presentedSheet {
+            case .bookmarks:
+                NavigationStack {
+                    BookmarkListView(
+                        onNavigate: { book, chapter in
+                            activeReaderSheet = nil
+                            focusedController?.navigateTo(book: book, chapter: chapter)
+                        },
+                        onOpenStudyPad: { labelId in
+                            focusedController?.loadStudyPadDocument(labelId: labelId)
+                        }
+                    )
+                }
+            case .settings:
+                NavigationStack {
+                    SettingsView(
+                        displaySettings: $displaySettings,
+                        nightMode: $nightMode,
+                        nightModeMode: $nightModeMode,
+                        onSettingsChanged: applyDisplaySettingsChange
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(String(localized: "done")) { activeReaderSheet = nil }
+                        }
                     }
                 }
+            case .downloads:
+                NavigationStack {
+                    ModuleBrowserView()
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button(String(localized: "done")) { activeReaderSheet = nil }
+                            }
+                        }
+                }
+            case .history:
+                NavigationStack {
+                    HistoryView(
+                        bookNameResolver: { [weak ctrl = focusedController] osisId in
+                            ctrl?.bookName(forOsisId: osisId)
+                        }
+                    ) { key in
+                        activeReaderSheet = nil
+                        _ = focusedController?.navigateToRef(key)
+                    }
+                }
+            case .readingPlans:
+                NavigationStack {
+                    ReadingPlanListView()
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button(String(localized: "done")) { activeReaderSheet = nil }
+                            }
+                        }
+                }
+            case .workspaces:
+                NavigationStack {
+                    WorkspaceSelectorView()
+                }
+            case .about:
+                NavigationStack {
+                    AboutView()
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button(String(localized: "done")) { activeReaderSheet = nil }
+                            }
+                        }
+                }
             }
+        }
+        .sheet(isPresented: $showReaderOverflowMenu, onDismiss: presentPendingReaderOverflowPresentation) {
+            NavigationStack {
+                readerOverflowMenu
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(String(localized: "done")) { showReaderOverflowMenu = false }
+                        }
+                    }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showTextDisplaySettings) {
             NavigationStack {
@@ -609,9 +691,14 @@ public struct BibleReaderView: View {
                     }
             }
         }
-        .onChange(of: showSettings) { _, isPresented in
-            if !isPresented {
+        .onChange(of: activeReaderSheet) { oldValue, newValue in
+            if oldValue == .settings, newValue == nil {
                 reloadBehaviorPreferences()
+            }
+            if oldValue == .downloads, newValue == nil {
+                for (_, ctrl) in windowManager.controllers {
+                    (ctrl as? BibleReaderController)?.refreshInstalledModules()
+                }
             }
         }
         .onChange(of: colorScheme) { _, _ in
@@ -638,43 +725,6 @@ public struct BibleReaderView: View {
                 )
             }
         }
-        .sheet(isPresented: $showHistory) {
-            NavigationStack {
-                HistoryView(
-                    bookNameResolver: { [weak ctrl = focusedController] osisId in
-                        ctrl?.bookName(forOsisId: osisId)
-                    }
-                ) { key in
-                    showHistory = false
-                    _ = focusedController?.navigateToRef(key)
-                }
-            }
-        }
-        .sheet(isPresented: $showDownloads, onDismiss: {
-            // Refresh installed modules list in all controllers after downloads
-            for (_, ctrl) in windowManager.controllers {
-                (ctrl as? BibleReaderController)?.refreshInstalledModules()
-            }
-        }) {
-            NavigationStack {
-                ModuleBrowserView()
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button(String(localized: "done")) { showDownloads = false }
-                        }
-                    }
-            }
-        }
-        .sheet(isPresented: $showReadingPlans) {
-            NavigationStack {
-                ReadingPlanListView()
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button(String(localized: "done")) { showReadingPlans = false }
-                        }
-                    }
-            }
-        }
         .sheet(isPresented: $showSpeakControls) {
             SpeakControlView(speakService: speakService)
                 .presentationDetents([.height(400), .large])
@@ -689,11 +739,6 @@ public struct BibleReaderView: View {
         }
         .sheet(isPresented: $showModulePicker) {
             modulePicker
-        }
-        .sheet(isPresented: $showWorkspaces) {
-            NavigationStack {
-                WorkspaceSelectorView()
-            }
         }
         .sheet(isPresented: Binding(
             get: { crossReferences != nil },
@@ -797,16 +842,6 @@ public struct BibleReaderView: View {
                     }
             }
         }
-        .sheet(isPresented: $showAbout) {
-            NavigationStack {
-                AboutView()
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button(String(localized: "done")) { showAbout = false }
-                        }
-                    }
-            }
-        }
         .sheet(isPresented: $showRefChooser) {
             NavigationStack {
                 BookChooserView(books: focusedController?.bookList ?? BibleReaderController.defaultBooks) { book, chapter, _ in
@@ -825,15 +860,15 @@ public struct BibleReaderView: View {
                     .keyboardShortcut("f", modifiers: .command)
                 Button("") { showBookChooser = true }
                     .keyboardShortcut("g", modifiers: .command)
-                Button("") { showBookmarks = true }
+                Button("") { activeReaderSheet = .bookmarks }
                     .keyboardShortcut("b", modifiers: .command)
                 Button("") { focusedController?.navigatePrevious() }
                     .keyboardShortcut("[", modifiers: .command)
                 Button("") { focusedController?.navigateNext() }
                     .keyboardShortcut("]", modifiers: .command)
-                Button("") { showDownloads = true }
+                Button("") { activeReaderSheet = .downloads }
                     .keyboardShortcut("d", modifiers: .command)
-                Button("") { showSettings = true }
+                Button("") { activeReaderSheet = .settings }
                     .keyboardShortcut(",", modifiers: .command)
             }
             .frame(width: 0, height: 0)
@@ -905,65 +940,106 @@ public struct BibleReaderView: View {
         }
     }
 
-    /**
-     Runs one reader action immediately or after the menu-dismiss delay used by the production
-     toolbar menu.
-     */
-    private func performReaderAction(afterMenuDelay: Bool = false, _ action: @escaping () -> Void) {
-        if afterMenuDelay {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: action)
-        } else {
-            action()
+    /// Queues one internal presentation until the reader overflow sheet fully dismisses.
+    private func dismissReaderOverflowMenuAndQueue(_ presentation: ReaderOverflowPresentation) {
+        pendingReaderOverflowCallback = nil
+        pendingReaderOverflowPresentation = presentation
+        showReaderOverflowMenu = false
+    }
+
+    /// Queues one side-effect-only action until the reader overflow sheet fully dismisses.
+    private func dismissReaderOverflowMenuAndPerform(_ action: @escaping () -> Void) {
+        pendingReaderOverflowPresentation = nil
+        pendingReaderOverflowCallback = action
+        showReaderOverflowMenu = false
+    }
+
+    /// Presents any pending internal destination after the reader overflow sheet finishes dismissing.
+    private func presentPendingReaderOverflowPresentation() {
+        let callback = pendingReaderOverflowCallback
+        pendingReaderOverflowCallback = nil
+
+        let presentation = pendingReaderOverflowPresentation
+        pendingReaderOverflowPresentation = nil
+
+        guard callback != nil || presentation != nil else {
+            return
+        }
+
+        DispatchQueue.main.async {
+            if let callback {
+                callback()
+                return
+            }
+
+            guard let presentation else {
+                return
+            }
+
+            switch presentation {
+            case .labelManager:
+                showLabelManager = true
+            case .compare:
+                showCompare = true
+            case .bookmarks:
+                activeReaderSheet = .bookmarks
+            case .history:
+                activeReaderSheet = .history
+            case .readingPlans:
+                activeReaderSheet = .readingPlans
+            case .settings:
+                activeReaderSheet = .settings
+            case .workspaces:
+                activeReaderSheet = .workspaces
+            case .downloads:
+                activeReaderSheet = .downloads
+            case .epubLibrary:
+                showEpubLibrary = true
+            case .epubBrowser:
+                showEpubBrowser = true
+            case .epubSearch:
+                showEpubSearch = true
+            case .help:
+                showHelp = true
+            case .about:
+                activeReaderSheet = .about
+            }
         }
     }
 
     /** Opens Bookmarks from the reader shell. */
-    private func openBookmarksFromReaderAction(afterMenuDelay: Bool = false) {
-        performReaderAction(afterMenuDelay: afterMenuDelay) {
-            showBookmarks = true
-        }
+    private func openBookmarksFromReaderAction() {
+        activeReaderSheet = .bookmarks
     }
 
     /** Opens History from the reader shell. */
-    private func openHistoryFromReaderAction(afterMenuDelay: Bool = false) {
-        performReaderAction(afterMenuDelay: afterMenuDelay) {
-            showHistory = true
-        }
+    private func openHistoryFromReaderAction() {
+        activeReaderSheet = .history
     }
 
     /** Opens Reading Plans from the reader shell. */
-    private func openReadingPlansFromReaderAction(afterMenuDelay: Bool = false) {
-        performReaderAction(afterMenuDelay: afterMenuDelay) {
-            showReadingPlans = true
-        }
+    private func openReadingPlansFromReaderAction() {
+        activeReaderSheet = .readingPlans
     }
 
     /** Opens Settings from the reader shell. */
-    private func openSettingsFromReaderAction(afterMenuDelay: Bool = false) {
-        performReaderAction(afterMenuDelay: afterMenuDelay) {
-            showSettings = true
-        }
+    private func openSettingsFromReaderAction() {
+        activeReaderSheet = .settings
     }
 
     /** Opens Workspaces from the reader shell. */
-    private func openWorkspacesFromReaderAction(afterMenuDelay: Bool = false) {
-        performReaderAction(afterMenuDelay: afterMenuDelay) {
-            showWorkspaces = true
-        }
+    private func openWorkspacesFromReaderAction() {
+        activeReaderSheet = .workspaces
     }
 
     /** Opens Downloads from the reader shell. */
-    private func openDownloadsFromReaderAction(afterMenuDelay: Bool = false) {
-        performReaderAction(afterMenuDelay: afterMenuDelay) {
-            showDownloads = true
-        }
+    private func openDownloadsFromReaderAction() {
+        activeReaderSheet = .downloads
     }
 
     /** Opens About from the reader shell. */
-    private func openAboutFromReaderAction(afterMenuDelay: Bool = false) {
-        performReaderAction(afterMenuDelay: afterMenuDelay) {
-            showAbout = true
-        }
+    private func openAboutFromReaderAction() {
+        activeReaderSheet = .about
     }
 
     /**
@@ -984,12 +1060,12 @@ public struct BibleReaderView: View {
             speakService: speakService,
             onShowBookChooser: { showBookChooser = true },
             onShowSearch: { presentSearch() },
-            onShowBookmarks: { showBookmarks = true },
-            onShowSettings: { showSettings = true },
-            onShowDownloads: { showDownloads = true },
-            onShowHistory: { showHistory = true },
+            onShowBookmarks: { activeReaderSheet = .bookmarks },
+            onShowSettings: { activeReaderSheet = .settings },
+            onShowDownloads: { activeReaderSheet = .downloads },
+            onShowHistory: { activeReaderSheet = .history },
             onShowCompare: { showCompare = true },
-            onShowReadingPlans: { showReadingPlans = true },
+            onShowReadingPlans: { activeReaderSheet = .readingPlans },
             onShowSpeakControls: { showSpeakControls = true },
             onShareText: { text in shareText = text },
             onShowCrossReferences: { refs in crossReferences = refs },
@@ -1006,7 +1082,7 @@ public struct BibleReaderView: View {
                 toastWorkItem = work
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: work)
             },
-            onShowWorkspaces: { showWorkspaces = true },
+            onShowWorkspaces: { activeReaderSheet = .workspaces },
             onToggleFullScreen: {
                 if isFullScreen {
                     withAnimation(.easeInOut(duration: 0.2)) { isFullScreen = false }
@@ -1078,7 +1154,7 @@ public struct BibleReaderView: View {
                         Button(String(localized: "download_modules")) {
                             showModulePicker = false
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                showDownloads = true
+                                activeReaderSheet = .downloads
                             }
                         }
                     }
@@ -1450,236 +1526,8 @@ public struct BibleReaderView: View {
                                 handleCommentaryToolbarLongPress(controller)
                             }
 
-                        // Ellipsis menu
-                        Menu {
-                            // Quick toggles
-                            Toggle(isOn: Binding(
-                                get: { isFullScreen },
-                                set: { newValue in
-                                    withAnimation(.easeInOut(duration: 0.2)) { isFullScreen = newValue }
-                                    lastFullScreenByDoubleTap = false
-                                    resetAutoFullscreenTracking()
-                                }
-                            )) {
-                                SwiftUI.Label(String(localized: "fullscreen"), systemImage: "arrow.up.left.and.arrow.down.right")
-                            }
-
-                            if isNightModeQuickToggleEnabled {
-                                Toggle(isOn: Binding(
-                                    get: { nightMode },
-                                    set: { newValue in
-                                        let store = SettingsStore(modelContext: modelContext)
-                                        store.setBool("night_mode", value: newValue)
-                                        nightMode = NightModeSettingsResolver.isNightMode(
-                                            rawValue: nightModeMode,
-                                            manualNightMode: newValue,
-                                            systemIsDark: colorScheme == .dark
-                                        )
-                                        for window in windowManager.visibleWindows {
-                                            if let ctrl = windowManager.controllers[window.id] as? BibleReaderController {
-                                                ctrl.updateDisplaySettings(displaySettings, nightMode: nightMode)
-                                            }
-                                        }
-                                    }
-                                )) {
-                                    SwiftUI.Label(String(localized: "night_mode"), systemImage: "moon.fill")
-                                }
-                            }
-
-                            #if os(iOS)
-                            Toggle(isOn: Binding(
-                                get: { windowManager.activeWorkspace?.workspaceSettings?.enableTiltToScroll ?? false },
-                                set: { newValue in
-                                    updateWorkspaceSettings { $0.enableTiltToScroll = newValue }
-                                    if newValue {
-                                        startTiltToScroll()
-                                    } else {
-                                        tiltScrollService.stop()
-                                    }
-                                }
-                            )) {
-                                SwiftUI.Label(String(localized: "tilt_to_scroll"), systemImage: "gyroscope")
-                            }
-                            #endif
-
-                            if windowManager.visibleWindows.count > 1 {
-                                Toggle(isOn: Binding(
-                                    get: { windowManager.activeWorkspace?.workspaceSettings?.enableReverseSplitMode ?? false },
-                                    set: { newValue in
-                                        updateWorkspaceSettings { $0.enableReverseSplitMode = newValue }
-                                    }
-                                )) {
-                                    SwiftUI.Label(String(localized: "reversed_split_mode"), systemImage: "rectangle.split.1x2")
-                                }
-                            }
-
-                            Toggle(isOn: Binding(
-                                get: { windowManager.activeWorkspace?.workspaceSettings?.autoPin ?? false },
-                                set: { newValue in
-                                    updateWorkspaceSettings { $0.autoPin = newValue }
-                                }
-                            )) {
-                                SwiftUI.Label(String(localized: "window_pinning"), systemImage: "pin.fill")
-                            }
-
-                            Divider()
-
-                            Button(String(localized: "label_settings"), systemImage: "tag") {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    showLabelManager = true
-                                }
-                            }
-
-                            Button(String(localized: "all_text_options"), systemImage: "textformat.size") {
-                                openSettingsFromReaderAction(afterMenuDelay: true)
-                            }
-
-                            Divider()
-
-                            Button(String(localized: "bookmarks"), systemImage: "bookmark") {
-                                openBookmarksFromReaderAction(afterMenuDelay: true)
-                            }
-                            .accessibilityIdentifier("readerOpenBookmarksAction")
-                            Button(String(localized: "history"), systemImage: "clock") {
-                                openHistoryFromReaderAction(afterMenuDelay: true)
-                            }
-                            .accessibilityIdentifier("readerOpenHistoryAction")
-                            Button(String(localized: "compare"), systemImage: "rectangle.split.2x1") {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    showCompare = true
-                                }
-                            }
-                            Button(String(localized: "reading_plans"), systemImage: "calendar") {
-                                openReadingPlansFromReaderAction(afterMenuDelay: true)
-                            }
-                            .accessibilityIdentifier("readerOpenReadingPlansAction")
-                            Button(String(localized: "settings"), systemImage: "gear") {
-                                openSettingsFromReaderAction(afterMenuDelay: true)
-                            }
-                            .accessibilityIdentifier("readerOpenSettingsAction")
-                            Divider()
-                            Button(String(localized: "workspaces"), systemImage: "square.stack") {
-                                openWorkspacesFromReaderAction(afterMenuDelay: true)
-                            }
-                            .accessibilityIdentifier("readerOpenWorkspacesAction")
-                            Button(String(localized: "downloads"), systemImage: "arrow.down.circle") {
-                                openDownloadsFromReaderAction(afterMenuDelay: true)
-                            }
-                            .accessibilityIdentifier("readerOpenDownloadsAction")
-                            if !(controller?.installedDictionaryModules.isEmpty ?? true) {
-                                Divider()
-                                Button(String(localized: "dictionary"), systemImage: "character.book.closed") {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        let modules = controller?.installedDictionaryModules ?? []
-                                        if modules.count == 1 {
-                                            controller?.switchDictionaryModule(to: modules[0].name)
-                                            controller?.switchCategory(to: .dictionary)
-                                            showDictionaryBrowser = true
-                                        } else {
-                                            pickerCategory = .dictionary
-                                            showModulePicker = true
-                                        }
-                                    }
-                                }
-                            }
-                            if !(controller?.installedGeneralBookModules.isEmpty ?? true) {
-                                Button(String(localized: "general_book"), systemImage: "books.vertical") {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        let modules = controller?.installedGeneralBookModules ?? []
-                                        if modules.count == 1 {
-                                            controller?.switchGeneralBookModule(to: modules[0].name)
-                                            controller?.switchCategory(to: .generalBook)
-                                            showGeneralBookBrowser = true
-                                        } else {
-                                            pickerCategory = .generalBook
-                                            showModulePicker = true
-                                        }
-                                    }
-                                }
-                            }
-                            if !(controller?.installedMapModules.isEmpty ?? true) {
-                                Button(String(localized: "map"), systemImage: "map") {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        let modules = controller?.installedMapModules ?? []
-                                        if modules.count == 1 {
-                                            controller?.switchMapModule(to: modules[0].name)
-                                            controller?.switchCategory(to: .map)
-                                            showMapBrowser = true
-                                        } else {
-                                            pickerCategory = .map
-                                            showModulePicker = true
-                                        }
-                                    }
-                                }
-                            }
-                            if !EpubReader.installedEpubs().isEmpty {
-                                Button(String(localized: "epub_library"), systemImage: "book") {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        showEpubLibrary = true
-                                    }
-                                }
-                            }
-                            if controller?.activeEpubReader != nil {
-                                Button(String(localized: "epub_contents"), systemImage: "list.bullet") {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        showEpubBrowser = true
-                                    }
-                                }
-                                Button(String(localized: "search_epub"), systemImage: "magnifyingglass") {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        showEpubSearch = true
-                                    }
-                                }
-                            }
-                            Divider()
-                            Button(String(localized: "help_tips"), systemImage: "questionmark.circle") {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    showHelp = true
-                                }
-                            }
-                            Button(String(localized: "sponsor_development"), systemImage: "heart") {
-                                if let url = URL(string: "https://shop.andbible.org") {
-                                    #if os(iOS)
-                                    UIApplication.shared.open(url)
-                                    #elseif os(macOS)
-                                    NSWorkspace.shared.open(url)
-                                    #endif
-                                }
-                            }
-                            Divider()
-                            Button(String(localized: "about"), systemImage: "info.circle") {
-                                openAboutFromReaderAction(afterMenuDelay: true)
-                            }
-                            .accessibilityIdentifier("readerOpenAboutAction")
-                            Button(String(localized: "rate_app"), systemImage: "star") {
-                                #if os(iOS)
-                                if let scene = UIApplication.shared.connectedScenes
-                                    .compactMap({ $0 as? UIWindowScene }).first {
-                                    SKStoreReviewController.requestReview(in: scene)
-                                }
-                                #endif
-                            }
-                            Button(String(localized: "report_bug"), systemImage: "ladybug") {
-                                if let url = URL(string: "https://github.com/AndBible/and-bible/issues") {
-                                    #if os(iOS)
-                                    UIApplication.shared.open(url)
-                                    #elseif os(macOS)
-                                    NSWorkspace.shared.open(url)
-                                    #endif
-                                }
-                            }
-                            Button(String(localized: "tell_friend"), systemImage: "square.and.arrow.up") {
-                                #if os(iOS)
-                                let text = String(localized: "tell_friend_message")
-                                guard let windowScene = UIApplication.shared.connectedScenes
-                                    .compactMap({ $0 as? UIWindowScene }).first,
-                                      let rootVC = windowScene.windows.first?.rootViewController else { return }
-                                var topVC = rootVC
-                                while let presented = topVC.presentedViewController { topVC = presented }
-                                let activityVC = UIActivityViewController(activityItems: [text], applicationActivities: nil)
-                                topVC.present(activityVC, animated: true)
-                                #endif
-                            }
+                        Button {
+                            showReaderOverflowMenu = true
                         } label: {
                             Image(systemName: "ellipsis.circle")
                                 .font(.body)
@@ -1692,6 +1540,295 @@ public struct BibleReaderView: View {
             .padding(.vertical, 8)
             .background(.bar)
         }
+    }
+
+    /**
+     Builds the reader overflow sheet using normal SwiftUI controls instead of the system toolbar
+     `Menu`, which proved unreliable when chaining into modal destinations on iOS.
+     */
+    private var readerOverflowMenu: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                readerOverflowSection {
+                    Toggle(isOn: Binding(
+                        get: { isFullScreen },
+                        set: { newValue in
+                            withAnimation(.easeInOut(duration: 0.2)) { isFullScreen = newValue }
+                            lastFullScreenByDoubleTap = false
+                            resetAutoFullscreenTracking()
+                        }
+                    )) {
+                        SwiftUI.Label(String(localized: "fullscreen"), systemImage: "arrow.up.left.and.arrow.down.right")
+                    }
+
+                    if isNightModeQuickToggleEnabled {
+                        Divider()
+                        Toggle(isOn: Binding(
+                            get: { nightMode },
+                            set: { newValue in
+                                let store = SettingsStore(modelContext: modelContext)
+                                store.setBool("night_mode", value: newValue)
+                                nightMode = NightModeSettingsResolver.isNightMode(
+                                    rawValue: nightModeMode,
+                                    manualNightMode: newValue,
+                                    systemIsDark: colorScheme == .dark
+                                )
+                                for window in windowManager.visibleWindows {
+                                    if let ctrl = windowManager.controllers[window.id] as? BibleReaderController {
+                                        ctrl.updateDisplaySettings(displaySettings, nightMode: nightMode)
+                                    }
+                                }
+                            }
+                        )) {
+                            SwiftUI.Label(String(localized: "night_mode"), systemImage: "moon.fill")
+                        }
+                    }
+
+                    #if os(iOS)
+                    Divider()
+                    Toggle(isOn: Binding(
+                        get: { windowManager.activeWorkspace?.workspaceSettings?.enableTiltToScroll ?? false },
+                        set: { newValue in
+                            updateWorkspaceSettings { $0.enableTiltToScroll = newValue }
+                            if newValue {
+                                startTiltToScroll()
+                            } else {
+                                tiltScrollService.stop()
+                            }
+                        }
+                    )) {
+                        SwiftUI.Label(String(localized: "tilt_to_scroll"), systemImage: "gyroscope")
+                    }
+                    #endif
+
+                    if windowManager.visibleWindows.count > 1 {
+                        Divider()
+                        Toggle(isOn: Binding(
+                            get: { windowManager.activeWorkspace?.workspaceSettings?.enableReverseSplitMode ?? false },
+                            set: { newValue in
+                                updateWorkspaceSettings { $0.enableReverseSplitMode = newValue }
+                            }
+                        )) {
+                            SwiftUI.Label(String(localized: "reversed_split_mode"), systemImage: "rectangle.split.1x2")
+                        }
+                    }
+
+                    Divider()
+                    Toggle(isOn: Binding(
+                        get: { windowManager.activeWorkspace?.workspaceSettings?.autoPin ?? false },
+                        set: { newValue in
+                            updateWorkspaceSettings { $0.autoPin = newValue }
+                        }
+                    )) {
+                        SwiftUI.Label(String(localized: "window_pinning"), systemImage: "pin.fill")
+                    }
+                }
+
+                readerOverflowSection {
+                    readerOverflowButton(title: String(localized: "label_settings"), systemImage: "tag") {
+                        dismissReaderOverflowMenuAndQueue(.labelManager)
+                    }
+                    readerOverflowButton(title: String(localized: "all_text_options"), systemImage: "textformat.size") {
+                        dismissReaderOverflowMenuAndQueue(.settings)
+                    }
+                }
+
+                readerOverflowSection {
+                    readerOverflowButton(title: String(localized: "bookmarks"), systemImage: "bookmark", identifier: "readerOpenBookmarksAction") {
+                        dismissReaderOverflowMenuAndQueue(.bookmarks)
+                    }
+                    readerOverflowButton(title: String(localized: "history"), systemImage: "clock", identifier: "readerOpenHistoryAction") {
+                        dismissReaderOverflowMenuAndQueue(.history)
+                    }
+                    readerOverflowButton(title: String(localized: "compare"), systemImage: "rectangle.split.2x1") {
+                        dismissReaderOverflowMenuAndQueue(.compare)
+                    }
+                    readerOverflowButton(title: String(localized: "reading_plans"), systemImage: "calendar", identifier: "readerOpenReadingPlansAction") {
+                        dismissReaderOverflowMenuAndQueue(.readingPlans)
+                    }
+                    readerOverflowButton(title: String(localized: "settings"), systemImage: "gear", identifier: "readerOpenSettingsAction") {
+                        dismissReaderOverflowMenuAndQueue(.settings)
+                    }
+                }
+
+                readerOverflowSection {
+                    readerOverflowButton(title: String(localized: "workspaces"), systemImage: "square.stack", identifier: "readerOpenWorkspacesAction") {
+                        dismissReaderOverflowMenuAndQueue(.workspaces)
+                    }
+                    readerOverflowButton(title: String(localized: "downloads"), systemImage: "arrow.down.circle", identifier: "readerOpenDownloadsAction") {
+                        dismissReaderOverflowMenuAndQueue(.downloads)
+                    }
+
+                    if let controller = focusedController, !controller.installedDictionaryModules.isEmpty {
+                        readerOverflowButton(title: String(localized: "dictionary"), systemImage: "character.book.closed") {
+                            dismissReaderOverflowMenuAndPerform {
+                                let modules = controller.installedDictionaryModules
+                                if modules.count == 1 {
+                                    controller.switchDictionaryModule(to: modules[0].name)
+                                    controller.switchCategory(to: .dictionary)
+                                    showDictionaryBrowser = true
+                                } else {
+                                    pickerCategory = .dictionary
+                                    showModulePicker = true
+                                }
+                            }
+                        }
+                    }
+
+                    if let controller = focusedController, !controller.installedGeneralBookModules.isEmpty {
+                        readerOverflowButton(title: String(localized: "general_book"), systemImage: "books.vertical") {
+                            dismissReaderOverflowMenuAndPerform {
+                                let modules = controller.installedGeneralBookModules
+                                if modules.count == 1 {
+                                    controller.switchGeneralBookModule(to: modules[0].name)
+                                    controller.switchCategory(to: .generalBook)
+                                    showGeneralBookBrowser = true
+                                } else {
+                                    pickerCategory = .generalBook
+                                    showModulePicker = true
+                                }
+                            }
+                        }
+                    }
+
+                    if let controller = focusedController, !controller.installedMapModules.isEmpty {
+                        readerOverflowButton(title: String(localized: "map"), systemImage: "map") {
+                            dismissReaderOverflowMenuAndPerform {
+                                let modules = controller.installedMapModules
+                                if modules.count == 1 {
+                                    controller.switchMapModule(to: modules[0].name)
+                                    controller.switchCategory(to: .map)
+                                    showMapBrowser = true
+                                } else {
+                                    pickerCategory = .map
+                                    showModulePicker = true
+                                }
+                            }
+                        }
+                    }
+
+                    if !EpubReader.installedEpubs().isEmpty {
+                        readerOverflowButton(title: String(localized: "epub_library"), systemImage: "book") {
+                            dismissReaderOverflowMenuAndQueue(.epubLibrary)
+                        }
+                    }
+
+                    if focusedController?.activeEpubReader != nil {
+                        readerOverflowButton(title: String(localized: "epub_contents"), systemImage: "list.bullet") {
+                            dismissReaderOverflowMenuAndQueue(.epubBrowser)
+                        }
+                        readerOverflowButton(title: String(localized: "search_epub"), systemImage: "magnifyingglass") {
+                            dismissReaderOverflowMenuAndQueue(.epubSearch)
+                        }
+                    }
+                }
+
+                readerOverflowSection {
+                    readerOverflowButton(title: String(localized: "help_tips"), systemImage: "questionmark.circle") {
+                        dismissReaderOverflowMenuAndQueue(.help)
+                    }
+                    readerOverflowButton(title: String(localized: "sponsor_development"), systemImage: "heart") {
+                        dismissReaderOverflowMenuAndPerform {
+                            if let url = URL(string: "https://shop.andbible.org") {
+                                #if os(iOS)
+                                UIApplication.shared.open(url)
+                                #elseif os(macOS)
+                                NSWorkspace.shared.open(url)
+                                #endif
+                            }
+                        }
+                    }
+                    readerOverflowButton(title: String(localized: "about"), systemImage: "info.circle", identifier: "readerOpenAboutAction") {
+                        dismissReaderOverflowMenuAndQueue(.about)
+                    }
+                    readerOverflowButton(title: String(localized: "rate_app"), systemImage: "star") {
+                        dismissReaderOverflowMenuAndPerform {
+                            #if os(iOS)
+                            if let scene = UIApplication.shared.connectedScenes
+                                .compactMap({ $0 as? UIWindowScene }).first {
+                                SKStoreReviewController.requestReview(in: scene)
+                            }
+                            #endif
+                        }
+                    }
+                    readerOverflowButton(title: String(localized: "report_bug"), systemImage: "ladybug") {
+                        dismissReaderOverflowMenuAndPerform {
+                            if let url = URL(string: "https://github.com/AndBible/and-bible/issues") {
+                                #if os(iOS)
+                                UIApplication.shared.open(url)
+                                #elseif os(macOS)
+                                NSWorkspace.shared.open(url)
+                                #endif
+                            }
+                        }
+                    }
+                    readerOverflowButton(title: String(localized: "tell_friend"), systemImage: "square.and.arrow.up") {
+                        dismissReaderOverflowMenuAndPerform {
+                            #if os(iOS)
+                            let text = String(localized: "tell_friend_message")
+                            guard let windowScene = UIApplication.shared.connectedScenes
+                                .compactMap({ $0 as? UIWindowScene }).first,
+                                  let rootVC = windowScene.windows.first?.rootViewController else { return }
+                            var topVC = rootVC
+                            while let presented = topVC.presentedViewController { topVC = presented }
+                            let activityVC = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+                            topVC.present(activityVC, animated: true)
+                            #endif
+                        }
+                    }
+                }
+            }
+            .padding()
+        }
+        .accessibilityIdentifier("readerOverflowMenu")
+        .background(.bar)
+    }
+
+    /** Groups one cluster of overflow controls into a card-style section. */
+    private func readerOverflowSection<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(spacing: 0) {
+            content()
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.regularMaterial)
+        )
+    }
+
+    /** Builds one overflow action row with an optional accessibility identifier. */
+    @ViewBuilder
+    private func readerOverflowButton(
+        title: String,
+        systemImage: String,
+        identifier: String? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        if let identifier {
+            Button(action: action) {
+                readerOverflowButtonLabel(title: title, systemImage: systemImage)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(identifier)
+        } else {
+            Button(action: action) {
+                readerOverflowButtonLabel(title: title, systemImage: systemImage)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /** Shared row label used by the reader overflow sheet buttons. */
+    private func readerOverflowButtonLabel(title: String, systemImage: String) -> some View {
+        HStack(spacing: 12) {
+            SwiftUI.Label(title, systemImage: systemImage)
+                .labelStyle(.titleAndIcon)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
     }
 
     /// Strong's icon matching Android's "xα'" style.

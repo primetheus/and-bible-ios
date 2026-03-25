@@ -11,6 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  XCODE_VERSION: "26.3"
   UI_TEST_MIN_SHARD_COUNT: "2"
   UI_TEST_TARGET_SHARD_DURATION_SECONDS: "600"
   UI_TEST_TIMEOUT_MINUTES: "90"
@@ -115,7 +116,7 @@ jobs:
       - name: Select Xcode version
         uses: maxim-lobanov/setup-xcode@v1.6.0
         with:
-          xcode-version: '16.4'
+          xcode-version: ${{ env.XCODE_VERSION }}
 
       - name: Restore libsword build cache
         uses: actions/cache@v5
@@ -124,9 +125,9 @@ jobs:
             libsword/sword-src
             libsword/build
             libsword/libsword.xcframework
-          key: ${{ runner.os }}-xcode-16.4-libsword-hosttool-${{ hashFiles('libsword/build-ios.sh') }}
+          key: ${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-libsword-hosttool-${{ hashFiles('libsword/build-ios.sh') }}
           restore-keys: |
-            ${{ runner.os }}-xcode-16.4-libsword-hosttool-
+            ${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-libsword-hosttool-
 
       - name: Show Xcode version
         run: xcodebuild -version
@@ -178,7 +179,7 @@ jobs:
       - name: Select Xcode version
         uses: maxim-lobanov/setup-xcode@v1.6.0
         with:
-          xcode-version: '16.4'
+          xcode-version: ${{ env.XCODE_VERSION }}
 
       - name: Restore SwiftPM and build caches
         uses: actions/cache@v5
@@ -187,9 +188,9 @@ jobs:
             .derivedData/SourcePackages
             ~/Library/Caches/org.swift.swiftpm
             ~/.swiftpm
-          key: ${{ runner.os }}-xcode-spm-${{ hashFiles('Package.swift', 'AndBible.xcodeproj/project.pbxproj') }}
+          key: ${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-spm-${{ hashFiles('Package.swift', 'AndBible.xcodeproj/project.pbxproj') }}
           restore-keys: |
-            ${{ runner.os }}-xcode-spm-
+            ${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-spm-
 
       - name: Restore libsword build cache
         uses: actions/cache@v5
@@ -198,9 +199,9 @@ jobs:
             libsword/sword-src
             libsword/build
             libsword/libsword.xcframework
-          key: ${{ runner.os }}-xcode-16.4-libsword-iosonly-${{ hashFiles('libsword/build-ios.sh') }}
+          key: ${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-libsword-iosonly-${{ hashFiles('libsword/build-ios.sh') }}
           restore-keys: |
-            ${{ runner.os }}-xcode-16.4-libsword-iosonly-
+            ${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-libsword-iosonly-
 
       - name: Show Xcode version
         run: xcodebuild -version
@@ -300,7 +301,7 @@ jobs:
       - name: Select Xcode version
         uses: maxim-lobanov/setup-xcode@v1.6.0
         with:
-          xcode-version: '16.4'
+          xcode-version: ${{ env.XCODE_VERSION }}
 
       - name: Restore SwiftPM and build caches
         uses: actions/cache@v5
@@ -309,9 +310,9 @@ jobs:
             .derivedData/SourcePackages
             ~/Library/Caches/org.swift.swiftpm
             ~/.swiftpm
-          key: ${{ runner.os }}-xcode-spm-${{ hashFiles('Package.swift', 'AndBible.xcodeproj/project.pbxproj') }}
+          key: ${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-spm-${{ hashFiles('Package.swift', 'AndBible.xcodeproj/project.pbxproj') }}
           restore-keys: |
-            ${{ runner.os }}-xcode-spm-
+            ${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-spm-
 
       - name: Restore libsword build cache
         uses: actions/cache@v5
@@ -320,9 +321,9 @@ jobs:
             libsword/sword-src
             libsword/build
             libsword/libsword.xcframework
-          key: ${{ runner.os }}-xcode-16.4-libsword-hosttool-${{ hashFiles('libsword/build-ios.sh') }}
+          key: ${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-libsword-hosttool-${{ hashFiles('libsword/build-ios.sh') }}
           restore-keys: |
-            ${{ runner.os }}-xcode-16.4-libsword-hosttool-
+            ${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-libsword-hosttool-
 
       - name: Download prepared libsword XCFramework
         uses: actions/download-artifact@v5

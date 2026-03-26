@@ -638,14 +638,14 @@ private final class FixtureContext {
             chapter: 3,
             labelName: nil,
             note: nil,
-            createdAt: seededDate(offset: 10)
+            createdAt: seededDate(offset: 20)
         )
         _ = createBibleBookmark(
             bookName: "Exodus",
             chapter: 2,
             labelName: nil,
             note: nil,
-            createdAt: seededDate(offset: 20)
+            createdAt: seededDate(offset: 10)
         )
     }
 

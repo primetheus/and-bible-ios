@@ -99,16 +99,16 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
-     Verifies that Search can build an index and return bundled results for a seeded query.
+     Verifies that Search can query the seeded bundled index and return bundled results.
      *
      * - Side effects:
      *   - launches the app on the reader shell with the initial query `earth` queued for Search
-     *   - opens Search from the toolbar and waits for the bundled module set to be indexed
+     *   - opens Search from the toolbar and waits for the seeded bundled index to become ready
      * - Failure modes:
-     *   - fails if the Search screen never reaches the ready state after index creation
-     *   - fails if the bundled module set is missing or the search still returns zero hits
+     *   - fails if the Search screen never reaches the ready state
+     *   - fails if the seeded bundled result set still returns zero hits
      */
-    func testSearchDirectLaunchBuildsIndexAndReturnsBundledResults() {
+    func testSearchDirectLaunchUsesSeededIndexAndReturnsBundledResults() {
         let app = makeApp(searchQuery: "earth")
         app.launch()
 
@@ -1014,12 +1014,12 @@ final class AndBibleUITests: XCTestCase {
      state.
      *
      * - Side effects:
-     *   - launches the app directly into Sync Settings with NextCloud selected and bookmarks
-     *     pre-enabled in the in-memory settings store
-     *   - invokes the XCUITest-only inline disable action, which calls the real category-disable
-     *     persistence path
+     *   - launches the app on the reader shell with persisted NextCloud settings and bookmarks
+     *     already enabled through host-side fixture seeding
+     *   - opens Sync Settings through normal Settings navigation and toggles the production
+     *     bookmarks switch off
      * - Failure modes:
-     *   - fails if the seeded disable action never appears for the bookmarks category
+     *   - fails if the production bookmarks toggle never appears for the seeded category state
      *   - fails if the Sync screen state does not start with `backend=NEXT_CLOUD;enabled=bookmarks`
      *   - fails if disabling the category does not update the exported Sync screen state to
      *     `backend=NEXT_CLOUD;enabled=none`
@@ -1028,18 +1028,17 @@ final class AndBibleUITests: XCTestCase {
         let app = makeApp()
         app.launch()
 
-        let syncScreen = openSyncSettings(in: app)
+        _ = openSyncSettings(in: app)
+        let syncState = requireElement("syncSettingsState", in: app, timeout: 10)
         XCTAssertEqual(
-            syncScreen.value as? String,
+            syncState.value as? String,
             "backend=NEXT_CLOUD;enabled=bookmarks"
         )
 
-        tapElementReliably(requireElement("syncCategoryToggle::bookmarks", in: app, timeout: 10), timeout: 10)
-        waitForElementValue(
-            "syncSettingsScreen",
-            toEqual: "backend=NEXT_CLOUD;enabled=none",
+        toggleSyncCategory(
+            "syncCategoryToggle::bookmarks",
             in: app,
-            timeout: 10
+            expectedScreenValue: "backend=NEXT_CLOUD;enabled=none"
         )
     }
 
@@ -1048,11 +1047,11 @@ final class AndBibleUITests: XCTestCase {
      reopen of Sync Settings.
      *
      * - Side effects:
-     *   - launches the app directly into Sync Settings with NextCloud selected and bookmarks
-     *     pre-enabled in the in-memory settings store
-     *   - disables the bookmarks category through the XCUITest-only inline action
-     *   - dismisses the Sync sheet, reopens it through the test-only reader-shell control, and
-     *     rehydrates the screen from persisted settings state
+     *   - launches the app on the reader shell with persisted NextCloud settings and bookmarks
+     *     already enabled through host-side fixture seeding
+     *   - disables the bookmarks category through the production toggle
+     *   - dismisses the Sync screen, reopens it through normal Settings navigation, and rehydrates
+     *     from persisted settings state
      * - Failure modes:
      *   - fails if the seeded Sync screen does not start with `backend=NEXT_CLOUD;enabled=bookmarks`
      *   - fails if the direct dismiss or reopen controls never appear
@@ -1062,26 +1061,25 @@ final class AndBibleUITests: XCTestCase {
         let app = makeApp()
         app.launch()
 
-        let syncScreen = openSyncSettings(in: app)
+        _ = openSyncSettings(in: app)
+        let syncState = requireElement("syncSettingsState", in: app, timeout: 10)
         XCTAssertEqual(
-            syncScreen.value as? String,
+            syncState.value as? String,
             "backend=NEXT_CLOUD;enabled=bookmarks"
         )
 
-        tapElementReliably(requireElement("syncCategoryToggle::bookmarks", in: app, timeout: 10), timeout: 10)
-        waitForElementValue(
-            "syncSettingsScreen",
-            toEqual: "backend=NEXT_CLOUD;enabled=none",
+        toggleSyncCategory(
+            "syncCategoryToggle::bookmarks",
             in: app,
-            timeout: 10
+            expectedScreenValue: "backend=NEXT_CLOUD;enabled=none"
         )
 
-        requireElement("syncSettingsDoneButton", in: app, timeout: 10).tap()
+        dismissSyncSettings(in: app)
         _ = openSyncSettings(in: app)
 
-        let reopenedSyncScreen = requireElement("syncSettingsScreen", in: app, timeout: 10)
+        let reopenedSyncState = requireElement("syncSettingsState", in: app, timeout: 10)
         XCTAssertEqual(
-            reopenedSyncScreen.value as? String,
+            reopenedSyncState.value as? String,
             "backend=NEXT_CLOUD;enabled=none"
         )
     }
@@ -1091,9 +1089,10 @@ final class AndBibleUITests: XCTestCase {
      backend state.
      *
      * - Side effects:
-     *   - launches the app directly into Sync Settings with NextCloud selected in the in-memory
-     *     settings store
-     *   - invokes the XCUITest-only backend switch control to move from NextCloud to Google Drive
+     *   - launches the app on the reader shell with persisted NextCloud settings from host-side
+     *     fixture seeding
+     *   - opens Sync Settings through normal Settings navigation and switches the production picker
+     *     from NextCloud to Google Drive
      * - Failure modes:
      *   - fails if the seeded NextCloud field or the Google Drive sign-in control never appears
      *   - fails if the exported Sync screen state does not move from `backend=NEXT_CLOUD;enabled=none`
@@ -1103,16 +1102,17 @@ final class AndBibleUITests: XCTestCase {
         let app = makeApp()
         app.launch()
 
-        let syncScreen = openSyncSettings(in: app)
+        _ = openSyncSettings(in: app)
+        let syncState = requireElement("syncSettingsState", in: app, timeout: 10)
         XCTAssertEqual(
-            syncScreen.value as? String,
+            syncState.value as? String,
             "backend=NEXT_CLOUD;enabled=none"
         )
         XCTAssertTrue(requireElement("syncNextCloudServerURLField", in: app, timeout: 10).exists)
 
         tapSyncBackend("GOOGLE_DRIVE", in: app)
         waitForElementValue(
-            "syncSettingsScreen",
+            "syncSettingsState",
             toEqual: "backend=GOOGLE_DRIVE;enabled=none",
             in: app,
             timeout: 10
@@ -1139,27 +1139,28 @@ final class AndBibleUITests: XCTestCase {
         let app = makeApp()
         app.launch()
 
-        let syncScreen = openSyncSettings(in: app)
+        _ = openSyncSettings(in: app)
+        let syncState = requireElement("syncSettingsState", in: app, timeout: 10)
         XCTAssertEqual(
-            syncScreen.value as? String,
+            syncState.value as? String,
             "backend=NEXT_CLOUD;enabled=none"
         )
 
         tapSyncBackend("GOOGLE_DRIVE", in: app)
         waitForElementValue(
-            "syncSettingsScreen",
+            "syncSettingsState",
             toEqual: "backend=GOOGLE_DRIVE;enabled=none",
             in: app,
             timeout: 10
         )
         XCTAssertTrue(requireElement("syncGoogleDriveSignInButton", in: app, timeout: 10).exists)
 
-        requireElement("syncSettingsDoneButton", in: app, timeout: 10).tap()
+        dismissSyncSettings(in: app)
         _ = openSyncSettings(in: app)
 
-        let reopenedSyncScreen = requireElement("syncSettingsScreen", in: app, timeout: 10)
+        let reopenedSyncState = requireElement("syncSettingsState", in: app, timeout: 10)
         XCTAssertEqual(
-            reopenedSyncScreen.value as? String,
+            reopenedSyncState.value as? String,
             "backend=GOOGLE_DRIVE;enabled=none"
         )
         XCTAssertTrue(requireElement("syncGoogleDriveSignInButton", in: app, timeout: 10).exists)
@@ -2553,6 +2554,29 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Dismisses Sync Settings back to the reader shell.
+     *
+     * - Parameter app: Running application whose Sync sheet should be dismissed.
+     * - Side effects:
+     *   - taps the real Done button when the sheet exposes it
+     *   - falls back to a top-edge drag gesture when the toolbar button is not present
+     * - Failure modes:
+     *   - fails when Sync Settings cannot be dismissed back to the reader shell
+     */
+    private func dismissSyncSettings(in app: XCUIApplication) {
+        let doneButton = app.buttons["syncSettingsDoneButton"].firstMatch
+        if doneButton.exists || doneButton.waitForExistence(timeout: 2) {
+            tapElementReliably(doneButton, timeout: 10)
+        } else {
+            dismissSheetByDraggingDown(requireElement("syncSettingsScreen", in: app, timeout: 10))
+        }
+        XCTAssertTrue(
+            requireReaderMoreMenuButton(in: app, timeout: 20).exists,
+            "Expected Sync Settings dismissal to return to the reader shell."
+        )
+    }
+
+    /**
      Switches Sync Settings to one backend through the production picker.
      *
      * - Parameters:
@@ -2573,6 +2597,14 @@ final class AndBibleUITests: XCTestCase {
         let picker = requireElement("syncBackendPicker", in: app, timeout: timeout)
         tapElementReliably(picker, timeout: timeout)
 
+        let optionIdentifier = "syncBackendOption::\(backendRawValue)"
+        if let identifiedOption = resolvedElement(optionIdentifier, in: app),
+           identifiedOption.exists
+        {
+            tapElementReliably(identifiedOption, timeout: timeout)
+            return
+        }
+
         let backendLabel: String = switch backendRawValue {
         case "GOOGLE_DRIVE":
             "Google Drive"
@@ -2582,9 +2614,62 @@ final class AndBibleUITests: XCTestCase {
             backendRawValue
         }
 
-        let option = app.staticTexts[backendLabel].firstMatch
-        XCTAssertTrue(option.waitForExistence(timeout: timeout), "Expected sync backend option '\(backendLabel)' to exist.")
+        let option = resolveSyncBackendOption(named: backendLabel, in: app, timeout: timeout)
+        XCTAssertTrue(
+            option.waitForExistence(timeout: timeout),
+            "Expected sync backend option '\(backendLabel)' to exist."
+        )
         tapElementReliably(option, timeout: timeout)
+    }
+
+    /**
+     Resolves the first live picker option for one Sync backend label across the system control
+     presentations SwiftUI may choose on CI.
+     *
+     * - Parameters:
+     *   - backendLabel: User-visible backend option label.
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to wait for the first option candidate to appear.
+     * - Returns: The first live picker-option candidate, preferring visible controls.
+     * - Side effects:
+     *   - probes multiple XCUI query families because SwiftUI `Picker` presentations may surface
+     *     options as buttons, cells, static texts, or generic elements depending on platform state
+     * - Failure modes:
+     *   - returns an unresolved fallback query when no picker option becomes available before the
+     *     timeout expires; the caller records the assertion failure
+     */
+    private func resolveSyncBackendOption(
+        named backendLabel: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval
+    ) -> XCUIElement {
+        let candidates: [XCUIElement] = [
+            app.sheets.buttons[backendLabel].firstMatch,
+            app.sheets.staticTexts[backendLabel].firstMatch,
+            app.alerts.buttons[backendLabel].firstMatch,
+            app.alerts.staticTexts[backendLabel].firstMatch,
+            app.collectionViews.buttons[backendLabel].firstMatch,
+            app.collectionViews.staticTexts[backendLabel].firstMatch,
+            app.tables.buttons[backendLabel].firstMatch,
+            app.tables.staticTexts[backendLabel].firstMatch,
+            app.buttons[backendLabel].firstMatch,
+            app.cells[backendLabel].firstMatch,
+            app.staticTexts[backendLabel].firstMatch,
+            app.otherElements[backendLabel].firstMatch,
+        ]
+
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let visible = candidates.first(where: { $0.exists && !$0.frame.isEmpty }) {
+                return visible
+            }
+            if let existing = candidates.first(where: { $0.exists }) {
+                return existing
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        return candidates[0]
     }
 
     /**
@@ -2892,6 +2977,12 @@ final class AndBibleUITests: XCTestCase {
                 app.collectionViews[identifier].firstMatch,
                 app.tables[identifier].firstMatch,
                 app.otherElements[identifier].firstMatch,
+                anyIdentifierMatch,
+            ]
+        case "syncSettingsState":
+            return [
+                app.otherElements[identifier].firstMatch,
+                app.staticTexts[identifier].firstMatch,
                 anyIdentifierMatch,
             ]
         case
@@ -4866,6 +4957,34 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Waits for one switch element to report the requested raw value.
+     *
+     * - Parameters:
+     *   - element: Switch element whose accessibility value should be polled.
+     *   - expectedValue: Raw switch value expected before the timeout expires.
+     *   - timeout: Maximum time to keep polling before giving up.
+     * - Returns: `true` when the switch reaches `expectedValue`, otherwise `false`.
+     * - Side effects:
+     *   - repeatedly samples the live XCUI switch value so delayed SwiftUI updates can settle
+     * - Failure modes: This helper cannot fail.
+     */
+    private func waitForSwitchValue(
+        _ element: XCUIElement,
+        toEqual expectedValue: String,
+        timeout: TimeInterval = 2
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if (element.value as? String) == expectedValue {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        return (element.value as? String) == expectedValue
+    }
+
+    /**
      Toggles one switch element and retries with a direct coordinate tap when XCTest reports the
      switch tap succeeded but the underlying value does not change.
      *
@@ -4889,7 +5008,7 @@ final class AndBibleUITests: XCTestCase {
         line: UInt = #line
     ) {
         tapElementReliably(element, timeout: timeout, file: file, line: line)
-        if (element.value as? String) == expectedValue {
+        if waitForSwitchValue(element, toEqual: expectedValue, timeout: min(timeout, 2)) {
             return
         }
 
@@ -4900,6 +5019,12 @@ final class AndBibleUITests: XCTestCase {
             line: line
         )
         element.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
+        XCTAssertTrue(
+            waitForSwitchValue(element, toEqual: expectedValue, timeout: min(timeout, 2)),
+            "Expected switch '\(element.identifier)' to reach value '\(expectedValue)' within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
     }
 
     /**
@@ -4937,15 +5062,93 @@ final class AndBibleUITests: XCTestCase {
             line: line
         )
 
-        let containingCell = app.cells.containing(.switch, identifier: identifier).firstMatch
-        if containingCell.waitForExistence(timeout: 1), !containingCell.frame.isEmpty {
-            containingCell.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
-            if (app.switches[identifier].firstMatch.value as? String) == expectedValue {
-                return
+        let candidateCells = [
+            app.tables.cells.containing(.switch, identifier: identifier).firstMatch,
+            app.cells.containing(.switch, identifier: identifier).firstMatch
+        ]
+
+        for containingCell in candidateCells {
+            if containingCell.waitForExistence(timeout: 1), !containingCell.frame.isEmpty {
+                containingCell.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+                if waitForSwitchValue(app.switches[identifier].firstMatch, toEqual: expectedValue, timeout: 2) {
+                    return
+                }
             }
         }
 
         toggleSwitchReliably(toggle, expectedValue: expectedValue, timeout: timeout, file: file, line: line)
+    }
+
+    /**
+     Toggles one Sync category switch through the same switch-aware Settings-row path used by the
+     rest of the suite, then waits for the exported Sync screen state to confirm the mutation.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier of the production Sync category toggle.
+     *   - app: Running application under test.
+     *   - expectedScreenValue: Screen accessibility value expected after the toggle.
+     *   - timeout: Maximum time to wait for the switch interaction and screen-state mutation.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - repeatedly re-queries the exported Sync screen state and stops once the requested token
+     *     appears
+     *   - prefers the containing Settings row before falling back to the raw switch control
+     * - Failure modes:
+     *   - records an XCTest failure if the switch never appears or if the Sync screen state does
+     *     not reach the requested token after the interaction
+     */
+    private func toggleSyncCategory(
+        _ identifier: String,
+        in app: XCUIApplication,
+        expectedScreenValue: String,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let toggle = app.switches[identifier].firstMatch
+        XCTAssertTrue(
+            toggle.waitForExistence(timeout: timeout),
+            "Expected sync category switch '\(identifier)' to exist within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let currentState = resolvedElement("syncSettingsState", in: app),
+               (currentState.value as? String) == expectedScreenValue || currentState.label == expectedScreenValue
+            {
+                return
+            }
+
+            let tableCell = app.tables.cells.containing(.switch, identifier: identifier).firstMatch
+            let genericCell = app.cells.containing(.switch, identifier: identifier).firstMatch
+
+            if tableCell.waitForExistence(timeout: 1), !tableCell.frame.isEmpty {
+                tableCell.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+            } else if genericCell.waitForExistence(timeout: 1), !genericCell.frame.isEmpty {
+                genericCell.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+            } else {
+                tapElementReliably(toggle, timeout: 2, file: file, line: line)
+            }
+
+            let settleDeadline = Date().addingTimeInterval(2)
+            repeat {
+                if let currentState = resolvedElement("syncSettingsState", in: app),
+                   (currentState.value as? String) == expectedScreenValue || currentState.label == expectedScreenValue
+                {
+                    return
+                }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            } while Date() < settleDeadline
+        } while Date() < deadline
+
+        waitForElementValue(
+            "syncSettingsState",
+            toEqual: expectedScreenValue,
+            in: app,
+            timeout: timeout
+        )
     }
 
     /**

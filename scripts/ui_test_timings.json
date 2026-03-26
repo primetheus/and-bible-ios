@@ -20,7 +20,7 @@
   "AndBibleUITests/AndBibleUITests/testLabelAssignmentTogglesFavouriteAndAssignment": 35.998297929763794,
   "AndBibleUITests/AndBibleUITests/testLabelManagerCreateRenameDeleteFlow": 34.69996893405914,
   "AndBibleUITests/AndBibleUITests/testReadingPlansStartPlanAndAdvanceDay": 22.85903298854828,
-  "AndBibleUITests/AndBibleUITests/testSearchDirectLaunchBuildsIndexAndReturnsBundledResults": 22.490092992782593,
+  "AndBibleUITests/AndBibleUITests/testSearchDirectLaunchUsesSeededIndexAndReturnsBundledResults": 22.490092992782593,
   "AndBibleUITests/AndBibleUITests/testSearchDirectLaunchRetainsSeededQuery": 23.049411058425903,
   "AndBibleUITests/AndBibleUITests/testSearchResultSelectionNavigatesReaderToBundledReference": 53.79953396320343,
   "AndBibleUITests/AndBibleUITests/testSearchScopeChangeRerunsQueryAndUpdatesResults": 36.40324306488037,

@@ -175,6 +175,9 @@ public struct SyncSettingsView: View {
         }
         .accessibilityIdentifier("syncSettingsScreen")
         .accessibilityValue(syncSettingsAccessibilityValue)
+        .overlay(alignment: .topLeading) {
+            syncSettingsStateProbe
+        }
         .navigationTitle(String(localized: "sync_adapter"))
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -308,10 +311,13 @@ public struct SyncSettingsView: View {
             Picker(String(localized: "sync_adapter"), selection: $selectedBackend) {
                 Text(String(localized: "icloud_sync"))
                     .tag(RemoteSyncBackend.iCloud)
+                    .accessibilityIdentifier("syncBackendOption::\(RemoteSyncBackend.iCloud.rawValue)")
                 Text(String(localized: "adapters_next_cloud"))
                     .tag(RemoteSyncBackend.nextCloud)
+                    .accessibilityIdentifier("syncBackendOption::\(RemoteSyncBackend.nextCloud.rawValue)")
                 Text(String(localized: "adapters_google_drive"))
                     .tag(RemoteSyncBackend.googleDrive)
+                    .accessibilityIdentifier("syncBackendOption::\(RemoteSyncBackend.googleDrive.rawValue)")
             }
             .accessibilityIdentifier("syncBackendPicker")
 
@@ -654,6 +660,24 @@ public struct SyncSettingsView: View {
             .sorted()
         let enabledToken = enabledCategories.isEmpty ? "none" : enabledCategories.joined(separator: ",")
         return "backend=\(selectedBackend.rawValue);enabled=\(enabledToken)"
+    }
+
+    /**
+     Hidden accessibility probe used by UI tests to observe the live sync-state token.
+
+     SwiftUI's `Form` wrapper can lag behind nested state mutations when XCTest reads the
+     collection view's exported value directly. This dedicated probe mirrors the same semantic
+     token without changing the visible layout.
+     */
+    @ViewBuilder
+    private var syncSettingsStateProbe: some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .allowsHitTesting(false)
+            .accessibilityElement()
+            .accessibilityIdentifier("syncSettingsState")
+            .accessibilityLabel("")
+            .accessibilityValue(syncSettingsAccessibilityValue)
     }
 
     /**

@@ -73,6 +73,32 @@ jobs:
       - name: Run SETPAR-603 guardrails
         run: python3 scripts/check_settings_localization_guardrails.py
 
+  bibleview-js:
+    name: BibleView JS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: bibleview-js/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: bibleview-js
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: bibleview-js
+        run: npm run test:ci
+
+      - name: Build frontend debug bundle
+        working-directory: bibleview-js
+        run: npm run build-debug
+
   ui-shard-plan:
     name: Plan UI Test Shards
     runs-on: ubuntu-latest

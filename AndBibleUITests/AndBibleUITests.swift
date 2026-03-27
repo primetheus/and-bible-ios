@@ -2190,15 +2190,19 @@ final class AndBibleUITests: XCTestCase {
                 }
             }
 
-            let searchScreen = requireSearchScreen(
-                in: app,
-                timeout: min(3, max(1, deadline.timeIntervalSinceNow))
-            )
-            let modeButton = searchScreen.buttons[label].firstMatch
-            if modeButton.exists || modeButton.waitForExistence(timeout: 0.5) {
-                tapElementReliably(modeButton, timeout: timeout)
+            let fallbackCandidates = [
+                app.segmentedControls.buttons[label].firstMatch,
+                app.buttons[label].firstMatch,
+                app.descendants(matching: .button)
+                    .matching(NSPredicate(format: "label == %@", label))
+                    .firstMatch
+            ]
+            for candidate in fallbackCandidates where candidate.exists || candidate.waitForExistence(timeout: 0.5) {
+                tapElementReliably(candidate, timeout: timeout)
                 return
             }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
         XCTFail("Expected Search mode button '\(label)' to exist within \(timeout) seconds.")
@@ -2271,12 +2275,15 @@ final class AndBibleUITests: XCTestCase {
             return
         }
 
-        let allWordsButton = app.buttons["All Words"].firstMatch
-        guard allWordsButton.exists || allWordsButton.waitForExistence(timeout: 0.2) else {
+        let dismissalCandidates = [
+            app.descendants(matching: .any).matching(identifier: "searchWordModeButton::allWords").firstMatch,
+            app.segmentedControls.buttons["All Words"].firstMatch,
+            app.buttons["All Words"].firstMatch
+        ]
+        for candidate in dismissalCandidates where candidate.exists || candidate.waitForExistence(timeout: 0.2) {
+            tapElementReliably(candidate, timeout: 5)
             return
         }
-
-        tapElementReliably(allWordsButton, timeout: 5)
     }
 
     /**
@@ -3008,6 +3015,19 @@ final class AndBibleUITests: XCTestCase {
         case "readerOverflowMenu":
             return [
                 app.scrollViews[identifier].firstMatch,
+                anyIdentifierMatch,
+            ]
+        case "labelManagerNewLabelNameField":
+            return [
+                app.textFields[identifier].firstMatch,
+                app.textFields["Label name"].firstMatch,
+                anyIdentifierMatch,
+                app.textFields.firstMatch,
+            ]
+        case "labelManagerCreateButton":
+            return [
+                app.buttons[identifier].firstMatch,
+                app.buttons["Create"].firstMatch,
                 anyIdentifierMatch,
             ]
         case "aboutScreen":
@@ -4402,27 +4422,13 @@ final class AndBibleUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
         ) -> XCUIElement {
-        let alert = app.alerts.firstMatch
-        XCTAssertTrue(
-            alert.waitForExistence(timeout: timeout),
-            "Expected the Label Manager create alert to appear within \(timeout) seconds.",
+        return requireElement(
+            "labelManagerNewLabelNameField",
+            in: app,
+            timeout: timeout,
             file: file,
             line: line
         )
-
-        let identifiedField = alert.textFields["labelManagerNewLabelNameField"].firstMatch
-        if identifiedField.exists || identifiedField.waitForExistence(timeout: 0.5) {
-            return identifiedField
-        }
-
-        let fallbackField = alert.textFields.firstMatch
-        XCTAssertTrue(
-            fallbackField.waitForExistence(timeout: timeout),
-            "Expected the Label Manager create alert text field to appear within \(timeout) seconds.",
-            file: file,
-            line: line
-        )
-        return fallbackField
     }
 
     /**
@@ -4446,32 +4452,13 @@ final class AndBibleUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
         ) -> XCUIElement {
-        let alert = app.alerts.firstMatch
-        XCTAssertTrue(
-            alert.waitForExistence(timeout: timeout),
-            "Expected the Label Manager create alert to appear within \(timeout) seconds.",
+        return requireElement(
+            "labelManagerCreateButton",
+            in: app,
+            timeout: timeout,
             file: file,
             line: line
         )
-
-        let identifiedButton = alert.buttons["labelManagerCreateButton"].firstMatch
-        if identifiedButton.exists || identifiedButton.waitForExistence(timeout: 0.5) {
-            return identifiedButton
-        }
-
-        let titledButton = alert.buttons["Create"].firstMatch
-        if titledButton.exists || titledButton.waitForExistence(timeout: 0.5) {
-            return titledButton
-        }
-
-        let fallbackButton = alert.buttons.firstMatch
-        XCTAssertTrue(
-            fallbackButton.waitForExistence(timeout: timeout),
-            "Expected the Label Manager create button to appear within \(timeout) seconds.",
-            file: file,
-            line: line
-        )
-        return fallbackButton
     }
 
     /**
@@ -4672,10 +4659,44 @@ final class AndBibleUITests: XCTestCase {
      *   - fails if the create-label alert cannot be presented or completed
      */
     private func createFreshLabelFromAssignment(in app: XCUIApplication) {
-        tapElementReliably(requireElement("labelAssignmentCreateNewLabelButton", in: app, timeout: 10), timeout: 10)
+        presentLabelCreationPrompt(in: app, timeout: 10)
         let nameField = requireLabelManagerNewLabelField(in: app, timeout: 10)
         replaceText(in: nameField, with: "UI Test Fresh")
         tapElementReliably(requireLabelManagerCreateButton(in: app, timeout: 10), timeout: 10)
+    }
+
+    /**
+     Opens the create-label prompt from Label Assignment and waits for its field or action to
+     surface before returning.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum time to keep retrying the production create-label control.
+     * - Side effects:
+     *   - taps the real create-label button and polls the live accessibility hierarchy for the
+     *     prompt field/button until one appears
+     * - Failure modes:
+     *   - records an XCTest failure if the prompt never becomes reachable within the timeout
+     */
+    private func presentLabelCreationPrompt(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10
+    ) {
+        let trigger = requireElement("labelAssignmentCreateNewLabelButton", in: app, timeout: timeout)
+        let deadline = Date().addingTimeInterval(timeout)
+
+        repeat {
+            tapElementReliably(trigger, timeout: 5)
+            if waitForAnyElement(
+                ["labelManagerNewLabelNameField", "labelManagerCreateButton"],
+                in: app,
+                timeout: 1
+            ) != nil {
+                return
+            }
+        } while Date() < deadline
+
+        XCTFail("Expected the Label Manager create prompt to appear within \(timeout) seconds.")
     }
 
     /**

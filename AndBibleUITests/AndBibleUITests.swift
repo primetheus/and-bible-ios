@@ -3752,6 +3752,73 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Taps the Android-style reader navigation drawer button and waits for the drawer to appear.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to wait for the drawer to appear.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - resolves the production `readerNavigationDrawerButton`
+     *   - taps it directly and waits for the `readerNavigationDrawer` surface
+     * - Failure modes:
+     *   - records an XCTest failure if the drawer never appears in time
+     */
+    private func tapReaderNavigationDrawerButton(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 30,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let button = requireElement("readerNavigationDrawerButton", in: app, timeout: min(2, max(0.5, deadline.timeIntervalSinceNow)))
+            if !button.frame.isEmpty {
+                tapElementReliably(button, timeout: min(2, max(0.5, deadline.timeIntervalSinceNow)), file: file, line: line)
+                if waitForReaderNavigationDrawer(in: app, timeout: min(3, max(1, deadline.timeIntervalSinceNow))) {
+                    return
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        XCTFail(
+            "Expected the reader navigation drawer to appear after tapping readerNavigationDrawerButton within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+    }
+
+    /**
+     Waits for the Android-style reader navigation drawer to appear.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum time to wait for the drawer.
+     * - Returns: `true` when the production `readerNavigationDrawer` surface appears.
+     * - Side effects:
+     *   - polls the explicit drawer accessibility identifier.
+     * - Failure modes:
+     *   - returns `false` when the drawer never appears before timeout.
+     */
+    private func waitForReaderNavigationDrawer(
+        in app: XCUIApplication,
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let drawer = resolvedElement("readerNavigationDrawer", in: app),
+               !drawer.frame.isEmpty {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        return resolvedElement("readerNavigationDrawer", in: app) != nil
+    }
+
+    /**
      Taps one reader-shell action after the stable action surface has been resolved.
      *
      * - Parameters:
@@ -3884,8 +3951,18 @@ final class AndBibleUITests: XCTestCase {
      */
     private func readerActionTitle(for identifier: String) -> String {
         switch identifier {
+        case "readerChooseDocumentAction":
+            return "Choose Document"
+        case "readerOpenSearchAction":
+            return "Search"
+        case "readerOpenSpeakAction":
+            return "Speak"
         case "readerOpenBookmarksAction":
             return "Bookmarks"
+        case "readerOpenStudyPadsAction":
+            return "StudyPads"
+        case "readerOpenMyNotesAction":
+            return "My Notes"
         case "readerOpenHistoryAction":
             return "History"
         case "readerOpenReadingPlansAction":
@@ -3895,12 +3972,159 @@ final class AndBibleUITests: XCTestCase {
         case "readerOpenWorkspacesAction":
             return "Workspaces"
         case "readerOpenDownloadsAction":
-            return "Downloads"
+            return "Download Documents"
+        case "readerOpenImportExportAction":
+            return "Backup & Restore"
+        case "readerOpenSyncSettingsAction":
+            return "Device synchronization"
+        case "readerOpenHelpAction":
+            return "Help & Tips"
+        case "readerSponsorDevelopmentAction":
+            return "Buy development work"
+        case "readerNeedHelpAction":
+            return "Need Help"
+        case "readerContributeAction":
+            return "How to Contribute"
         case "readerOpenAboutAction":
             return "About"
+        case "readerOpenAppLicenseAction":
+            return "App Licence"
+        case "readerTellFriendAction":
+            return "Recommend to a friend"
+        case "readerRateAppAction":
+            return "Rate & Review"
+        case "readerReportBugAction":
+            return "Feedback / bug report"
         default:
             return identifier
         }
+    }
+
+    /**
+     Declares which production reader action surface should host one action identifier.
+     *
+     * - Parameter identifier: Stable accessibility identifier attached in `BibleReaderView`.
+     * - Returns: `true` when the action belongs to the left navigation drawer; otherwise `false`
+     *   and the action belongs to the overflow/options menu.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func readerActionUsesNavigationDrawer(_ identifier: String) -> Bool {
+        switch identifier {
+        case "readerOpenBookmarksAction",
+             "readerOpenHistoryAction",
+             "readerOpenReadingPlansAction",
+             "readerOpenDownloadsAction",
+             "readerOpenAboutAction",
+             "readerChooseDocumentAction",
+             "readerOpenSearchAction",
+             "readerOpenSpeakAction",
+             "readerOpenStudyPadsAction",
+             "readerOpenMyNotesAction",
+             "readerOpenImportExportAction",
+             "readerOpenSyncSettingsAction",
+             "readerOpenHelpAction",
+             "readerNeedHelpAction",
+             "readerContributeAction",
+             "readerOpenAppLicenseAction",
+             "readerTellFriendAction",
+             "readerRateAppAction",
+             "readerReportBugAction":
+            return true
+        default:
+            return false
+        }
+    }
+
+    /**
+     Ensures the correct production reader action surface is open for one action identifier.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier of the requested reader action.
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to spend dismissing conflicting surfaces and opening
+     *     the required one.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - dismisses the wrong menu surface when it is currently visible
+     *   - opens either the left navigation drawer or the overflow/options sheet
+     * - Failure modes:
+     *   - records an XCTest failure when the required action surface never becomes available
+     */
+    private func ensureReaderActionSurface(
+        for identifier: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement {
+        let deadline = Date().addingTimeInterval(timeout)
+        let prefersDrawer = readerActionUsesNavigationDrawer(identifier)
+
+        repeat {
+            if prefersDrawer {
+                if let drawer = resolvedElement("readerNavigationDrawer", in: app),
+                   !drawer.frame.isEmpty {
+                    return drawer
+                }
+                if let overflowMenu = resolvedElement("readerOverflowMenu", in: app),
+                   overflowMenu.exists {
+                    let doneButton = app.navigationBars.buttons["Done"].firstMatch
+                    if doneButton.exists {
+                        tapElementReliably(doneButton, timeout: 5, file: file, line: line)
+                    }
+                } else {
+                    tapReaderNavigationDrawerButton(
+                        in: app,
+                        timeout: min(5, max(1, deadline.timeIntervalSinceNow)),
+                        file: file,
+                        line: line
+                    )
+                }
+            } else {
+                if let overflowMenu = resolvedElement("readerOverflowMenu", in: app),
+                   !overflowMenu.frame.isEmpty {
+                    return overflowMenu
+                }
+                if let drawer = resolvedElement("readerNavigationDrawer", in: app),
+                   drawer.exists {
+                    let dismissArea = unresolvedElement("readerNavigationDrawerDismissArea", in: app)
+                    if dismissArea.exists {
+                        tapElementReliably(dismissArea, timeout: 5, file: file, line: line)
+                    }
+                } else {
+                    tapReaderMoreMenuButton(
+                        in: app,
+                        timeout: min(5, max(1, deadline.timeIntervalSinceNow)),
+                        file: file,
+                        line: line
+                    )
+                }
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        if prefersDrawer {
+            let drawer = unresolvedElement("readerNavigationDrawer", in: app)
+            XCTAssertTrue(
+                drawer.exists,
+                "Expected the reader navigation drawer to appear within \(timeout) seconds before resolving '\(identifier)'.",
+                file: file,
+                line: line
+            )
+            return drawer
+        }
+
+        let overflowMenu = unresolvedElement("readerOverflowMenu", in: app)
+        XCTAssertTrue(
+            overflowMenu.exists,
+            "Expected the reader overflow menu to appear within \(timeout) seconds before resolving '\(identifier)'.",
+            file: file,
+            line: line
+        )
+        return overflowMenu
     }
 
     /**
@@ -3917,15 +4141,15 @@ final class AndBibleUITests: XCTestCase {
     private func resolveReaderActionElement(
         _ identifier: String,
         in app: XCUIApplication,
-        overflowMenu: XCUIElement
+        actionSurface: XCUIElement
     ) -> XCUIElement {
-        let scopedIdentifiedButton = overflowMenu.buttons[identifier].firstMatch
+        let scopedIdentifiedButton = actionSurface.buttons[identifier].firstMatch
         if scopedIdentifiedButton.exists && !scopedIdentifiedButton.frame.isEmpty {
             return scopedIdentifiedButton
         }
 
         let title = readerActionTitle(for: identifier)
-        let scopedTitledButton = overflowMenu.buttons[title].firstMatch
+        let scopedTitledButton = actionSurface.buttons[title].firstMatch
         if scopedTitledButton.exists && !scopedTitledButton.frame.isEmpty {
             return scopedTitledButton
         }
@@ -3936,7 +4160,7 @@ final class AndBibleUITests: XCTestCase {
         if scopedTitledButton.exists {
             return scopedTitledButton
         }
-        return overflowMenu.buttons[identifier].firstMatch
+        return actionSurface.buttons[identifier].firstMatch
     }
 
     /**
@@ -3965,32 +4189,43 @@ final class AndBibleUITests: XCTestCase {
     ) -> XCUIElement {
         let deadline = Date().addingTimeInterval(timeout)
         let title = readerActionTitle(for: identifier)
+        let prefersDrawer = readerActionUsesNavigationDrawer(identifier)
         repeat {
-            if let overflowMenu = resolvedElement("readerOverflowMenu", in: app) {
-                let action = resolveReaderActionElement(identifier, in: app, overflowMenu: overflowMenu)
+            let actionSurface = ensureReaderActionSurface(
+                for: identifier,
+                in: app,
+                timeout: min(5, max(1, deadline.timeIntervalSinceNow)),
+                file: file,
+                line: line
+            )
+            if actionSurface.exists {
+                let action = resolveReaderActionElement(identifier, in: app, actionSurface: actionSurface)
                 if action.exists {
                     if !action.frame.isEmpty {
-                        let visibleTapRegion = overflowMenu.frame.insetBy(dx: 0, dy: 16)
+                        let visibleTapRegion = actionSurface.frame.insetBy(dx: 0, dy: 16)
                         let actionMidPoint = CGPoint(x: action.frame.midX, y: action.frame.midY)
                         if visibleTapRegion.contains(actionMidPoint) {
                             return action
                         }
-                        overflowMenu.swipeUp()
+                        actionSurface.swipeUp()
                         RunLoop.current.run(until: Date().addingTimeInterval(0.2))
                         continue
                     }
                     return action
                 }
-                if overflowMenu.exists, !overflowMenu.frame.isEmpty {
-                    overflowMenu.swipeUp()
+                if actionSurface.exists, !actionSurface.frame.isEmpty {
+                    actionSurface.swipeUp()
                 }
             }
 
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
-        if let overflowMenu = resolvedElement("readerOverflowMenu", in: app) {
-            let finalAction = resolveReaderActionElement(identifier, in: app, overflowMenu: overflowMenu)
+        let finalSurface = prefersDrawer
+            ? resolvedElement("readerNavigationDrawer", in: app)
+            : resolvedElement("readerOverflowMenu", in: app)
+        if let finalSurface {
+            let finalAction = resolveReaderActionElement(identifier, in: app, actionSurface: finalSurface)
             XCTAssertTrue(
                 finalAction.exists,
                 "Expected reader action '\(identifier)' (\(title)) to exist within \(timeout) seconds.",
@@ -4000,10 +4235,10 @@ final class AndBibleUITests: XCTestCase {
             return finalAction
         }
 
-        let overflowMenu = unresolvedElement("readerOverflowMenu", in: app)
+        let overflowMenu = unresolvedElement(prefersDrawer ? "readerNavigationDrawer" : "readerOverflowMenu", in: app)
         XCTAssertTrue(
             overflowMenu.exists,
-            "Expected the reader overflow menu to appear within \(timeout) seconds before resolving '\(identifier)'.",
+            "Expected the reader action surface to appear within \(timeout) seconds before resolving '\(identifier)'.",
             file: file,
             line: line
         )

@@ -176,6 +176,12 @@ public struct BibleReaderView: View {
     /// Presents the expanded speech controls sheet.
     @State private var showSpeakControls = false
 
+    /// Last search-toolbar activation timestamp used to mirror Android button prioritization.
+    @AppStorage("search-last-used") private var searchLastUsed = 0.0
+
+    /// Last speak-toolbar activation timestamp used to mirror Android button prioritization.
+    @AppStorage("speak-last-used") private var speakLastUsed = 0.0
+
     /// Workspace-resolved text and color settings pushed into every visible pane.
     @State private var displaySettings: TextDisplaySettings = .appDefaults
 
@@ -312,6 +318,44 @@ public struct BibleReaderView: View {
     private var currentReference: String {
         guard let ctrl = focusedController else { return "Genesis 1" }
         return "\(ctrl.currentBook) \(ctrl.currentChapter)"
+    }
+
+    /// Android-style page title including verse when one is currently focused.
+    private var currentToolbarTitle: String {
+        guard let ctrl = focusedController else { return "Genesis 1:1" }
+        let bookName = toolbarBookName(for: ctrl.currentBook)
+        if let verse = ctrl.activeWindow?.pageManager?.bibleVerseNo, verse > 0 {
+            return "\(bookName) \(ctrl.currentChapter):\(verse)"
+        }
+        return "\(bookName) \(ctrl.currentChapter)"
+    }
+
+    /// Android-style document subtitle showing the active module description.
+    private var currentToolbarSubtitle: String {
+        guard let ctrl = focusedController else { return "King James Version" }
+        switch ctrl.currentCategory {
+        case .commentary:
+            return ctrl.activeCommentaryModule?.info.description ?? ctrl.activeCommentaryModuleName ?? String(localized: "commentaries")
+        case .bible:
+            return ctrl.activeModule?.info.description ?? ctrl.activeModuleName
+        default:
+            return ctrl.activeModule?.info.description ?? ctrl.activeModuleName
+        }
+    }
+
+    /// Converts SWORD Roman-numeral book prefixes into Android-style Arabic numerals for toolbar display.
+    private func toolbarBookName(for rawName: String) -> String {
+        let replacements = [
+            "III ": "3 ",
+            "II ": "2 ",
+            "I ": "1 ",
+        ]
+        for (prefix, replacement) in replacements {
+            if rawName.hasPrefix(prefix) {
+                return replacement + rawName.dropFirst(prefix.count)
+            }
+        }
+        return rawName
     }
 
     /// Preferred SwiftUI color-scheme override derived from the stored night-mode strategy.
@@ -1404,7 +1448,7 @@ public struct BibleReaderView: View {
                         default: break
                         }
                     } label: {
-                        Image(systemName: "list.bullet")
+                        Image(systemName: browseIconName(for: controller?.currentCategory))
                             .font(.body)
                     }
                 } else {
@@ -1419,16 +1463,23 @@ public struct BibleReaderView: View {
                     .accessibilityLabel(String(localized: "previous_chapter"))
 
                     Button(action: { showBookChooser = true }) {
-                        HStack(spacing: 4) {
-                            Text(currentReference)
-                                .font(.headline)
-                            Image(systemName: "chevron.down")
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 4) {
+                                Text(currentToolbarTitle)
+                                    .font(.headline)
+                                    .lineLimit(1)
+                                Image(systemName: "chevron.down")
+                                    .font(.caption)
+                            }
+                            Text(currentToolbarSubtitle)
                                 .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("bookChooserButton")
-                    .accessibilityValue(currentReference)
+                    .accessibilityValue("\(currentToolbarTitle), \(currentToolbarSubtitle)")
 
                     // Next chapter
                     Button(action: { controller?.navigateNext() }) {
@@ -1441,98 +1492,44 @@ public struct BibleReaderView: View {
 
                     Spacer()
 
-                    // Action buttons — matching Android toolbar order
-                    HStack(spacing: 14) {
-                        // Search
-                        Button(action: { presentSearch() }) {
-                            Image(systemName: "magnifyingglass")
-                                .font(.body)
-                        }
-                        .accessibilityIdentifier("readerSearchButton")
-
-                        // Strong's toggle — shown when module has Strong's data
-                        // (matching Android MainBibleActivity.kt:1134).
-                        // Tap cycles Off→Inline→Links, long-press shows all 4 modes.
-                        if moduleHasStrongs {
-                            Menu {
-                                ForEach(StrongsMode.allCases) { mode in
-                                    Button {
-                                        applyStrongsMode(mode.rawValue)
-                                    } label: {
-                                        if displaySettings.strongsMode ?? 0 == mode.rawValue {
-                                            SwiftUI.Label(mode.label, systemImage: "checkmark")
-                                        } else {
-                                            Text(mode.label)
-                                        }
-                                    }
-                                }
-                            } label: {
-                                strongsIcon
-                                    .opacity(strongsEnabled ? 1.0 : 0.4)
-                            } primaryAction: {
-                                // Tap cycles through Off(0) → Inline(1) → Links(2) → Off(0)
-                                // matching Android's 3-mode quick toggle
-                                let current = displaySettings.strongsMode ?? 0
-                                let next = (current + 1) % 3
-                                applyStrongsMode(next)
-                            }
-                            .accessibilityLabel(String(localized: "toggle_strongs_numbers"))
-                        }
-
-                        // TTS
-                        Button {
-                            if speakService.isSpeaking {
-                                showSpeakControls = true
-                            } else {
-                                controller?.speakCurrentChapter()
-                                showSpeakControls = true
-                            }
-                        } label: {
-                            Image(systemName: "headphones")
-                                .font(.body)
-                        }
-
-                        // Bible
-                        Image(systemName: "book.fill")
-                            .font(.body)
-                            .opacity(controller?.currentCategory == .bible ? 1.0 : 0.4)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                if suppressBibleTapAfterLongPress {
-                                    suppressBibleTapAfterLongPress = false
-                                    return
-                                }
-                                handleBibleToolbarTap(controller)
-                            }
-                            .onLongPressGesture {
-                                suppressBibleTapAfterLongPress = true
-                                handleBibleToolbarLongPress(controller)
-                            }
-
-                        // Commentary
-                        Image(systemName: "text.book.closed.fill")
-                            .font(.body)
-                            .opacity(controller?.currentCategory == .commentary ? 1.0 : 0.4)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                if suppressCommentaryTapAfterLongPress {
-                                    suppressCommentaryTapAfterLongPress = false
-                                    return
-                                }
-                                handleCommentaryToolbarTap(controller)
-                            }
-                            .onLongPressGesture {
-                                suppressCommentaryTapAfterLongPress = true
-                                handleCommentaryToolbarLongPress(controller)
-                            }
-
-                        Button {
-                            showReaderOverflowMenu = true
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
-                                .font(.body)
-                        }
-                        .accessibilityIdentifier("readerMoreMenuButton")
+                    // Action buttons — matching Android toolbar order and collapsing by width.
+                    ViewThatFits(in: .horizontal) {
+                        toolbarActionButtons(
+                            controller: controller,
+                            showSearch: true,
+                            showSpeak: true,
+                            showWorkspace: true
+                        )
+                        toolbarActionButtons(
+                            controller: controller,
+                            showSearch: true,
+                            showSpeak: true,
+                            showWorkspace: false
+                        )
+                        toolbarActionButtons(
+                            controller: controller,
+                            showSearch: preferredSingleToolbarAccessory == .search,
+                            showSpeak: preferredSingleToolbarAccessory == .speak,
+                            showWorkspace: true
+                        )
+                        toolbarActionButtons(
+                            controller: controller,
+                            showSearch: preferredSingleToolbarAccessory == .search,
+                            showSpeak: preferredSingleToolbarAccessory == .speak,
+                            showWorkspace: false
+                        )
+                        toolbarActionButtons(
+                            controller: controller,
+                            showSearch: false,
+                            showSpeak: false,
+                            showWorkspace: true
+                        )
+                        toolbarActionButtons(
+                            controller: controller,
+                            showSearch: false,
+                            showSpeak: false,
+                            showWorkspace: false
+                        )
                     }
                 }
             }
@@ -1550,20 +1547,24 @@ public struct BibleReaderView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 readerOverflowSection {
-                    Toggle(isOn: Binding(
+                    readerOverflowToggle(
+                        title: String(localized: "fullscreen"),
+                        systemImage: "arrow.up.left.and.arrow.down.right",
+                        isOn: Binding(
                         get: { isFullScreen },
                         set: { newValue in
                             withAnimation(.easeInOut(duration: 0.2)) { isFullScreen = newValue }
                             lastFullScreenByDoubleTap = false
                             resetAutoFullscreenTracking()
                         }
-                    )) {
-                        SwiftUI.Label(String(localized: "fullscreen"), systemImage: "arrow.up.left.and.arrow.down.right")
-                    }
+                    ))
 
                     if isNightModeQuickToggleEnabled {
                         Divider()
-                        Toggle(isOn: Binding(
+                        readerOverflowToggle(
+                            title: String(localized: "night_mode"),
+                            systemImage: "moon.fill",
+                            isOn: Binding(
                             get: { nightMode },
                             set: { newValue in
                                 let store = SettingsStore(modelContext: modelContext)
@@ -1579,14 +1580,15 @@ public struct BibleReaderView: View {
                                     }
                                 }
                             }
-                        )) {
-                            SwiftUI.Label(String(localized: "night_mode"), systemImage: "moon.fill")
-                        }
+                        ))
                     }
 
                     #if os(iOS)
                     Divider()
-                    Toggle(isOn: Binding(
+                    readerOverflowToggle(
+                        title: String(localized: "tilt_to_scroll"),
+                        systemImage: "gyroscope",
+                        isOn: Binding(
                         get: { windowManager.activeWorkspace?.workspaceSettings?.enableTiltToScroll ?? false },
                         set: { newValue in
                             updateWorkspaceSettings { $0.enableTiltToScroll = newValue }
@@ -1596,32 +1598,32 @@ public struct BibleReaderView: View {
                                 tiltScrollService.stop()
                             }
                         }
-                    )) {
-                        SwiftUI.Label(String(localized: "tilt_to_scroll"), systemImage: "gyroscope")
-                    }
+                    ))
                     #endif
 
                     if windowManager.visibleWindows.count > 1 {
                         Divider()
-                        Toggle(isOn: Binding(
+                        readerOverflowToggle(
+                            title: String(localized: "reversed_split_mode"),
+                            systemImage: "rectangle.split.1x2",
+                            isOn: Binding(
                             get: { windowManager.activeWorkspace?.workspaceSettings?.enableReverseSplitMode ?? false },
                             set: { newValue in
                                 updateWorkspaceSettings { $0.enableReverseSplitMode = newValue }
                             }
-                        )) {
-                            SwiftUI.Label(String(localized: "reversed_split_mode"), systemImage: "rectangle.split.1x2")
-                        }
+                        ))
                     }
 
                     Divider()
-                    Toggle(isOn: Binding(
+                    readerOverflowToggle(
+                        title: String(localized: "window_pinning"),
+                        systemImage: "pin.fill",
+                        isOn: Binding(
                         get: { windowManager.activeWorkspace?.workspaceSettings?.autoPin ?? false },
                         set: { newValue in
                             updateWorkspaceSettings { $0.autoPin = newValue }
                         }
-                    )) {
-                        SwiftUI.Label(String(localized: "window_pinning"), systemImage: "pin.fill")
-                    }
+                    ))
                 }
 
                 readerOverflowSection {
@@ -1676,7 +1678,7 @@ public struct BibleReaderView: View {
                     }
 
                     if let controller = focusedController, !controller.installedGeneralBookModules.isEmpty {
-                        readerOverflowButton(title: String(localized: "general_book"), systemImage: "books.vertical") {
+                        readerOverflowButton(title: String(localized: "general_book"), systemImage: "books.vertical.fill") {
                             dismissReaderOverflowMenuAndPerform {
                                 let modules = controller.installedGeneralBookModules
                                 if modules.count == 1 {
@@ -1708,13 +1710,13 @@ public struct BibleReaderView: View {
                     }
 
                     if !EpubReader.installedEpubs().isEmpty {
-                        readerOverflowButton(title: String(localized: "epub_library"), systemImage: "book") {
+                        readerOverflowButton(title: String(localized: "epub_library"), systemImage: "book.closed.fill") {
                             dismissReaderOverflowMenuAndQueue(.epubLibrary)
                         }
                     }
 
                     if focusedController?.activeEpubReader != nil {
-                        readerOverflowButton(title: String(localized: "epub_contents"), systemImage: "list.bullet") {
+                        readerOverflowButton(title: String(localized: "epub_contents"), systemImage: "book.closed.fill") {
                             dismissReaderOverflowMenuAndQueue(.epubBrowser)
                         }
                         readerOverflowButton(title: String(localized: "search_epub"), systemImage: "magnifyingglass") {
@@ -1831,19 +1833,59 @@ public struct BibleReaderView: View {
         .contentShape(Rectangle())
     }
 
-    /// Strong's icon matching Android's "xα'" style.
-    private var strongsIcon: some View {
-        HStack(spacing: 0) {
-            Text("x")
-                .font(.system(size: 13, weight: .bold, design: .serif))
-                .italic()
-            Text("α")
-                .font(.system(size: 13, weight: .bold, design: .serif))
-            Text("\u{2032}")
-                .font(.system(size: 10, weight: .bold))
-                .baselineOffset(4)
+    /** Shared row styling used by the reader overflow sheet toggles. */
+    private func readerOverflowToggle(
+        title: String,
+        systemImage: String,
+        isOn: Binding<Bool>
+    ) -> some View {
+        Toggle(isOn: isOn) {
+            SwiftUI.Label(title, systemImage: systemImage)
+                .labelStyle(.titleAndIcon)
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
+    }
+
+    /// Strong's icon matching Android's testament-aware toolbar glyphs.
+    private var strongsIcon: some View {
+        ToolbarAssetIcon(name: strongsIconAssetName)
         .frame(width: 24, height: 22)
+    }
+
+    /// Bible toolbar icon using Android's packaged vector glyph.
+    private var bibleToolbarIcon: some View {
+        ToolbarAssetIcon(name: "ToolbarBible")
+        .frame(width: 24, height: 22)
+    }
+
+    /// Commentary toolbar icon using Android's packaged vector glyph.
+    private var commentaryToolbarIcon: some View {
+        ToolbarAssetIcon(name: "ToolbarCommentary")
+            .frame(width: 24, height: 22)
+    }
+
+    /// Workspace toolbar icon using Android's packaged vector glyph.
+    private var workspaceToolbarIcon: some View {
+        ToolbarAssetIcon(name: "ToolbarWorkspace")
+        .frame(width: 24, height: 22)
+    }
+
+    /// Category-specific browse icon used when reading non-Bible content.
+    private func browseIconName(for category: DocumentCategory?) -> String {
+        switch category {
+        case .dictionary:
+            return "character.book.closed"
+        case .generalBook:
+            return "books.vertical.fill"
+        case .map:
+            return "map.fill"
+        case .epub:
+            return "book.closed.fill"
+        default:
+            return "list.bullet"
+        }
     }
 
     /**
@@ -1854,6 +1896,157 @@ public struct BibleReaderView: View {
      */
     private var moduleHasStrongs: Bool {
         focusedController?.hasStrongs ?? false
+    }
+
+    /// Whether the currently focused Bible location is in the New Testament.
+    private var isCurrentBookNewTestament: Bool {
+        guard let controller = focusedController else { return true }
+        return controller.isNewTestament(controller.currentBook)
+    }
+
+    /// Android vector resource name for the current Strong's testament/mode combination.
+    private var strongsIconAssetName: String {
+        let isNT = isCurrentBookNewTestament
+        switch StrongsMode(rawValue: displaySettings.strongsMode ?? 0) ?? .off {
+        case .inline:
+            return isNT ? "ToolbarStrongsGreekLinks" : "ToolbarStrongsHebrewLinks"
+        case .links:
+            return isNT ? "ToolbarStrongsGreekLinksText" : "ToolbarStrongsHebrewLinksText"
+        case .off, .hidden:
+            return isNT ? "ToolbarStrongsGreek" : "ToolbarStrongsHebrew"
+        }
+    }
+
+    /// Higher-priority search/speak button used when the toolbar can only fit one of them.
+    private var preferredSingleToolbarAccessory: ToolbarAccessoryButton? {
+        let ranked = [
+            (button: ToolbarAccessoryButton.speak, lastUsed: speakLastUsed, index: 0),
+            (button: ToolbarAccessoryButton.search, lastUsed: searchLastUsed, index: 1),
+        ].sorted {
+            if $0.lastUsed != $1.lastUsed {
+                return $0.lastUsed > $1.lastUsed
+            }
+            return $0.index < $1.index
+        }
+        return ranked.first?.button
+    }
+
+    /// Neutral toolbar tint matching Android's white/grey icon-state treatment.
+    private func toolbarIconColor(isActive: Bool = true) -> Color {
+        isActive ? .primary : .secondary
+    }
+
+    /// One concrete toolbar-button layout candidate for `ViewThatFits`.
+    private func toolbarActionButtons(
+        controller: BibleReaderController?,
+        showSearch: Bool,
+        showSpeak: Bool,
+        showWorkspace: Bool
+    ) -> some View {
+        HStack(spacing: 12) {
+            if showSearch {
+                Button(action: { presentSearch() }) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.body)
+                        .foregroundStyle(toolbarIconColor())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("readerSearchButton")
+            }
+
+            if showSpeak {
+                Button {
+                    speakLastUsed = Date().timeIntervalSince1970
+                    if speakService.isSpeaking {
+                        showSpeakControls = true
+                    } else {
+                        controller?.speakCurrentChapter()
+                        showSpeakControls = true
+                    }
+                } label: {
+                    Image(systemName: "headphones")
+                        .font(.body)
+                        .foregroundStyle(toolbarIconColor())
+                }
+                .buttonStyle(.plain)
+            }
+
+            if moduleHasStrongs {
+                Menu {
+                    ForEach(StrongsMode.allCases) { mode in
+                        Button {
+                            applyStrongsMode(mode.rawValue)
+                        } label: {
+                            if displaySettings.strongsMode ?? 0 == mode.rawValue {
+                                SwiftUI.Label(mode.label, systemImage: "checkmark")
+                            } else {
+                                Text(mode.label)
+                            }
+                        }
+                    }
+                } label: {
+                    strongsIcon
+                        .foregroundStyle(toolbarIconColor(isActive: strongsEnabled))
+                } primaryAction: {
+                    let current = displaySettings.strongsMode ?? 0
+                    let next = (current + 1) % 3
+                    applyStrongsMode(next)
+                }
+                .accessibilityLabel(String(localized: "toggle_strongs_numbers"))
+            }
+
+            bibleToolbarIcon
+                .foregroundStyle(toolbarIconColor(isActive: controller?.currentCategory == .bible))
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if suppressBibleTapAfterLongPress {
+                        suppressBibleTapAfterLongPress = false
+                        return
+                    }
+                    handleBibleToolbarTap(controller)
+                }
+                .onLongPressGesture {
+                    suppressBibleTapAfterLongPress = true
+                    handleBibleToolbarLongPress(controller)
+                }
+
+            commentaryToolbarIcon
+                .foregroundStyle(toolbarIconColor(isActive: controller?.currentCategory == .commentary))
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if suppressCommentaryTapAfterLongPress {
+                        suppressCommentaryTapAfterLongPress = false
+                        return
+                    }
+                    handleCommentaryToolbarTap(controller)
+                }
+                .onLongPressGesture {
+                    suppressCommentaryTapAfterLongPress = true
+                    handleCommentaryToolbarLongPress(controller)
+                }
+
+            if showWorkspace {
+                Button {
+                    activeReaderSheet = .workspaces
+                } label: {
+                    workspaceToolbarIcon
+                        .foregroundStyle(toolbarIconColor())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("readerWorkspacesButton")
+                .accessibilityLabel(String(localized: "workspaces"))
+            }
+
+            Button {
+                showReaderOverflowMenu = true
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.body)
+                    .foregroundStyle(toolbarIconColor())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("readerMoreMenuButton")
+        }
     }
 
     /// Whether Strong's numbers are currently enabled (strongsMode > 0).
@@ -2257,6 +2450,7 @@ public struct BibleReaderView: View {
      */
     @MainActor
     private func presentSearch(initialQuery: String? = nil) {
+        searchLastUsed = Date().timeIntervalSince1970
         searchInitialQuery = initialQuery ?? ""
         Task { @MainActor in
             await Task.yield()
@@ -2320,6 +2514,12 @@ private enum BibleSwipeMode: String {
 
     /// Horizontal swipe gestures are ignored.
     case none = "NONE"
+}
+
+/// Width-collapsible accessory buttons that compete for toolbar space ahead of workspaces.
+private enum ToolbarAccessoryButton {
+    case search
+    case speak
 }
 
 /// Gesture mappings for the Bible and commentary toolbar buttons.

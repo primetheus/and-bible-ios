@@ -45,6 +45,7 @@ import Figure from "@/components/OSIS/Figure.vue";
 import A from "@/components/OSIS/A.vue";
 import Abbr from "@/components/OSIS/Abbr.vue";
 import Html from "@/components/OSIS/Html.vue";
+import Sense from "@/components/OSIS/Sense.vue";
 import BibleViewAnchor from "@/components/BibleViewAnchor.vue";
 import AndBibleLink from "@/components/OSIS/AndBibleLink.vue";
 import Pb from "@/components/MyBible/Pb.vue";
@@ -64,7 +65,7 @@ import {osisToTemplateString} from "@/utils";
 import epubRef from "@/components/ePub/EpubRef.vue";
 
 const teiComponents = {
-    Ref: Reference, Pron: Hi, Orth: Hi, EntryFree: Div,
+    Ref: Reference, Pron: Hi, Orth: Hi, EntryFree: Div, Sense,
     Rdg: Hi, Def: Hi, Etym: Hi,
 }
 

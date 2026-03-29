@@ -224,6 +224,23 @@ public final class SwordModule: @unchecked Sendable {
         }
     }
 
+    /**
+     Atomically set key, then capture the resolved key plus both raw and rendered entry forms.
+
+     Dictionary lookups need all three values together because SWORD can reposition to a nearby
+     key when an exact match is missing, and some dictionary modules expose the canonical key only
+     through the raw entry metadata rather than `currentKey()`.
+     */
+    public func setKeyAndInspect(_ keyText: String) -> (actualKey: String, rawEntry: String, renderedText: String) {
+        queue.sync {
+            SWModule_setKeyText(handle, keyText)
+            let actualKey = String(cString: SWModule_getKeyText(handle))
+            let rawEntry = String(cString: SWModule_getRawEntry(handle))
+            let renderedText = String(cString: SWModule_getRenderText(handle))
+            return (actualKey, rawEntry, renderedText)
+        }
+    }
+
     /// Get rendered text (with markup/HTML) at the current position.
     public func renderText() -> String {
         queue.sync {

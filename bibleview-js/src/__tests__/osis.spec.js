@@ -233,4 +233,43 @@ describe("OsisSegment.vue", () => {
         expect(wrapper.find(".chapter-number").exists()).toBe(true);
         expect(wrapper.text()).not.toContain("THE SECOND EPISTLE OF PAUL THE APOSTLE TO THE CORINTHIANS");
     });
+
+    it("renders TEI sense markers without placeholder dot-only wrappers", () => {
+        const {config, appSettings, calculatedConfig} = useConfig(ref("bible"));
+        const osisFragment = {
+            bookCategory: "DICTIONARY",
+        };
+        const android = useAndroid({bookmarks: null}, config);
+        const provide = {
+            [osisFragmentKey]: osisFragment,
+            [configKey]: config,
+            [appSettingsKey]: appSettings,
+            [calculatedConfigKey]: calculatedConfig,
+            [footnoteCountKey]: {getFootNoteCount: () => 0},
+            [androidKey]: android,
+            [stringsKey]: useStrings(),
+            [ordinalHighlightKey]: useOrdinalHighlight(),
+            [globalBookmarksKey]: useGlobalBookmarks(config),
+            [modalKey]: useModal(android),
+            [customCssKey]: useCustomCss(),
+        };
+        const wrapper = mount(OsisSegment, {
+            props: {
+                osisTemplate: "<div><entryFree n=\"H6440\"><title>H6440</title><sense n=\"I\">. <sense n=\"1\">. <hi rend=\"italic\">face</hi>, <hi rend=\"italic\">faces</hi></sense><sense n=\"2\">. <sense n=\"a\">. <hi rend=\"italic\">presence</hi>, <hi rend=\"italic\">person</hi></sense></sense></sense></entryFree></div>",
+                convert: true,
+            },
+            global: {
+                provide,
+                components: {AmbiguousSelection, LabelList, BookmarkLabelActions},
+            }
+        });
+
+        const renderedText = wrapper.text();
+        const renderedMarkers = wrapper.findAll(".sense-marker").map(node => node.text());
+
+        expect(renderedText).toContain("face, faces");
+        expect(renderedText).toContain("presence, person");
+        expect(renderedMarkers).toEqual(expect.arrayContaining(["I.", "1.", "2.", "a."]));
+        expect(wrapper.html()).not.toContain(">.</");
+    });
 });

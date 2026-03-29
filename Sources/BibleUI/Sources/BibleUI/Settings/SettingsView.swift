@@ -919,12 +919,14 @@ public struct SettingsView: View {
                     strongsGreekDictionaries = all
                         .filter {
                             ($0.category == .dictionary || $0.category == .glossary) &&
+                                Self.isSupportedStrongsDictionaryModuleName($0.name) &&
                                 $0.features.contains(.greekDef)
                         }
                         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
                     strongsHebrewDictionaries = all
                         .filter {
                             ($0.category == .dictionary || $0.category == .glossary) &&
+                                Self.isSupportedStrongsDictionaryModuleName($0.name) &&
                                 $0.features.contains(.hebrewDef)
                         }
                         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -1347,6 +1349,14 @@ public struct SettingsView: View {
             !strongsHebrewDictionaries.isEmpty ||
             !robinsonMorphologyDictionaries.isEmpty ||
             !wordLookupDictionaries.isEmpty
+    }
+
+    /**
+     Mirrors Android's curated Strong's-dictionary policy by hiding modules that Android itself
+     filters out from its download/Strong's flow.
+     */
+    private static func isSupportedStrongsDictionaryModuleName(_ name: String) -> Bool {
+        !["BDBGlosses_Strongs"].contains(name)
     }
 
     @ViewBuilder

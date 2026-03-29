@@ -70,19 +70,50 @@ function handleTabClick(tabId: string) {
 @use "@/common.scss" as *;
 
 .tab-navigation {
+  --tab-rail-bg: transparent;
+  --tab-hover-bg: #f8f9fa;
+  --tab-active-bg: #f1f3f4;
   display: flex;
+  width: 100%;
+  flex-wrap: nowrap;
   overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
   &::-webkit-scrollbar { display: none; }
   border-bottom: 2px solid #eee;
 
   .monochrome & {
     border-bottom-color: black;
+    --tab-rail-bg: transparent;
+    --tab-hover-bg: transparent;
+    --tab-active-bg: transparent;
   }
   .night & {
     border-bottom-color: #444;
+    --tab-rail-bg: #2b2b2b;
+    --tab-hover-bg: #333;
+    --tab-active-bg: #3f3f3f;
   }
   .monochrome.night & {
     border-bottom-color: white;
+    --tab-rail-bg: transparent;
+    --tab-hover-bg: transparent;
+    --tab-active-bg: transparent;
+  }
+  background: var(--tab-rail-bg);
+
+  &.strongs-tabs,
+  &.morph-tabs {
+    --tab-rail-bg: #eceff1;
+    --tab-hover-bg: #e4e7ea;
+    --tab-active-bg: #d6dade;
+
+    .night & {
+      --tab-rail-bg: #3b3b3b;
+      --tab-hover-bg: #353535;
+      --tab-active-bg: #262626;
+    }
   }
 }
 
@@ -93,6 +124,8 @@ function handleTabClick(tabId: string) {
   padding: 12px 20px;
   border: none;
   background: transparent;
+  border-top-left-radius: 3px;
+  border-top-right-radius: 3px;
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
@@ -102,13 +135,15 @@ function handleTabClick(tabId: string) {
   .noAnimation & {
     transition: none;
   }
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  min-width: max-content;
 
   .monochrome & {
     color: black;
   }
   .night & {
     color: #999;
+    background: transparent;
   }
   .monochrome.night & {
     color: white;
@@ -116,7 +151,7 @@ function handleTabClick(tabId: string) {
 
   &:hover:not(:disabled) {
     color: #007bff;
-    background: #f8f9fa;
+    background: var(--tab-hover-bg);
 
     .monochrome & {
       color: black;
@@ -125,7 +160,6 @@ function handleTabClick(tabId: string) {
     }
     .night & {
       color: #1e90ff;
-      background: #333;
     }
     .monochrome.night & {
       color: white;
@@ -137,10 +171,15 @@ function handleTabClick(tabId: string) {
   &.active {
     color: #007bff;
     border-bottom-color: #007bff;
+    background: var(--tab-active-bg);
+    box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.05),
+      inset -1px 0 0 rgba(255, 255, 255, 0.05);
 
     .monochrome & {
       color: black;
       border-bottom-color: black;
+      background: transparent;
+      box-shadow: none;
     }
     .night & {
       color: #1e90ff;
@@ -149,6 +188,8 @@ function handleTabClick(tabId: string) {
     .monochrome.night & {
       color: white;
       border-bottom-color: white;
+      background: transparent;
+      box-shadow: none;
     }
   }
 

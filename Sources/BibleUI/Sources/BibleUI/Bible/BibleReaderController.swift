@@ -2728,25 +2728,20 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
             let keyOptions = buildKeyOptions(for: num)
             logger.info("buildStrongsMultiDocJSON: keyOptions=\(keyOptions)")
             for mod in lexModules {
-                if let html = lookupInModule(mod, keyOptions: keyOptions) {
-                    let linkifiedHtml = Self.linkifyRefTags(html)
-                    let keyName = keyOptions.first ?? num
-                    let escapedTitle = escapeXML(keyName)
-                    let xml = "<div><title type=\"x-gen\">\(escapedTitle)</title><div type=\"paragraph\">\(linkifiedHtml)</div></div>"
-
+                if let lookup = lookupInModule(mod, keyOptions: keyOptions) {
                     // Determine features type for "Find all occurrences" link
                     let isHebrew = num.hasPrefix("H") || (!num.hasPrefix("G") && (Int(String(num.drop(while: { $0.isLetter || $0 == "0" }))) ?? 0) > 5624)
                     let featureType = isHebrew ? "hebrew" : "greek"
-                    let prefix = isHebrew ? "H" : "G"
-                    let featureKeyName = num.first?.isLetter == true ? num : "\(prefix)\(num)"
-                    let featuresJSON = "{\"type\":\"\(featureType)\",\"keyName\":\"\(featureKeyName)\"}"
+                    let keyName = Self.canonicalStrongsKeyName(requested: num, actualKey: lookup.actualKey, rawEntry: lookup.rawEntry)
+                    let xml = buildDictionaryEntryXML(rawEntry: lookup.rawEntry, renderedText: lookup.renderedText)
+                    let featuresJSON = "{\"type\":\"\(featureType)\",\"keyName\":\"\(keyName)\"}"
 
                     fragments.append((
                         xml: xml,
                         key: "\(mod.info.name)--\(keyName)",
                         keyName: keyName,
                         bookInitials: mod.info.name,
-                        bookAbbreviation: String(mod.info.name.prefix(10)),
+                        bookAbbreviation: moduleDisplayLabel(mod),
                         features: featuresJSON
                     ))
                 }
@@ -2759,16 +2754,18 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
             for code in robinson {
                 for mod in morphModules {
                     let morphKeys = [code, code.uppercased(), code.lowercased()]
-                    if let html = lookupInModule(mod, keyOptions: morphKeys) {
-                        let linkifiedHtml = Self.linkifyRefTags(html)
-                        let escapedTitle = escapeXML(code)
-                        let xml = "<div><title type=\"x-gen\">Morphology: \(escapedTitle)</title><div type=\"paragraph\">\(linkifiedHtml)</div></div>"
+                    if let lookup = lookupInModule(mod, keyOptions: morphKeys) {
+                        let xml = buildDictionaryEntryXML(
+                            rawEntry: lookup.rawEntry,
+                            renderedText: lookup.renderedText,
+                            fallbackTitle: "Morphology: \(code)"
+                        )
                         fragments.append((
                             xml: xml,
                             key: "\(mod.info.name)--\(code)",
                             keyName: code,
                             bookInitials: mod.info.name,
-                            bookAbbreviation: String(mod.info.name.prefix(10)),
+                            bookAbbreviation: moduleDisplayLabel(mod),
                             features: "{}"
                         ))
                     }
@@ -2817,7 +2814,7 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
      2. Plain text "see HEBREW for 05774" / "see GREEK for 01234" from StrongsHebrew/Greek modules
      3. Plain text "from 05774" / "From H5774" patterns
      */
-    static func linkifyRefTags(_ html: String) -> String {
+    static func linkifyRenderedDictionaryHTML(_ html: String) -> String {
         var result = html
 
         // 1. Transform <ref target="ModuleName/key">text</ref> into clickable links
@@ -2880,6 +2877,78 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         if let regex = brBeforeSensePattern {
             let range = NSRange(result.startIndex..., in: result)
             result = regex.stringByReplacingMatches(in: result, range: range, withTemplate: "")
+        }
+
+        return result
+    }
+
+    /// Transform raw dictionary XML references into clickable links while preserving TEI structure.
+    static func linkifyRawDictionaryXML(_ xml: String) -> String {
+        var result = xml
+
+        let refPattern = try? NSRegularExpression(
+            pattern: #"<ref\s+target="(?:Strongs(?:Hebrew|Greek|RealGreek)|BDB|OSHB|Thayer)[/:](\d+)"[^>]*>(.*?)</ref>"#,
+            options: [.dotMatchesLineSeparators]
+        )
+        if let regex = refPattern {
+            let range = NSRange(result.startIndex..., in: result)
+            result = regex.stringByReplacingMatches(
+                in: result,
+                range: range,
+                withTemplate: "<a href=\"ab-w://?strong=$1\">$2</a>"
+            )
+        }
+
+        let bareRefPattern = try? NSRegularExpression(
+            pattern: #"<ref\s+target="[^"]*?/?(\d+)"[^>]*>(.*?)</ref>"#,
+            options: [.dotMatchesLineSeparators]
+        )
+        if let regex = bareRefPattern {
+            let range = NSRange(result.startIndex..., in: result)
+            result = regex.stringByReplacingMatches(
+                in: result,
+                range: range,
+                withTemplate: "<a href=\"ab-w://?strong=$1\">$2</a>"
+            )
+        }
+
+        let seeHebrewPattern = try? NSRegularExpression(
+            pattern: #"see HEBREW for (\d{4,5})"#,
+            options: []
+        )
+        if let regex = seeHebrewPattern {
+            let range = NSRange(result.startIndex..., in: result)
+            result = regex.stringByReplacingMatches(
+                in: result,
+                range: range,
+                withTemplate: "see HEBREW for <a href=\"ab-w://?strong=H$1\">$1</a>"
+            )
+        }
+
+        let seeGreekPattern = try? NSRegularExpression(
+            pattern: #"see GREEK for (\d{4,5})"#,
+            options: []
+        )
+        if let regex = seeGreekPattern {
+            let range = NSRange(result.startIndex..., in: result)
+            result = regex.stringByReplacingMatches(
+                in: result,
+                range: range,
+                withTemplate: "see GREEK for <a href=\"ab-w://?strong=G$1\">$1</a>"
+            )
+        }
+
+        let fromPattern = try? NSRegularExpression(
+            pattern: #"(?<=[Ff]rom )(\d{4,5})(?=[;,.\s]|$)"#,
+            options: []
+        )
+        if let regex = fromPattern {
+            let range = NSRange(result.startIndex..., in: result)
+            result = regex.stringByReplacingMatches(
+                in: result,
+                range: range,
+                withTemplate: "<a href=\"ab-w://?strong=$1\">$1</a>"
+            )
         }
 
         return result
@@ -2971,13 +3040,21 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
      After setKey(), SWORD positions to the nearest entry even if the exact key
      doesn't exist. We must verify currentKey() matches to avoid returning wrong entries.
      */
-    private func lookupInModule(_ module: SwordModule, keyOptions: [String]) -> String? {
+    private struct DictionaryLookupResult {
+        let actualKey: String
+        let rawEntry: String
+        let renderedText: String
+    }
+
+    private func lookupInModule(_ module: SwordModule, keyOptions: [String]) -> DictionaryLookupResult? {
         logger.info("lookupInModule: \(module.info.name), keyOptions=\(keyOptions)")
 
         for key in keyOptions {
             // Atomic setKey + currentKey + renderText in one queue.sync block
             // to prevent SWORD state interleaving between calls.
-            let (actualKey, candidate) = module.setKeyAndRender(key)
+            let inspection = module.setKeyAndInspect(key)
+            let actualKey = inspection.actualKey
+            let candidate = inspection.renderedText
             let trimmedKey = actualKey.trimmingCharacters(in: .whitespacesAndNewlines)
             logger.info("lookupInModule: tried key='\(key)', actualKey='\(trimmedKey)', renderLen=\(candidate.count)")
 
@@ -2990,21 +3067,97 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
                 }
             }
 
+            if let rawEntryKey = Self.dictionaryEntryKey(actualKey: "", rawEntry: inspection.rawEntry),
+               !Self.rawDictionaryEntryMatchesRequestedKey(requested: key, rawEntry: inspection.rawEntry) {
+                logger.info("lookupInModule: raw entry key mismatch (\(rawEntryKey)), skipping")
+                continue
+            }
+
             if candidate.isEmpty || candidate.contains("@@@@") { continue }
 
             // For modules where currentKey() returns empty (some zLD modules like
             // BDBGlosses), verify the content references the requested Strong's number.
             // Without this check, these modules return whatever entry they're stuck on.
             if trimmedKey.isEmpty {
-                let numericKey = normalizeNumericKey(key)
+                let numericKey = Self.normalizeNumericKey(key)
                 if !numericKey.isEmpty && !candidate.contains(numericKey) {
                     continue
                 }
             }
 
-            return candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            return DictionaryLookupResult(
+                actualKey: trimmedKey,
+                rawEntry: inspection.rawEntry.trimmingCharacters(in: .whitespacesAndNewlines),
+                renderedText: candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
         }
         return nil
+    }
+
+    private func buildDictionaryEntryXML(rawEntry: String, renderedText: String, fallbackTitle: String? = nil) -> String {
+        let trimmedRawEntry = rawEntry.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedRawEntry.hasPrefix("<"), trimmedRawEntry.hasSuffix(">") {
+            let linkifiedRawEntry = Self.linkifyRawDictionaryXML(trimmedRawEntry)
+            if let fallbackTitle, !trimmedRawEntry.localizedCaseInsensitiveContains("<title") {
+                let escapedTitle = escapeXML(fallbackTitle)
+                return "<div><title type=\"x-gen\">\(escapedTitle)</title>\(linkifiedRawEntry)</div>"
+            }
+            return "<div>\(linkifiedRawEntry)</div>"
+        }
+
+        let linkifiedHtml = Self.linkifyRenderedDictionaryHTML(renderedText)
+        let titlePrefix = fallbackTitle.map { "<title type=\"x-gen\">\(escapeXML($0))</title>" } ?? ""
+        return "<div>\(titlePrefix)<div type=\"paragraph\">\(linkifiedHtml)</div></div>"
+    }
+
+    static func canonicalStrongsKeyName(requested: String, actualKey: String, rawEntry: String) -> String {
+        let resolvedKey = dictionaryEntryKey(actualKey: actualKey, rawEntry: rawEntry) ?? requested
+        let numericKey = Self.normalizeNumericKey(resolvedKey)
+        guard !numericKey.isEmpty else {
+            return Self.normalizeNumericKey(requested)
+        }
+        return numericKey.count < 5
+            ? String(repeating: "0", count: 5 - numericKey.count) + numericKey
+            : numericKey
+    }
+
+    static func dictionaryEntryKey(actualKey: String, rawEntry: String) -> String? {
+        let trimmedActualKey = actualKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedActualKey.isEmpty {
+            return trimmedActualKey
+        }
+
+        let titlePattern = try? NSRegularExpression(pattern: #"<title>([^<]+)</title>"#, options: [])
+        if let regex = titlePattern,
+           let match = regex.firstMatch(in: rawEntry, range: NSRange(rawEntry.startIndex..., in: rawEntry)),
+           let range = Range(match.range(at: 1), in: rawEntry) {
+            return String(rawEntry[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        let entryPattern = try? NSRegularExpression(pattern: #"<entryFree\b[^>]*\bn="([^"]+)""#, options: [])
+        if let regex = entryPattern,
+           let match = regex.firstMatch(in: rawEntry, range: NSRange(rawEntry.startIndex..., in: rawEntry)),
+           let range = Range(match.range(at: 1), in: rawEntry) {
+            return String(rawEntry[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        return nil
+    }
+
+    static func rawDictionaryEntryMatchesRequestedKey(requested: String, rawEntry: String) -> Bool {
+        guard let resolvedKey = dictionaryEntryKey(actualKey: "", rawEntry: rawEntry) else {
+            return true
+        }
+
+        let trimmedRequested = requested.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedResolvedKey = resolvedKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedRequested.caseInsensitiveCompare(trimmedResolvedKey) == .orderedSame {
+            return true
+        }
+
+        let requestedNumeric = normalizeNumericKey(trimmedRequested)
+        let resolvedNumeric = normalizeNumericKey(trimmedResolvedKey)
+        return !requestedNumeric.isEmpty && requestedNumeric == resolvedNumeric
     }
 
     /**
@@ -3013,12 +3166,15 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
      and non-numeric keys like Robinson morphology codes ("V-2AAI-3S").
      */
     private func keysMatchNormalized(requested: String, actual: String) -> Bool {
+        let trimmedRequested = requested.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedActual = actual.trimmingCharacters(in: .whitespacesAndNewlines)
+
         // Direct case-insensitive match (handles morphology codes, etc.)
-        if requested.caseInsensitiveCompare(actual) == .orderedSame { return true }
+        if trimmedRequested.caseInsensitiveCompare(trimmedActual) == .orderedSame { return true }
 
         // Numeric normalization: strip letter prefix and leading zeros, then compare
-        let reqNumeric = normalizeNumericKey(requested)
-        let actNumeric = normalizeNumericKey(actual)
+        let reqNumeric = Self.normalizeNumericKey(trimmedRequested)
+        let actNumeric = Self.normalizeNumericKey(trimmedActual)
         if !reqNumeric.isEmpty && reqNumeric == actNumeric { return true }
 
         return false
@@ -3028,12 +3184,22 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
      Strip optional letter prefix (H/G) and leading zeros from a key.
      "H07225" → "7225", "01121" → "1121", "7225" → "7225"
      */
-    private func normalizeNumericKey(_ key: String) -> String {
-        let afterLetters = String(key.drop(while: { $0.isLetter }))
+    static func normalizeNumericKey(_ key: String) -> String {
+        let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        let afterLetters = String(trimmedKey.drop(while: { $0.isLetter }))
         let stripped = afterLetters.replacingOccurrences(of: "^0+", with: "", options: .regularExpression)
         // Verify it's actually numeric
         guard !stripped.isEmpty, stripped.allSatisfy({ $0.isNumber }) else { return "" }
         return stripped
+    }
+
+    private func moduleDisplayLabel(_ module: SwordModule) -> String {
+        if let abbreviation = module.configEntry("Abbreviation")?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !abbreviation.isEmpty {
+            return abbreviation
+        }
+        return module.info.name
     }
 
     /// Find ALL lexicon/dictionary modules that can look up the given Strong's number.
@@ -3065,6 +3231,7 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         if !selectedNames.isEmpty {
             for name in selectedNames where seen.insert(name).inserted {
                 if let mod = mgr.module(named: name),
+                   Self.isSupportedStrongsDictionaryModuleName(mod.info.name),
                    (mod.info.category == .dictionary || mod.info.category == .glossary),
                    mod.info.features.contains(feature) {
                     result.append(mod)
@@ -3079,6 +3246,7 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         // 2. Runtime default: dictionary/glossary modules with matching feature
         for info in allModules where
             (info.category == .dictionary || info.category == .glossary) &&
+                Self.isSupportedStrongsDictionaryModuleName(info.name) &&
                 info.features.contains(feature) {
             if seen.insert(info.name).inserted, let mod = mgr.module(named: info.name) {
                 result.append(mod)
@@ -3100,6 +3268,17 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
         }
 
         return result
+    }
+
+    /**
+     Android currently excludes certain Strong's modules from the curated Strong's-dictionary flow
+     because their content/lookup behavior is not good enough for parity use.
+
+     We mirror that product decision here so iOS does not surface modules that Android intentionally
+     hides, which would otherwise produce confusing tab labels and materially different entry content.
+     */
+    static func isSupportedStrongsDictionaryModuleName(_ name: String) -> Bool {
+        !["BDBGlosses_Strongs"].contains(name)
     }
 
     /// Find modules that can decode morphology (Robinson, Packard, etc.).

@@ -4086,7 +4086,7 @@ final class AndBibleUITests: XCTestCase {
         case "readerOpenReadingPlansAction":
             return "Reading Plans"
         case "readerOpenSettingsAction":
-            return "Settings"
+            return "Application preferences"
         case "readerOpenWorkspacesAction":
             return "Workspaces"
         case "readerOpenDownloadsAction":

@@ -1817,7 +1817,7 @@ public struct BibleReaderView: View {
                     .onTapGesture { dismissReaderNavigationDrawer() }
                     .accessibilityIdentifier("readerNavigationDrawerDismissArea")
 
-                readerNavigationDrawer(width: min(340, max(280, proxy.size.width * 0.84)))
+                readerNavigationDrawer(width: min(306, max(252, proxy.size.width * 0.756)))
                     .transition(.move(edge: .leading))
             }
         }
@@ -1929,7 +1929,7 @@ public struct BibleReaderView: View {
                         dismissReaderNavigationDrawerAndPerform { showSyncSettings = true }
                     }
                     readerNavigationDrawerRow(
-                        title: localizedDrawerString("settings", default: "Application preferences"),
+                        title: "Application preferences",
                         icon: .asset("DrawerSettings"),
                         identifier: "readerOpenSettingsAction"
                     ) {

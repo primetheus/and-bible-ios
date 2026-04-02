@@ -2544,7 +2544,6 @@ public struct BibleReaderView: View {
         }
     }
 
-    /// Most-recently-used single-button fallback used when the toolbar can only fit one accessory.
     /// Android base Strong's icon used for the overflow-menu configuration row.
     private var strongsMenuIconAssetName: String {
         isCurrentBookNewTestament ? "ToolbarStrongsGreek" : "ToolbarStrongsHebrew"
@@ -2590,6 +2589,8 @@ public struct BibleReaderView: View {
     private var readerOverflowCheckboxTint: Color {
         Color(red: 111.0 / 255.0, green: 214.0 / 255.0, blue: 209.0 / 255.0)
     }
+
+    /// Most-recently-used single-button fallback used when the toolbar can only fit one accessory.
     private var preferredSingleToolbarAccessory: ToolbarAccessoryButton? {
         if speakService.isSpeaking || speakLastUsed > searchLastUsed {
             .speak

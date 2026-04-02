@@ -3046,6 +3046,26 @@ final class AndBibleUITests: XCTestCase {
             )
             .firstMatch
 
+        if identifier.hasPrefix("labelAssignmentRow::") {
+            return [
+                app.collectionViews.cells[identifier].firstMatch,
+                app.cells[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
+                anyIdentifierMatch,
+            ]
+        }
+
+        if identifier.hasPrefix("labelAssignmentToggleButton::")
+            || identifier.hasPrefix("labelAssignmentFavouriteButton::")
+        {
+            return [
+                app.buttons[identifier].firstMatch,
+                app.collectionViews.buttons[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
+                anyIdentifierMatch,
+            ]
+        }
+
         switch identifier {
         case "readerNavigationDrawer":
             return [

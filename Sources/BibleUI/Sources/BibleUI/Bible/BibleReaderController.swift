@@ -117,6 +117,8 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
     private var lastScrollTarget: ScrollRestoreTarget = .chapterTop
     /// Whether the next loadCurrentChapter should restore scroll position (true = settings reload).
     private var shouldRestoreScroll = false
+    /// Coalesces intra-chapter scroll persistence so visible-verse updates do not save SwiftData on every tick.
+    private var pendingVisibleVersePersistWorkItem: DispatchWorkItem?
 
     /// Whether the current module has Strong's numbers (matching Android CurrentPageManager.hasStrongs).
     var hasStrongs: Bool {
@@ -190,6 +192,23 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
 
     /// Callback to persist SwiftData changes (called after PageManager updates).
     var onPersistState: (() -> Void)?
+
+    /// Persists the current page-manager state either immediately or after a short debounce for scroll updates.
+    private func persistVisibleVerseState(immediate: Bool) {
+        pendingVisibleVersePersistWorkItem?.cancel()
+        pendingVisibleVersePersistWorkItem = nil
+
+        guard let onPersistState else { return }
+
+        if immediate {
+            onPersistState()
+            return
+        }
+
+        let workItem = DispatchWorkItem(block: onPersistState)
+        pendingVisibleVersePersistWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
+    }
 
     /// Update display settings and re-emit config to Vue.js.
     public func updateDisplaySettings(_ settings: TextDisplaySettings, nightMode: Bool) {
@@ -1560,7 +1579,7 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
                     let verse = max(1, ordinal - (chapter - 1) * 40)
                     currentVerse = verse
                     pm.bibleVerseNo = verse
-                    onPersistState?()
+                    persistVisibleVerseState(immediate: true)
                 }
             } else if let name = bookName(forOsisId: osisId), name != currentBook {
                 currentBook = name
@@ -1571,13 +1590,13 @@ public final class BibleReaderController: NSObject, BibleBridgeDelegate {
                     let verse = max(1, ordinal - (currentChapter - 1) * 40)
                     currentVerse = verse
                     pm.bibleVerseNo = verse
-                    onPersistState?()
+                    persistVisibleVerseState(immediate: true)
                 }
             } else if let pm = activeWindow?.pageManager {
                 let verse = max(1, ordinal - (currentChapter - 1) * 40)
                 currentVerse = verse
                 pm.bibleVerseNo = verse
-                onPersistState?()
+                persistVisibleVerseState(immediate: false)
             }
         }
 

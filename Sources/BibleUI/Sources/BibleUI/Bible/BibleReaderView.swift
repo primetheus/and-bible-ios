@@ -1883,9 +1883,13 @@ public struct BibleReaderView: View {
         }
     }
 
-    /// Deterministic single-button fallback used when the toolbar can only fit one accessory.
+    /// Most-recently-used single-button fallback used when the toolbar can only fit one accessory.
     private var preferredSingleToolbarAccessory: ToolbarAccessoryButton? {
-        .search
+        if speakService.isSpeaking || speakLastUsed > searchLastUsed {
+            .speak
+        } else {
+            .search
+        }
     }
 
     /// Whether the reader toolbar should collapse to the compact portrait action budget.

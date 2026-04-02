@@ -98,7 +98,7 @@ public final class SwordModule: @unchecked Sendable {
 
             var parts: [String] = []
             var index = 0
-            while let ptr = children[index], index < 11 {
+            while index < 11, let ptr = children[index] {
                 parts.append(String(cString: ptr))
                 index += 1
             }

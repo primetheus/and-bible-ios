@@ -332,21 +332,6 @@ final class AndBibleTests: XCTestCase {
         )
     }
 
-    func debugPrintLiveSimulatorNasbChapterSixXml() throws {
-        let modulePath = "/Users/primetheus/Library/Developer/CoreSimulator/Devices/C72E0460-B755-4A5A-ABBC-C6239AD33B55/data/Containers/Data/Application/0D774F08-8389-4B78-A113-6E39F7CA8032/Documents/sword"
-        let manager = try XCTUnwrap(SwordManager(modulePath: modulePath))
-        print("LIVE_MODULES_BEGIN")
-        print(manager.installedModules().map(\.name).sorted())
-        print("LIVE_MODULES_END")
-        let module = try XCTUnwrap(manager.module(named: "NASB"))
-        let builder = BibleChapterDocumentBuilder(module: module, includeHeadings: true)
-
-        let chapter = try XCTUnwrap(builder.loadChapter(osisBookId: "2Cor", chapter: 6))
-        print("LIVE_NASB_XML_BEGIN")
-        print(chapter.xml)
-        print("LIVE_NASB_XML_END")
-    }
-
     #endif
 
     func testNavigateToPersistsSelectedVerseOnPageManager() {
@@ -363,6 +348,50 @@ final class AndBibleTests: XCTestCase {
         XCTAssertEqual(controller.currentChapter, 1)
         XCTAssertEqual(controller.currentVerse, 5)
         XCTAssertEqual(pageManager.bibleChapterNo, 1)
+        XCTAssertEqual(pageManager.bibleVerseNo, 5)
+    }
+
+    func testDidScrollToOrdinalDebouncesPersistenceWithinCurrentChapter() {
+        let bridge = BibleBridge()
+        let controller = BibleReaderController(bridge: bridge)
+        let window = Window()
+        let pageManager = PageManager(id: window.id)
+        window.pageManager = pageManager
+        controller.activeWindow = window
+        controller.navigateTo(book: "Genesis", chapter: 1, verse: 1)
+
+        var persistCount = 0
+        controller.onPersistState = { persistCount += 1 }
+
+        controller.bridge(bridge, didScrollToOrdinal: 5, key: "Gen.1", atChapterTop: false)
+
+        XCTAssertEqual(persistCount, 0)
+        XCTAssertEqual(controller.currentVerse, 5)
+        XCTAssertEqual(pageManager.bibleVerseNo, 5)
+
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+
+        XCTAssertEqual(persistCount, 1)
+    }
+
+    func testDidScrollToOrdinalPersistsImmediatelyWhenChapterChanges() {
+        let bridge = BibleBridge()
+        let controller = BibleReaderController(bridge: bridge)
+        let window = Window()
+        let pageManager = PageManager(id: window.id)
+        window.pageManager = pageManager
+        controller.activeWindow = window
+        controller.navigateTo(book: "Genesis", chapter: 1, verse: 1)
+
+        var persistCount = 0
+        controller.onPersistState = { persistCount += 1 }
+
+        controller.bridge(bridge, didScrollToOrdinal: 45, key: "Gen.2", atChapterTop: false)
+
+        XCTAssertEqual(persistCount, 1)
+        XCTAssertEqual(controller.currentChapter, 2)
+        XCTAssertEqual(controller.currentVerse, 5)
+        XCTAssertEqual(pageManager.bibleChapterNo, 2)
         XCTAssertEqual(pageManager.bibleVerseNo, 5)
     }
 

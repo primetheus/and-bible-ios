@@ -2,29 +2,32 @@
 
 ## Purpose
 
-Prevent high-risk reader regressions by making the non-negotiable ownership and
-behavior rules explicit for changes in:
+This file is here to make the easy-to-break reader assumptions explicit when
+someone is changing:
 
 - `Sources/BibleUI/Sources/BibleUI/Bible/BibleReaderView.swift`
 - `Sources/BibleUI/Sources/BibleUI/Bible/BibleReaderController.swift`
 - `Sources/BibleUI/Sources/BibleUI/Bible/BibleWindowPane.swift`
+- `Sources/BibleUI/Sources/BibleUI/Bible/StrongsSheetView.swift`
 - `Sources/BibleView/Sources/BibleView/WebViewCoordinator.swift`
 - `Sources/BibleUI/Sources/BibleUI/Shared/HistoryView.swift`
 - `Sources/BibleUI/Sources/BibleUI/Workspace/WorkspaceSelectorView.swift`
 
-## Rules
+## Things To Keep In Mind
 
 1. Treat the reader shell as the owner of top-level reading workflows.
 
-   Overflow-menu routing, history presentation, workspace selection, compare
-   presentation, and fullscreen state are reader-shell responsibilities. They
-   should not drift into ad hoc view-local ownership.
+   Drawer routing, overflow-menu routing, history presentation, workspace
+   selection, compare presentation, Strong's modal presentation, and fullscreen
+   state all belong to the reader shell. If they start drifting into ad hoc
+   view-local ownership, parity usually gets messier fast.
 
-2. Do not break the reader handoff contract from adjacent domains.
+2. Preserve the reader handoff from adjacent domains.
 
-   Search, history, bookmarks, and workspaces are only correct if they can move
-   the active reader to the intended location or state. Changes that keep those
-   screens working but break the reader handoff are still parity regressions.
+   Search, history, bookmarks, and workspaces are only really correct if they
+   can move the active reader to the intended location or state. A screen that
+   still opens but no longer hands back to the reader correctly is still a
+   parity regression.
 
 3. Preserve persisted history semantics.
 
@@ -42,15 +45,16 @@ behavior rules explicit for changes in:
    even where coverage is still partial.
 
    These branches are easy to break through gesture or layout refactors. Thin
-   current coverage is not a license to simplify them casually.
+   coverage is not a good reason to simplify them casually.
 
-6. Reader config emission into the embedded client is contract surface.
+6. Reader config emission into the embedded client is part of the parity
+   surface.
 
    `buildConfigJSON()`, `updateConfig()`, and display-setting propagation are
    how reader state reaches the embedded document client. Changes there are
-   bridge-affecting parity work, not isolated refactors.
+   bridge-affecting parity work, not isolated cleanup.
 
-7. Reader changes must update the docs in the same slice.
+7. Reader changes should update the docs in the same slice.
 
    When adding or changing reader contract behavior, update:
 
@@ -61,28 +65,33 @@ behavior rules explicit for changes in:
 
 ## Validation Expectations
 
-At minimum, reader-adjacent changes should keep the focused workflow subset
-described in `regression-report.md` green, especially:
+At minimum, reader-adjacent changes should keep the focused workflow subset in
+`regression-report.md` green, especially:
 
-- reader overflow-menu routing
+- reader drawer/overflow routing
 - search-result navigation back into the reader
 - history jump-back plus clear/delete persistence
-- workspace selector CRUD from the reader shell
+- workspace selector create/switch from the reader shell
+- restored-position highlight behavior
 
-If a change touches one of the still-partial areas, raise the bar and add
-focused coverage rather than relying on the existing reader subset alone.
+If a change touches one of the still-partial areas, it is worth raising the bar
+and adding focused coverage instead of leaning only on the current reader
+subset.
 
 ## Current Automation Status
 
-- The repo currently has focused reader-shell UI coverage for overflow-menu
-  routing, history workflows, and workspace CRUD.
-- Current protection is a combination of:
+- The repo currently has focused reader-shell UI coverage for drawer/overflow
+  routing, history workflows, and workspace switching plus unit regressions for
+  restored-position highlight behavior.
+- In practice, current protection is a mix of:
   - reader workflow tests in `AndBibleUITests`
+  - reader-adjacent payload regressions in `AndBibleTests`
   - explicit parity documentation in this directory
   - adjacent-domain coverage where reader handoff is part of the assertion
 
-## Potential Improvements
+## Useful Next Improvements
 
+- add focused regression coverage for the Strong's / dictionary modal
 - add focused regression coverage for fullscreen, swipe-mode, and auto-fullscreen behavior
 - add focused workflow coverage for compare presentation
 - add a tighter guardrail around reader config emission into the embedded document client

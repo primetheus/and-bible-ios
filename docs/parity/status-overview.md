@@ -1,13 +1,14 @@
 # Parity Status Overview
 
-Date: 2026-03-16
+Date: 2026-04-01
 
 ## Purpose
 
-This document is the top-level snapshot of current Android parity posture for
+This is the quickest way to get oriented on Android parity in
 `and-bible-ios`.
 
-Use it to answer four questions quickly:
+If you are touching a parity-sensitive area, this file should help you answer
+four questions without having to reconstruct repo history first:
 
 1. what domains are formally documented
 2. what their current parity posture is
@@ -16,6 +17,10 @@ Use it to answer four questions quickly:
 
 ## Domain Snapshot
 
+The counts below are there to orient you quickly, but they are not the whole
+story. If a row looks relevant to your change, the linked domain docs should
+give you the fuller human context behind it.
+
 | Domain | Current Posture | Automation State | Primary Remaining Gap |
 |---|---|---|---|
 | [settings](settings/README.md) | Mature: `24 Pass`, `9 Adapted Pass`, `0 Partial`, `2 Documented Divergence` | Dedicated localization guardrail script, committed baselines, CI integration, focused simulator/unit validation | Broader machine-readable guardrails beyond localization if the settings surface grows materially |
@@ -23,12 +28,13 @@ Use it to answer four questions quickly:
 | [bookmarks](bookmarks/README.md) | Strong user-workflow coverage: `5 Pass`, `2 Adapted Pass`, `2 Partial` | Focused bookmark UI workflows plus note-persistence unit regressions | Generic-bookmark visible workflows and broader StudyPad mutation breadth |
 | [search](search/README.md) | Strong semantic coverage: `5 Pass`, `2 Adapted Pass`, `1 Partial` | Focused search UI workflows plus Strong's unit regressions | Multi-translation search still lacks focused regression coverage |
 | [reading-plans](reading-plans/README.md) | Strong sync and progression coverage: `5 Pass`, `1 Adapted Pass`, `3 Partial` | Focused daily-reading UI coverage plus restore/upload/patch unit coverage | Custom plan import, reading-plan list/start/import breadth, and additive iOS-only plan lifecycle coverage |
-| [reader](reader/README.md) | Core shell workflows locked, deeper gesture/config branches partial: `4 Pass`, `0 Adapted Pass`, `4 Partial` | Focused reader-shell UI coverage plus adjacent-domain assertions | Fullscreen, swipe-mode, compare, and config-bridge coverage remain partial |
+| [reader](reader/README.md) | Reader shell/menu parity is stronger, but deeper gesture/modal/config branches remain partial: `4 Pass`, `1 Adapted Pass`, `5 Partial` | Focused reader-shell UI coverage, restored-position unit regressions, and full local UI validation | Strong's modal, fullscreen, swipe-mode, compare, and config-bridge coverage still need tighter focused regression locking |
 | [bridge](bridge/README.md) | Embedded note/document bridge paths locked, raw transport still partial: `1 Pass`, `1 Adapted Pass`, `5 Partial` | Focused My Notes/StudyPad regressions plus bridge guardrails | Raw bridge drift detection for method names, payloads, and async `callId` flows |
 
-## Domain Reading Contract
+## How To Read Each Domain
 
-Each domain directory is expected to answer the same five questions in order:
+Each domain directory is organized the same way so it is easier to hand context
+from one person to the next:
 
 1. `contract.md`: what parity means for that domain
 2. `dispositions.md`: what intentional iOS adaptations exist
@@ -43,7 +49,7 @@ Each domain directory is expected to answer the same five questions in order:
 
 ## Automation Posture
 
-The current parity automation model has three tiers.
+The current parity story has three layers of protection.
 
 ### Tier 1: Machine-readable guardrails
 
@@ -84,12 +90,12 @@ All current domains now have:
 - explicit regression reports
 - explicit maintenance guardrails
 
-This is the baseline protection against silent parity drift when heavier
-automation does not yet exist.
+This is the baseline defense against silent parity drift when heavier
+automation is still missing.
 
 ## Interpretation
 
-The current repo is no longer in a “parity planning only” state.
+This repo is no longer in a "parity planning only" state.
 
 It now has:
 
@@ -98,8 +104,8 @@ It now has:
 - a verification snapshot for every current domain
 - a documented automation and validation posture for every current domain
 
-What it does not yet have is uniform machine-readable drift automation across
-all domains. That is intentional. The current posture is:
+What it still does not have is one uniform machine-readable drift check for
+every domain. That is deliberate for now. The current posture is:
 
 - strongest automation in `settings/`
 - strong focused regression evidence in `sync`, `bookmarks`, `search`, and
@@ -107,9 +113,13 @@ all domains. That is intentional. The current posture is:
 - meaningful but still partial protection in `reader` and `bridge` where the
   remaining gaps are mostly boundary and protocol behaviors
 
+That means the docs matter. In some areas they are still the clearest way to
+understand not just what the app does, but why we are treating a behavior as
+"good enough", "adapted", or "still shaky".
+
 ## How To Use This Tree
 
-When changing a parity-sensitive area:
+When you are changing a parity-sensitive area:
 
 1. start with this overview
 2. open the target domain `README.md`
@@ -117,7 +127,7 @@ When changing a parity-sensitive area:
 4. check `verification-matrix.md` for current status
 5. use `regression-report.md` and `guardrails.md` to choose the validation bar
 
-If a change meaningfully shifts posture, update both:
+If a change meaningfully shifts the parity story, update both:
 
 - the domain docs
 - this overview

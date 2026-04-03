@@ -3117,6 +3117,35 @@ final class AndBibleUITests: XCTestCase {
             ]
         }
 
+        if identifier.hasPrefix("bookmarkListFilterChip::") {
+            return [
+                app.buttons[identifier].firstMatch,
+                app.scrollViews.buttons[identifier].firstMatch,
+                app.collectionViews.buttons[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
+            ]
+        }
+
+        if identifier.hasPrefix("bookmarkListOpenStudyPadButton::") {
+            return [
+                app.buttons[identifier].firstMatch,
+                app.collectionViews.buttons[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
+            ]
+        }
+
+        if identifier.hasPrefix("bookmarkListEditLabelsButton::")
+            || identifier.hasPrefix("bookmarkListRowButton::")
+        {
+            return [
+                app.buttons[identifier].firstMatch,
+                app.collectionViews.buttons[identifier].firstMatch,
+                app.cells.buttons[identifier].firstMatch,
+                app.cells[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
+            ]
+        }
+
         switch identifier {
         case "readerNavigationDrawer":
             return [
@@ -3130,6 +3159,12 @@ final class AndBibleUITests: XCTestCase {
         case "readerNavigationDrawerButton":
             return [
                 app.buttons[identifier].firstMatch,
+            ]
+        case "readerStudyPadTitle", "readerMyNotesTitle":
+            return [
+                app.staticTexts[identifier].firstMatch,
+                app.navigationBars.staticTexts[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
             ]
         case "readerOverflowMenu":
             return [
@@ -3183,6 +3218,14 @@ final class AndBibleUITests: XCTestCase {
                 app.buttons[identifier].firstMatch,
                 app.alerts.buttons["Create"].firstMatch,
                 app.buttons["Create"].firstMatch,
+            ]
+        case "labelAssignmentCreateNewLabelButton", "labelAssignmentDoneButton", "bookmarkListDoneButton":
+            return [
+                app.buttons[identifier].firstMatch,
+                app.navigationBars.buttons[identifier].firstMatch,
+                app.toolbars.buttons[identifier].firstMatch,
+                app.collectionViews.buttons[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
             ]
         case "aboutScreen":
             return [

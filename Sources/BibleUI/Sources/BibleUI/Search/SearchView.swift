@@ -7,6 +7,40 @@ import SwiftUI
 import BibleCore
 import SwordKit
 
+/// One-shot UI-test launch query consumed by Search regardless of which presenter opens it.
+enum UITestSearchQuerySeed {
+    private static var didConsume = false
+
+    static func consume() -> String? {
+        guard !didConsume,
+              let query = resolveLaunchQuery()?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !query.isEmpty else {
+            return nil
+        }
+        didConsume = true
+        return query
+    }
+
+    private static func resolveLaunchQuery() -> String? {
+        if let environmentQuery = ProcessInfo.processInfo.environment["UITEST_SEARCH_QUERY"] {
+            return environmentQuery
+        }
+
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let flagIndex = arguments.firstIndex(of: "-UITEST_SEARCH_QUERY") else {
+            return nil
+        }
+
+        let valueIndex = arguments.index(after: flagIndex)
+        guard valueIndex < arguments.endIndex else {
+            return nil
+        }
+
+        return arguments[valueIndex]
+    }
+}
+
 /**
  Full-text search interface with index management, scope filters, and multi-translation support.
 
@@ -247,7 +281,8 @@ public struct SearchView: View {
             if selectedModules.isEmpty, let mod = swordModule {
                 selectedModules = [mod.info.name]
             }
-            _ = applyInitialQueryIfNeeded(initialQuery)
+            let seededInitialQuery = initialQuery.isEmpty ? (UITestSearchQuerySeed.consume() ?? "") : initialQuery
+            _ = applyInitialQueryIfNeeded(seededInitialQuery)
             checkIndex()
         }
         .onChange(of: initialQuery) { _, newValue in
@@ -864,7 +899,7 @@ public struct SearchView: View {
 
     /// Auto-executes a search when the view was launched with a seeded query.
     private func autoSearchIfNeeded() {
-        if !initialQuery.isEmpty && !query.isEmpty {
+        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             performSearch()
         }
     }

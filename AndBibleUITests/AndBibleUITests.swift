@@ -679,6 +679,20 @@ final class AndBibleUITests: XCTestCase {
         XCTAssertTrue(requireHistoryRow(containing: "Exodus 2", in: app, timeout: 10).exists)
 
         tapElementReliably(requireElement("historyClearButton", in: app, timeout: 10), timeout: 10)
+        waitForElementExistence(
+            "historyRow::Exod_2_1",
+            in: app,
+            shouldExist: false,
+            timeout: 10
+        )
+        waitForElementExistence(
+            "historyRow::Matt_3_1",
+            in: app,
+            shouldExist: false,
+            timeout: 10
+        )
+        waitForElementValue("historyScreen", toContain: "count=0", in: app, timeout: 10)
+        waitForElementExistence("historyClearButton", in: app, shouldExist: false, timeout: 10)
         tapElementReliably(requireElement("historyDoneButton", in: app, timeout: 10), timeout: 10)
         _ = openHistory(in: app)
         waitForElementExistence(
@@ -693,6 +707,7 @@ final class AndBibleUITests: XCTestCase {
             shouldExist: false,
             timeout: 10
         )
+        waitForElementValue("historyScreen", toContain: "count=0", in: app, timeout: 10)
     }
 
     /**
@@ -716,9 +731,7 @@ final class AndBibleUITests: XCTestCase {
         let matthewRow = requireHistoryRow(containing: "Matthew 3", in: app, timeout: 10)
         exodusRow.swipeLeft()
         tapElementReliably(requireElement("historyDeleteButton::Exod_2_1", in: app, timeout: 10), timeout: 10)
-        let deletedPredicate = NSPredicate(format: "exists == false")
-        expectation(for: deletedPredicate, evaluatedWith: exodusRow)
-        waitForExpectations(timeout: 10)
+        waitForElementExistence("historyRow::Exod_2_1", in: app, shouldExist: false, timeout: 10)
         XCTAssertTrue(matthewRow.exists, "Expected Matthew history row to remain after deleting Exodus.")
 
         tapElementReliably(requireElement("historyDoneButton", in: app, timeout: 10), timeout: 10)
@@ -864,13 +877,14 @@ final class AndBibleUITests: XCTestCase {
         createFreshLabelFromAssignment(in: app)
 
         _ = requireElement("labelAssignmentRow::\(newLabelSegment)", in: app, timeout: 10)
-        let createdRow = requireElement("labelAssignmentRow::\(newLabelSegment)", in: app, timeout: 10)
-        let assignedPredicate = NSPredicate(format: "value == %@", "assigned,notFavourite")
-        expectation(for: assignedPredicate, evaluatedWith: createdRow)
-        waitForExpectations(timeout: 10)
+        waitForElementValue(
+            "labelAssignmentRow::\(newLabelSegment)",
+            toEqual: "assigned,notFavourite",
+            in: app,
+            timeout: 10
+        )
 
-        requireElement("labelAssignmentDoneButton", in: app, timeout: 10).tap()
-        XCTAssertTrue(requireElement("bookmarkListScreen", in: app, timeout: 10).exists)
+        dismissLabelAssignmentToBookmarkList(in: app)
         XCTAssertTrue(
             requireElement("bookmarkListFilterChip::\(newLabelSegment)", in: app, timeout: 10).exists,
             "Expected the new label to appear as a bookmark-list filter chip after dismissal."
@@ -903,12 +917,14 @@ final class AndBibleUITests: XCTestCase {
         XCTAssertEqual(seedRow.value as? String, "assigned,notFavourite")
         requireElement("labelAssignmentToggleButton::UI_Test_Seed", in: app, timeout: 10).tap()
 
-        let unassignedPredicate = NSPredicate(format: "value == %@", "unassigned,notFavourite")
-        expectation(for: unassignedPredicate, evaluatedWith: seedRow)
-        waitForExpectations(timeout: 10)
+        waitForElementValue(
+            "labelAssignmentRow::UI_Test_Seed",
+            toEqual: "unassigned,notFavourite",
+            in: app,
+            timeout: 10
+        )
 
-        requireElement("labelAssignmentDoneButton", in: app, timeout: 10).tap()
-        _ = requireElement("bookmarkListScreen", in: app, timeout: 10)
+        dismissLabelAssignmentToBookmarkList(in: app)
 
         requireElement("bookmarkListFilterChip::UI_Test_Seed", in: app, timeout: 10).tap()
         waitForElementValue("bookmarkListScreen", toContain: "count=0", in: app, timeout: 10)
@@ -1002,10 +1018,7 @@ final class AndBibleUITests: XCTestCase {
         let renamedRowToDelete = requireLabelRow(named: renamedName, in: app, timeout: 10)
         renamedRowToDelete.swipeLeft()
         tapElementReliably(requireElement("labelManagerDeleteAction", in: app, timeout: 10), timeout: 10)
-
-        let deletedPredicate = NSPredicate(format: "exists == false")
-        expectation(for: deletedPredicate, evaluatedWith: labelRow(named: renamedName, in: app))
-        waitForExpectations(timeout: 10)
+        waitForElementExistence("labelManagerRowButton-\(renamedName)", in: app, shouldExist: false, timeout: 10)
     }
 
     /**
@@ -1332,6 +1345,7 @@ final class AndBibleUITests: XCTestCase {
         app.launchEnvironment["UITEST_SESSION_ID"] = UUID().uuidString
         if let searchQuery {
             app.launchEnvironment["UITEST_SEARCH_QUERY"] = searchQuery
+            app.launchArguments += ["-UITEST_SEARCH_QUERY", searchQuery]
         }
         prepareFixtureIfRequested(for: app)
         return app
@@ -1947,16 +1961,33 @@ final class AndBibleUITests: XCTestCase {
      *   - fails when the Search screen never appears
      */
     private func openSearch(in app: XCUIApplication) -> XCUIElement {
+        if app.launchArguments.contains("-UITEST_SEARCH_QUERY"),
+           let prePresentedSearch = waitForSearchScreenIfAlreadySeeded(in: app, timeout: 10) {
+            waitForSearchInteractionReady(on: prePresentedSearch, in: app, timeout: 120)
+            return prePresentedSearch
+        }
+
         tapReaderSearchEntry(in: app, timeout: 15)
         let searchScreen = requireSearchScreen(in: app, timeout: 20)
         waitForSearchInteractionReady(on: searchScreen, in: app, timeout: 120)
-        if let searchQuery = app.launchEnvironment["UITEST_SEARCH_QUERY"], !searchQuery.isEmpty {
-            focusTextEntryElement(requireSearchInput(in: app, timeout: 10), timeout: 10)
-            let activeSearchField = requireSearchInput(in: app, timeout: 10)
-            activeSearchField.typeText(searchQuery + "\n")
-            app.launchEnvironment.removeValue(forKey: "UITEST_SEARCH_QUERY")
-        }
         return searchScreen
+    }
+
+    /// Reuses a Search sheet that the app auto-presented from a launch-seeded UI-test query.
+    private func waitForSearchScreenIfAlreadySeeded(
+        in app: XCUIApplication,
+        timeout: TimeInterval
+    ) -> XCUIElement? {
+        let deadline = Date().addingTimeInterval(timeout)
+
+        repeat {
+            if let searchScreen = resolvedElement("searchScreen", in: app) {
+                return searchScreen
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        return nil
     }
 
     /**
@@ -2446,14 +2477,11 @@ final class AndBibleUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let row = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
-        let predicate = NSPredicate(format: "exists == %@", NSNumber(value: shouldExist))
-        expectation(for: predicate, evaluatedWith: row)
-        waitForExpectations(timeout: timeout)
-        XCTAssertEqual(
-            row.exists,
-            shouldExist,
-            "Expected Search result '\(identifier)' existence to become \(shouldExist) within \(timeout) seconds.",
+        waitForElementExistence(
+            identifier,
+            in: app,
+            shouldExist: shouldExist,
+            timeout: timeout,
             file: file,
             line: line
         )
@@ -3921,12 +3949,18 @@ final class AndBibleUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let element = unresolvedElement(identifier, in: app)
-        let predicate = NSPredicate(format: "exists == %@", NSNumber(value: shouldExist))
-        expectation(for: predicate, evaluatedWith: element)
-        waitForExpectations(timeout: timeout)
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let currentExists = resolvedElement(identifier, in: app) != nil
+            if currentExists == shouldExist {
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        let currentExists = resolvedElement(identifier, in: app) != nil
         XCTAssertEqual(
-            element.exists,
+            currentExists,
             shouldExist,
             "Expected element '\(identifier)' existence to become \(shouldExist) within \(timeout) seconds.",
             file: file,
@@ -4206,6 +4240,13 @@ final class AndBibleUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) -> Bool {
+        _ = requireReaderReferenceValue(
+            in: app,
+            timeout: min(15, timeout),
+            file: file,
+            line: line
+        )
+        _ = waitForReaderShellReady(in: app, timeout: min(10, timeout))
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
             let button = requireElement("readerNavigationDrawerButton", in: app, timeout: min(2, max(0.5, deadline.timeIntervalSinceNow)))
@@ -5368,6 +5409,55 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Dismisses Label Assignment back to the bookmark list and waits for the transition to settle.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum time to wait for the sheet dismissal to complete.
+     * - Side effects:
+     *   - taps the production done button on Label Assignment
+     *   - polls the live hierarchy until the label-assignment surface disappears and the bookmark
+     *     list becomes visible again
+     * - Failure modes:
+     *   - fails if the dismiss action cannot be tapped
+     *   - fails if the sheet never dismisses fully back to the bookmark list within the timeout
+     */
+    private func dismissLabelAssignmentToBookmarkList(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 20,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        tapElementReliably(
+            requireElement("labelAssignmentDoneButton", in: app, timeout: timeout),
+            timeout: timeout
+        )
+
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let labelAssignmentVisible = resolvedElement("labelAssignmentScreen", in: app) != nil
+            let bookmarkListVisible = resolvedElement("bookmarkListScreen", in: app) != nil
+            if !labelAssignmentVisible && bookmarkListVisible {
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        } while Date() < deadline
+
+        XCTAssertFalse(
+            unresolvedElement("labelAssignmentScreen", in: app).exists,
+            "Expected Label Assignment to dismiss within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            unresolvedElement("bookmarkListScreen", in: app).exists,
+            "Expected the bookmark list to reappear within \(timeout) seconds after dismissing Label Assignment.",
+            file: file,
+            line: line
+        )
+    }
+
+    /**
      Opens the create-label prompt from Label Assignment and waits for its field or action to
      surface before returning.
      *
@@ -5454,10 +5544,7 @@ final class AndBibleUITests: XCTestCase {
         }
 
         tapElementReliably(toggleButton, timeout: 10)
-
-        let updatedPredicate = NSPredicate(format: "value == %@", "assigned,favourite")
-        expectation(for: updatedPredicate, evaluatedWith: seedRow)
-        waitForExpectations(timeout: 10)
+        waitForElementValue("labelAssignmentRow::UI_Test_Seed", toEqual: "assigned,favourite", in: app, timeout: 10)
     }
 
     /**
@@ -5749,8 +5836,53 @@ final class AndBibleUITests: XCTestCase {
      */
     private func replaceText(in element: XCUIElement, with text: String) {
         focusTextEntryElement(element, timeout: 10)
-        let deleteSequence = String(repeating: XCUIKeyboardKey.delete.rawValue, count: 64)
-        element.typeText(deleteSequence + text)
+        let existingText = currentTextEntryValue(in: element)
+        if existingText == text {
+            return
+        }
+
+        if !existingText.isEmpty {
+            let deleteSequence = String(
+                repeating: XCUIKeyboardKey.delete.rawValue,
+                count: existingText.count
+            )
+            element.typeText(deleteSequence)
+        }
+
+        if !text.isEmpty {
+            element.typeText(text)
+        }
+    }
+
+    /**
+     Resolves the current user-entered text for one text-entry control.
+     *
+     * - Parameter element: Focused text field or search field.
+     * - Returns: The editable field contents, excluding placeholder/label text when the control
+     *   is currently empty.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func currentTextEntryValue(in element: XCUIElement) -> String {
+        guard let rawValue = element.value as? String else {
+            return ""
+        }
+
+        let placeholderCandidates = Set(
+            [element.label, element.identifier]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        )
+        let normalizedValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedValue.isEmpty else {
+            return ""
+        }
+
+        if placeholderCandidates.contains(normalizedValue) {
+            return ""
+        }
+
+        return rawValue
     }
 
     /**

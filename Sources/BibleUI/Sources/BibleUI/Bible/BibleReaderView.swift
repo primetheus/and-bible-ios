@@ -312,6 +312,9 @@ public struct BibleReaderView: View {
     /// Initial query forwarded into `SearchView`, usually from Strong's lookups.
     @State private var searchInitialQuery = ""
 
+    /// Ensures the launch-seeded UI-test Search sheet is only auto-presented once per app session.
+    @State private var didPresentUITestLaunchSearch = false
+
     /// Presents label-management UI from the toolbar ellipsis menu.
     @State private var showLabelManager = false
 
@@ -617,6 +620,8 @@ public struct BibleReaderView: View {
                     }
                 }
             }
+
+            presentUITestLaunchSearchIfNeeded()
         }
         #if os(iOS)
         .onAppear {
@@ -3240,11 +3245,29 @@ public struct BibleReaderView: View {
     @MainActor
     private func presentSearch(initialQuery: String? = nil) {
         searchLastUsed = Date().timeIntervalSince1970
-        searchInitialQuery = initialQuery ?? ""
+        if let initialQuery {
+            searchInitialQuery = initialQuery
+        } else if let uiTestQuery = UITestSearchQuerySeed.consume() {
+            searchInitialQuery = uiTestQuery
+        } else {
+            searchInitialQuery = ""
+        }
         Task { @MainActor in
             await Task.yield()
             showSearch = true
         }
+    }
+
+    /// Auto-presents Search once on launch when UI tests seed a query through app launch metadata.
+    @MainActor
+    private func presentUITestLaunchSearchIfNeeded() {
+        guard !didPresentUITestLaunchSearch,
+              let launchQuery = UITestSearchQuerySeed.consume() else {
+            return
+        }
+
+        didPresentUITestLaunchSearch = true
+        presentSearch(initialQuery: launchQuery)
     }
 
     #if os(iOS)

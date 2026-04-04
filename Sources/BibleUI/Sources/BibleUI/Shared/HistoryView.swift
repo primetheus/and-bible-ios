@@ -63,17 +63,24 @@ public struct HistoryView: View {
      Builds the empty state or filtered history list with destructive toolbar actions.
      */
     public var body: some View {
+        let historySnapshot = history
         Group {
-            if history.isEmpty {
-                ContentUnavailableView(
-                    String(localized: "history_no_history"),
-                    systemImage: "clock",
-                    description: Text(String(localized: "history_no_history_description"))
-                )
-                .accessibilityIdentifier("historyEmptyState")
+            if historySnapshot.isEmpty {
+                VStack {
+                    ContentUnavailableView(
+                        String(localized: "history_no_history"),
+                        systemImage: "clock",
+                        description: Text(String(localized: "history_no_history_description"))
+                    )
+                    .accessibilityIdentifier("historyEmptyState")
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("historyScreen")
+                .accessibilityValue(historyAccessibilityState(for: historySnapshot))
             } else {
                 List {
-                    ForEach(Array(history.enumerated()), id: \.element.id) { index, item in
+                    ForEach(Array(historySnapshot.enumerated()), id: \.element.id) { index, item in
                         Button {
                             navigateTo(item)
                         } label: {
@@ -105,9 +112,10 @@ public struct HistoryView: View {
                         }
                     }
                 }
+                .accessibilityIdentifier("historyScreen")
+                .accessibilityValue(historyAccessibilityState(for: historySnapshot))
             }
         }
-        .accessibilityIdentifier("historyScreen")
         .navigationTitle(String(localized: "history"))
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -117,7 +125,7 @@ public struct HistoryView: View {
                 Button(String(localized: "done")) { dismiss() }
                     .accessibilityIdentifier("historyDoneButton")
             }
-            if !history.isEmpty {
+            if !historySnapshot.isEmpty {
                 ToolbarItem(placement: .destructiveAction) {
                     Button(String(localized: "clear"), role: .destructive) {
                         clearHistory()
@@ -150,6 +158,21 @@ public struct HistoryView: View {
 
     /**
      Resolves the deterministic accessibility identifier for one persisted history row.
+     *
+     * - Parameter item: History row whose durable key should back the identifier.
+     * - Returns: Accessibility identifier stable across row reordering for the same history key.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func historyAccessibilityState(for items: [HistoryItem]) -> String {
+        let visibleRows = items
+            .map { sanitizedHistoryKey(for: $0) }
+            .joined(separator: ",")
+        return "count=\(items.count);rows=\(visibleRows)"
+    }
+
+    /**
+     * Resolves the deterministic accessibility identifier for one persisted history row.
      *
      * - Parameter item: History row whose durable key should back the identifier.
      * - Returns: Accessibility identifier stable across row reordering for the same history key.
@@ -228,7 +251,8 @@ public struct HistoryView: View {
      Deletes every currently visible history row for the active window scope.
      */
     private func clearHistory() {
-        for item in history {
+        let visibleHistory = history
+        for item in visibleHistory {
             modelContext.delete(item)
         }
         try? modelContext.save()

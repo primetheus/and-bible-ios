@@ -261,6 +261,61 @@ final class AndBibleTests: XCTestCase {
         )
     }
 
+    func testCanonicalStrongsKeyNameUsesResolvedEntryMetadataWhenCurrentKeyIsBlank() {
+        let rawEntry = """
+        <entryFree n="H6440"><title>H6440</title> <foreign xml:lang="he">פָּנֶה</foreign>, pl. <foreign xml:lang="he">פָּנִים</foreign> <hi rend="italic">face</hi>, also <hi rend="italic">faces</hi></entryFree>
+        """
+
+        let keyName = BibleReaderController.canonicalStrongsKeyName(
+            requested: "H06440",
+            actualKey: "",
+            rawEntry: rawEntry
+        )
+
+        XCTAssertEqual(keyName, "06440")
+    }
+
+    func testLinkifyRawDictionaryXMLLinksStructuredAndPlainStrongsReferences() {
+        let rawEntry = """
+        <entryFree n="6440"><def>From 6437; see HEBREW for 05774 and <ref target="StrongsHebrew/02421">2421</ref>.</def></entryFree>
+        """
+
+        let linkified = BibleReaderController.linkifyRawDictionaryXML(rawEntry)
+
+        XCTAssertTrue(linkified.contains("<entryFree"))
+        XCTAssertTrue(linkified.contains("<a href=\"ab-w://?strong=6437\">6437</a>"))
+        XCTAssertTrue(linkified.contains("see HEBREW for <a href=\"ab-w://?strong=H05774\">05774</a>"))
+        XCTAssertTrue(linkified.contains("<a href=\"ab-w://?strong=02421\">2421</a>"))
+    }
+
+    func testRawDictionaryEntryMatchesRequestedKeyRejectsMisboundRawEntries() {
+        let mismatchedRawEntry = """
+        <entryFree n="8674"><orth>תּתּני</orth></entryFree>
+        """
+        let matchingRawEntry = """
+        <entryFree n="5775"><orth>עוף</orth></entryFree>
+        """
+
+        XCTAssertFalse(
+            BibleReaderController.rawDictionaryEntryMatchesRequestedKey(
+                requested: "H05775",
+                rawEntry: mismatchedRawEntry
+            )
+        )
+        XCTAssertTrue(
+            BibleReaderController.rawDictionaryEntryMatchesRequestedKey(
+                requested: "05775\r",
+                rawEntry: matchingRawEntry
+            )
+        )
+    }
+
+    func testIsSupportedStrongsDictionaryModuleNameMatchesAndroidCuratedPolicy() {
+        XCTAssertFalse(BibleReaderController.isSupportedStrongsDictionaryModuleName("BDBGlosses_Strongs"))
+        XCTAssertTrue(BibleReaderController.isSupportedStrongsDictionaryModuleName("StrongsHebrew"))
+        XCTAssertTrue(BibleReaderController.isSupportedStrongsDictionaryModuleName("InvStrongsRealHebrew"))
+    }
+
     #if os(iOS)
     @MainActor
     func testLoadCurrentContentEmitsBookIntroAndChapterMarkerForSecondCorinthiansOne() throws {
@@ -331,7 +386,61 @@ final class AndBibleTests: XCTestCase {
             "Expected an opening chapter marker in the emitted document payload, not only a closing tag. Script: \(addDocumentsScript)"
         )
     }
+    @MainActor
+    func testLoadCurrentContentDoesNotHighlightRestoredReadingPosition() throws {
+        let bridge = BibleBridge()
+        let webView = RecordingWebView()
+        bridge.webView = webView
+        let modulePath = try makeTemporaryBundledSwordPath()
+        let manager = try XCTUnwrap(SwordManager(modulePath: modulePath))
 
+        let controller = BibleReaderController(bridge: bridge, swordManagerOverride: manager)
+        let window = Window()
+        let pageManager = PageManager(id: window.id)
+        pageManager.bibleDocument = "KJV"
+        pageManager.bibleBibleBook = 0
+        pageManager.bibleChapterNo = 1
+        pageManager.bibleVerseNo = 5
+        window.pageManager = pageManager
+        controller.activeWindow = window
+
+        controller.restoreSavedPosition()
+        controller.loadCurrentContent()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+
+        let addDocumentsScript = try XCTUnwrap(
+            webView.evaluatedScripts.first(where: { $0.contains("emit('add_documents'") })
+        )
+
+        XCTAssertTrue(
+            addDocumentsScript.contains("\"originalOrdinalRange\":null"),
+            "Expected restored reading position to avoid verse highlighting. Script: \(addDocumentsScript)"
+        )
+    }
+
+    @MainActor
+    func testLoadCurrentContentHighlightsExplicitVerseNavigationTarget() throws {
+        let bridge = BibleBridge()
+        let webView = RecordingWebView()
+        bridge.webView = webView
+        let modulePath = try makeTemporaryBundledSwordPath()
+        let manager = try XCTUnwrap(SwordManager(modulePath: modulePath))
+
+        let controller = BibleReaderController(bridge: bridge, swordManagerOverride: manager)
+
+        controller.navigateTo(book: "Genesis", chapter: 1, verse: 5)
+        controller.loadCurrentContent()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+
+        let addDocumentsScript = try XCTUnwrap(
+            webView.evaluatedScripts.first(where: { $0.contains("emit('add_documents'") })
+        )
+
+        XCTAssertTrue(
+            addDocumentsScript.contains("\"originalOrdinalRange\":[5,5]"),
+            "Expected explicit verse navigation to preserve the original highlighted target. Script: \(addDocumentsScript)"
+        )
+    }
     #endif
 
     func testNavigateToPersistsSelectedVerseOnPageManager() {

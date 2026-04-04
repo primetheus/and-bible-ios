@@ -1,15 +1,16 @@
 # READER-702 Regression Report
 
-Date: 2026-03-16
+Date: 2026-04-01
 
 ## Scope
 
-Regression verification for the current reader parity surface, covering:
+This is the current validation snapshot for the reader surface. It covers:
 
-- reader overflow-menu entry points
+- reader shell routing across the Android-style drawer and overflow split
 - reader integration with search result selection
 - history jump-back, clear, and single-row delete flows
-- workspace selector CRUD from the reader shell
+- workspace selector create/switch flow from the reader shell
+- restored-position highlight behavior in the emitted reader payload
 
 Contract reference:
 
@@ -29,26 +30,36 @@ Related domain references:
 
 - Repository: `and-bible-ios`
 - Simulator destination: `platform=iOS Simulator,name=iPhone 17`
-- Validation style: focused `xcodebuild test` subset
+- Validation style:
+  - full local serial simulator suite on `reader-menu-drawer-parity`
+  - reader-relevant workflow assertions exercised within that suite
+  - reader-adjacent unit regressions for payload-level restore/highlight behavior
 
 ## Tests Executed
 
+### Unit
+
+- `AndBibleTests/testLoadCurrentContentDoesNotHighlightRestoredReadingPosition`
+- `AndBibleTests/testLoadCurrentContentHighlightsExplicitVerseNavigationTarget`
+
 ### UI
 
+- `AndBibleUITests/testSettingsScreenShowsPrimaryNavigationRows`
 - `AndBibleUITests/testDownloadsScreenOpensFromReaderMenu`
+- `AndBibleUITests/testWorkspaceSelectorCreateAndSwitchFlow`
 - `AndBibleUITests/testBookmarksScreenOpensFromReaderMenu`
 - `AndBibleUITests/testAboutScreenOpensFromReaderMenu`
 - `AndBibleUITests/testSearchResultSelectionNavigatesReaderToBundledReference`
 - `AndBibleUITests/testHistorySelectionNavigatesReaderToSeededReference`
 - `AndBibleUITests/testHistoryClearRemovesSeededRowAcrossReopen`
 - `AndBibleUITests/testHistoryRowDeletePreservesOtherRowsAcrossReopen`
-- `AndBibleUITests/testWorkspaceSelectorCreateRenameCloneDeleteFlow`
 
-## Expected Assertions Covered
+## What This Validation Actually Covers
 
 ### Reader menu and shell ownership
 
-- the real reader overflow menu still opens core destinations such as Downloads, Bookmarks, and About
+- the reader shell exposes the expected overflow rows for Section titles, Strong's numbers, and Chapter & verse numbers
+- the real reader shell can still open core destinations such as Downloads, Bookmarks, About, and Settings through the correct menu surface
 - search result selection returns the app to a new reader reference, not only a search-side state change
 
 ### History
@@ -59,30 +70,45 @@ Related domain references:
 
 ### Workspaces
 
-- workspace creation, rename, clone, and delete remain driven through the reader-owned workspace selector
+- workspace creation and switching remain driven through the reader-owned workspace selector and return control to the reader shell
+
+### Restore / highlight behavior
+
+- restoring a saved reading position does not emit a stale highlighted verse target
+- explicit verse-target navigation still emits the expected highlighted target range
 
 ## Current Result
 
-Focused reader validation passed on 2026-03-16:
+Reader validation passed on 2026-04-01:
 
-- UI: `8` tests, `0` failures
-- Runtime: `339.194s`
+- non-UI XCTest suite: `146/146`
+- full UI XCTest suite: `39/39`
+- reader-relevant UI workflows listed above all passed within that full suite
+- full serial UI runtime: about `4480.656s` (`74.7` minutes)
 
-This gives the reader domain current regression evidence for:
+Taken together, this gives the reader domain current regression evidence for:
 
-- reader overflow-menu entry points
+- reader shell routing across the drawer/overflow split
 - search-to-reader navigation handoff
 - history navigation and destructive persistence
-- workspace selector CRUD
+- workspace selector create/switch handoff
+- payload-level restore/highlight behavior
 
-## Remaining Gap
+That is a much healthier place than the branch was in earlier. The remaining
+reader risk is no longer the basic shell/menu flow; it is the deeper behavior
+branches we still have not isolated with their own focused checks.
 
-The current reader parity gap is not the shell-navigation baseline. It is:
+## What Is Still Not Well Locked Yet
 
+The reader shell baseline is in much better shape now. The parts that still
+need tighter protection are:
+
+- dedicated Strong's / dictionary modal regression coverage
 - swipe-mode and auto-fullscreen behavior
 - double-tap fullscreen behavior
 - compare presentation workflows
 - explicit regression around the config payload pushed into the embedded document client
 
-Those branches are implemented and documented, but they are not yet locked by focused reader-domain
-regression coverage, so they remain `Partial` in `verification-matrix.md`.
+Those areas are implemented and documented, but they are not yet locked by
+focused reader-domain regression coverage, so they still show up as `Partial`
+in [verification-matrix.md](verification-matrix.md).

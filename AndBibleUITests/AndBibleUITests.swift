@@ -58,8 +58,8 @@ final class AndBibleUITests: XCTestCase {
      * - Side effects:
      *   - launches the app with the calculator gate disabled, in-memory persistence, and one
      *     deterministic seeded bookmark-label pair for stable reader-shell startup
-     *   - opens the reader overflow menu, validates the primary action rows, and pushes the
-     *     settings screen
+     *   - opens the reader overflow menu, validates the primary overflow rows, dismisses the menu,
+     *     and pushes the settings screen
      * - Failure modes:
      *   - fails if any primary overflow-menu action is absent
      *   - fails if settings cannot be reached from the reader shell
@@ -68,6 +68,16 @@ final class AndBibleUITests: XCTestCase {
     func testSettingsScreenShowsPrimaryNavigationRows() {
         let app = makeApp()
         app.launch()
+
+        tapReaderMoreMenuButton(in: app)
+        XCTAssertTrue(requireElement("readerOverflowSectionTitlesToggle", in: app, timeout: 10).exists)
+        XCTAssertTrue(requireElement("readerOverflowStrongsModeAction", in: app, timeout: 10).exists)
+        XCTAssertTrue(requireElement("readerOverflowVerseNumbersToggle", in: app, timeout: 10).exists)
+        dismissReaderOverflowMenu(in: app, timeout: 15)
+        XCTAssertTrue(
+            waitForReaderShellReady(in: app, timeout: 20),
+            "Expected overflow dismissal to restore the reader shell before opening Settings."
+        )
 
         openSettings(in: app)
         XCTAssertTrue(requireElement("settingsForm", in: app, timeout: 10).exists)
@@ -254,12 +264,11 @@ final class AndBibleUITests: XCTestCase {
         let app = makeApp()
         app.launch()
 
-        tapReaderMoreMenuButton(in: app)
         tapReaderAction("readerOpenReadingPlansAction", in: app)
         XCTAssertTrue(requireElement("readingPlanListScreen", in: app, timeout: 15).exists)
         tapElementReliably(requireElement("readingPlanStartButton", in: app, timeout: 10), timeout: 10)
         XCTAssertTrue(requireElement("availablePlansScreen", in: app, timeout: 10).exists)
-        tapElementReliably(app.buttons.matching(identifier: "readingPlanTemplateButton").firstMatch, timeout: 10)
+        tapElementReliably(requireElement("readingPlanTemplateButton", in: app, timeout: 15), timeout: 10)
         XCTAssertTrue(requireElement("readingPlanListScreen", in: app, timeout: 15).exists)
         tapElementReliably(requireElement("readingPlanActivePlanLink", in: app, timeout: 15), timeout: 10)
         let currentDay = requireElement("dailyReadingCurrentDayLabel", in: app, timeout: 15)
@@ -361,7 +370,7 @@ final class AndBibleUITests: XCTestCase {
         tapAlertButton("Create", in: app, timeout: 10)
 
         XCTAssertTrue(
-            requireReaderMoreMenuButton(in: app, timeout: 20).exists,
+            waitForReaderShellReady(in: app, timeout: 20),
             "Expected creating a workspace to return to the reader shell."
         )
 
@@ -380,7 +389,7 @@ final class AndBibleUITests: XCTestCase {
         dismissAlertIfPresent(in: app, timeout: 5)
         dismissWorkspaceSelectorIfStillPresented(in: app, timeout: 20)
         XCTAssertTrue(
-            requireReaderMoreMenuButton(in: app, timeout: 20).exists,
+            waitForReaderShellReady(in: app, timeout: 20),
             "Expected switching workspaces to return to the reader shell."
         )
     }
@@ -450,19 +459,27 @@ final class AndBibleUITests: XCTestCase {
 
         openBookmarkList(in: app)
         let exodusRow = requireBookmarkRow("Exodus_2_1", in: app, timeout: 10)
-        let matthewRow = requireBookmarkRow("Matthew_3_1", in: app, timeout: 10)
+        _ = requireBookmarkRow("Matthew_3_1", in: app, timeout: 10)
 
         exodusRow.swipeLeft()
         requireElement("bookmarkListDeleteButton::Exodus_2_1", in: app, timeout: 10).tap()
 
-        let deletedPredicate = NSPredicate(format: "exists == false")
-        expectation(for: deletedPredicate, evaluatedWith: exodusRow)
-        waitForExpectations(timeout: 10)
-        XCTAssertTrue(matthewRow.exists, "Expected Matthew bookmark row to remain after deleting Exodus.")
+        waitForElementValue("bookmarkListScreen", toContain: "count=1", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "rows=Matthew_3_1", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toNotContain: "Exodus_2_1", in: app, timeout: 10)
+        XCTAssertTrue(
+            requireBookmarkRow("Matthew_3_1", in: app, timeout: 10).exists,
+            "Expected Matthew bookmark row to remain after deleting Exodus."
+        )
 
         reopenBookmarkList(in: app)
-        XCTAssertTrue(matthewRow.waitForExistence(timeout: 10), "Expected Matthew bookmark row to persist after reopening bookmarks.")
-        XCTAssertFalse(exodusRow.exists, "Expected Exodus bookmark row to remain deleted after reopening bookmarks.")
+        waitForElementValue("bookmarkListScreen", toContain: "count=1", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "rows=Matthew_3_1", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toNotContain: "Exodus_2_1", in: app, timeout: 10)
+        XCTAssertTrue(
+            requireBookmarkRow("Matthew_3_1", in: app, timeout: 10).exists,
+            "Expected Matthew bookmark row to persist after reopening bookmarks."
+        )
     }
 
     /**
@@ -526,16 +543,20 @@ final class AndBibleUITests: XCTestCase {
         replaceText(in: searchField, with: "Matthew")
         searchField.typeText("\n")
 
+        waitForElementValue("bookmarkListScreen", toContain: "count=1", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "rows=Matthew_3_1", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toNotContain: "Exodus_2_1", in: app, timeout: 10)
+
         XCTAssertTrue(
             matthewRow.waitForExistence(timeout: 10),
             "Expected Matthew bookmark row to appear after filtering."
         )
-        let hiddenPredicate = NSPredicate(format: "exists == false")
-        expectation(for: hiddenPredicate, evaluatedWith: exodusRow)
-        waitForExpectations(timeout: 10)
         XCTAssertTrue(matthewRow.exists, "Expected Matthew bookmark row to remain visible after filtering.")
 
         replaceText(in: searchField, with: "")
+        waitForElementValue("bookmarkListScreen", toContain: "count=2", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "Exodus_2_1", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "Matthew_3_1", in: app, timeout: 10)
         XCTAssertTrue(exodusRow.waitForExistence(timeout: 10), "Expected Exodus bookmark row to reappear after clearing search.")
         XCTAssertTrue(matthewRow.waitForExistence(timeout: 10), "Expected Matthew bookmark row to remain visible after clearing search.")
     }
@@ -567,10 +588,10 @@ final class AndBibleUITests: XCTestCase {
         )
 
         let genesisRow = requireBookmarkRow("Genesis_1_1", in: app, timeout: 10)
-        let exodusRow = app.descendants(matching: .any)["bookmarkListRowButton::Exodus_2_1"].firstMatch
-        let hiddenPredicate = NSPredicate(format: "exists == false")
-        expectation(for: hiddenPredicate, evaluatedWith: exodusRow)
-        waitForExpectations(timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "count=1", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "filter=UI_Test_Seed", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "rows=Genesis_1_1", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toNotContain: "Exodus_2_1", in: app, timeout: 10)
         XCTAssertTrue(genesisRow.exists, "Expected Genesis bookmark row to remain visible for the selected label.")
         XCTAssertTrue(
             requireElement("bookmarkListOpenStudyPadButton::UI_Test_Seed", in: app, timeout: 10).exists,
@@ -579,8 +600,11 @@ final class AndBibleUITests: XCTestCase {
 
         requireElement("bookmarkListFilterChip::all", in: app, timeout: 10).tap()
 
+        waitForElementValue("bookmarkListScreen", toContain: "count=2", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "filter=all", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "Genesis_1_1", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "Exodus_2_1", in: app, timeout: 10)
         XCTAssertTrue(genesisRow.waitForExistence(timeout: 10), "Expected Genesis bookmark row to remain visible after clearing the filter.")
-        XCTAssertTrue(exodusRow.waitForExistence(timeout: 10), "Expected Exodus bookmark row to return after clearing the filter.")
         XCTAssertFalse(
             app.buttons["bookmarkListOpenStudyPadButton::UI_Test_Seed"].firstMatch.exists,
             "Expected the StudyPad handoff to disappear once the label filter is cleared."
@@ -655,6 +679,20 @@ final class AndBibleUITests: XCTestCase {
         XCTAssertTrue(requireHistoryRow(containing: "Exodus 2", in: app, timeout: 10).exists)
 
         tapElementReliably(requireElement("historyClearButton", in: app, timeout: 10), timeout: 10)
+        waitForElementExistence(
+            "historyRow::Exod_2_1",
+            in: app,
+            shouldExist: false,
+            timeout: 10
+        )
+        waitForElementExistence(
+            "historyRow::Matt_3_1",
+            in: app,
+            shouldExist: false,
+            timeout: 10
+        )
+        waitForElementValue("historyScreen", toContain: "count=0", in: app, timeout: 10)
+        waitForElementExistence("historyClearButton", in: app, shouldExist: false, timeout: 10)
         tapElementReliably(requireElement("historyDoneButton", in: app, timeout: 10), timeout: 10)
         _ = openHistory(in: app)
         waitForElementExistence(
@@ -669,6 +707,7 @@ final class AndBibleUITests: XCTestCase {
             shouldExist: false,
             timeout: 10
         )
+        waitForElementValue("historyScreen", toContain: "count=0", in: app, timeout: 10)
     }
 
     /**
@@ -692,9 +731,7 @@ final class AndBibleUITests: XCTestCase {
         let matthewRow = requireHistoryRow(containing: "Matthew 3", in: app, timeout: 10)
         exodusRow.swipeLeft()
         tapElementReliably(requireElement("historyDeleteButton::Exod_2_1", in: app, timeout: 10), timeout: 10)
-        let deletedPredicate = NSPredicate(format: "exists == false")
-        expectation(for: deletedPredicate, evaluatedWith: exodusRow)
-        waitForExpectations(timeout: 10)
+        waitForElementExistence("historyRow::Exod_2_1", in: app, shouldExist: false, timeout: 10)
         XCTAssertTrue(matthewRow.exists, "Expected Matthew history row to remain after deleting Exodus.")
 
         tapElementReliably(requireElement("historyDoneButton", in: app, timeout: 10), timeout: 10)
@@ -840,13 +877,14 @@ final class AndBibleUITests: XCTestCase {
         createFreshLabelFromAssignment(in: app)
 
         _ = requireElement("labelAssignmentRow::\(newLabelSegment)", in: app, timeout: 10)
-        let createdRow = requireElement("labelAssignmentRow::\(newLabelSegment)", in: app, timeout: 10)
-        let assignedPredicate = NSPredicate(format: "value == %@", "assigned,notFavourite")
-        expectation(for: assignedPredicate, evaluatedWith: createdRow)
-        waitForExpectations(timeout: 10)
+        waitForElementValue(
+            "labelAssignmentRow::\(newLabelSegment)",
+            toEqual: "assigned,notFavourite",
+            in: app,
+            timeout: 10
+        )
 
-        requireElement("labelAssignmentDoneButton", in: app, timeout: 10).tap()
-        XCTAssertTrue(requireElement("bookmarkListScreen", in: app, timeout: 10).exists)
+        dismissLabelAssignmentToBookmarkList(in: app)
         XCTAssertTrue(
             requireElement("bookmarkListFilterChip::\(newLabelSegment)", in: app, timeout: 10).exists,
             "Expected the new label to appear as a bookmark-list filter chip after dismissal."
@@ -879,19 +917,19 @@ final class AndBibleUITests: XCTestCase {
         XCTAssertEqual(seedRow.value as? String, "assigned,notFavourite")
         requireElement("labelAssignmentToggleButton::UI_Test_Seed", in: app, timeout: 10).tap()
 
-        let unassignedPredicate = NSPredicate(format: "value == %@", "unassigned,notFavourite")
-        expectation(for: unassignedPredicate, evaluatedWith: seedRow)
-        waitForExpectations(timeout: 10)
+        waitForElementValue(
+            "labelAssignmentRow::UI_Test_Seed",
+            toEqual: "unassigned,notFavourite",
+            in: app,
+            timeout: 10
+        )
 
-        requireElement("labelAssignmentDoneButton", in: app, timeout: 10).tap()
-        _ = requireElement("bookmarkListScreen", in: app, timeout: 10)
+        dismissLabelAssignmentToBookmarkList(in: app)
 
         requireElement("bookmarkListFilterChip::UI_Test_Seed", in: app, timeout: 10).tap()
-
-        let hiddenPredicate = NSPredicate(format: "exists == false")
-        let bookmarkRow = app.descendants(matching: .any)["bookmarkListRowButton::Genesis_1_1"].firstMatch
-        expectation(for: hiddenPredicate, evaluatedWith: bookmarkRow)
-        waitForExpectations(timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "count=0", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "filter=UI_Test_Seed", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toNotContain: "Genesis_1_1", in: app, timeout: 10)
     }
 
     /**
@@ -923,17 +961,25 @@ final class AndBibleUITests: XCTestCase {
             timeout: 10
         )
         let genesisRow = requireBookmarkRow("Genesis_1_1", in: app, timeout: 10)
-        let exodusRow = app.descendants(matching: .any)["bookmarkListRowButton::Exodus_2_1"].firstMatch
+        waitForElementValue("bookmarkListScreen", toContain: "count=1", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "filter=UI_Test_Seed", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "Genesis_1_1", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toNotContain: "Exodus_2_1", in: app, timeout: 10)
         XCTAssertTrue(genesisRow.waitForExistence(timeout: 10), "Expected Genesis bookmark row to remain visible after filtering.")
-        XCTAssertFalse(exodusRow.exists, "Expected Exodus bookmark row to be hidden by the UI Test Seed filter.")
 
         replaceText(in: searchField, with: "Exodus")
         searchField.typeText("\n")
-        XCTAssertFalse(genesisRow.exists, "Expected the conflicting search query to hide the filtered Genesis row.")
+        waitForElementValue("bookmarkListScreen", toContain: "count=0", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "filter=UI_Test_Seed", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "search=Exodus", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toNotContain: "Genesis_1_1", in: app, timeout: 10)
 
         reopenBookmarkList(in: app)
+        waitForElementValue("bookmarkListScreen", toContain: "count=2", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "filter=all", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "Genesis_1_1", in: app, timeout: 10)
+        waitForElementValue("bookmarkListScreen", toContain: "Exodus_2_1", in: app, timeout: 10)
         XCTAssertTrue(genesisRow.waitForExistence(timeout: 10), "Expected Genesis bookmark row to reappear after reopening the bookmark list.")
-        XCTAssertTrue(exodusRow.waitForExistence(timeout: 10), "Expected Exodus bookmark row to reappear after reopening the bookmark list.")
     }
 
     /**
@@ -972,10 +1018,7 @@ final class AndBibleUITests: XCTestCase {
         let renamedRowToDelete = requireLabelRow(named: renamedName, in: app, timeout: 10)
         renamedRowToDelete.swipeLeft()
         tapElementReliably(requireElement("labelManagerDeleteAction", in: app, timeout: 10), timeout: 10)
-
-        let deletedPredicate = NSPredicate(format: "exists == false")
-        expectation(for: deletedPredicate, evaluatedWith: labelRow(named: renamedName, in: app))
-        waitForExpectations(timeout: 10)
+        waitForElementExistence("labelManagerRowButton-\(renamedName)", in: app, shouldExist: false, timeout: 10)
     }
 
     /**
@@ -1168,10 +1211,11 @@ final class AndBibleUITests: XCTestCase {
         dismissSyncSettings(in: app)
         _ = openSyncSettings(in: app)
 
-        let reopenedSyncState = requireElement("syncSettingsState", in: app, timeout: 10)
-        XCTAssertEqual(
-            reopenedSyncState.value as? String,
-            "backend=GOOGLE_DRIVE;enabled=none"
+        waitForElementValue(
+            "syncSettingsState",
+            toEqual: "backend=GOOGLE_DRIVE;enabled=none",
+            in: app,
+            timeout: 10
         )
         XCTAssertTrue(requireElement("syncGoogleDriveSignInButton", in: app, timeout: 10).exists)
     }
@@ -1301,6 +1345,7 @@ final class AndBibleUITests: XCTestCase {
         app.launchEnvironment["UITEST_SESSION_ID"] = UUID().uuidString
         if let searchQuery {
             app.launchEnvironment["UITEST_SEARCH_QUERY"] = searchQuery
+            app.launchArguments += ["-UITEST_SEARCH_QUERY", searchQuery]
         }
         prepareFixtureIfRequested(for: app)
         return app
@@ -1910,23 +1955,82 @@ final class AndBibleUITests: XCTestCase {
      *   - app: Running application under test.
      * - Returns: The visible Search screen root element.
      * - Side effects:
-     *   - taps the reader toolbar search button
+     *   - opens Search through the stable reader action surface
      *   - when `makeApp(searchQuery:)` supplied one query, types it into the live Search field
      * - Failure modes:
      *   - fails when the Search screen never appears
      */
     private func openSearch(in app: XCUIApplication) -> XCUIElement {
-        tapElementReliably(requireButton("readerSearchButton", in: app, timeout: 10), timeout: 10)
+        if app.launchArguments.contains("-UITEST_SEARCH_QUERY"),
+           let prePresentedSearch = waitForSearchScreenIfAlreadySeeded(in: app, timeout: 10) {
+            waitForSearchInteractionReady(on: prePresentedSearch, in: app, timeout: 120)
+            return prePresentedSearch
+        }
+
+        tapReaderSearchEntry(in: app, timeout: 15)
         let searchScreen = requireSearchScreen(in: app, timeout: 20)
         waitForSearchInteractionReady(on: searchScreen, in: app, timeout: 120)
-        if let searchQuery = app.launchEnvironment["UITEST_SEARCH_QUERY"], !searchQuery.isEmpty {
-            let searchField = requireSearchInput(in: app, timeout: 10)
-            focusTextEntryElement(searchField, timeout: 10)
-            searchField.typeText(searchQuery)
-            searchField.typeText("\n")
-            app.launchEnvironment.removeValue(forKey: "UITEST_SEARCH_QUERY")
-        }
         return searchScreen
+    }
+
+    /// Reuses a Search sheet that the app auto-presented from a launch-seeded UI-test query.
+    private func waitForSearchScreenIfAlreadySeeded(
+        in app: XCUIApplication,
+        timeout: TimeInterval
+    ) -> XCUIElement? {
+        let deadline = Date().addingTimeInterval(timeout)
+
+        repeat {
+            if let searchScreen = resolvedElement("searchScreen", in: app) {
+                return searchScreen
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        return nil
+    }
+
+    /**
+     Opens Search from the most stable production reader affordance available on the current shell.
+     *
+     * Search can appear both as a direct toolbar button and as a drawer action. The UI harness
+     * should prefer the direct toolbar button when it is already visible instead of forcing the
+     * drawer path and paying the extra surface-recovery cost.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to wait before failing.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - taps the direct toolbar Search action when it is already visible on the reader shell
+     *   - otherwise falls back to the shared reader-action routing helper
+     * - Failure modes:
+     *   - records an XCTest failure if neither the direct button nor the routed action can be
+     *     opened within the allotted timeout
+     */
+    private func tapReaderSearchEntry(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 15,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        if waitForReaderShellReady(in: app, timeout: min(10, timeout)),
+           resolvedElement("readerNavigationDrawer", in: app) == nil,
+           resolvedElement("readerOverflowMenu", in: app) == nil
+        {
+            let directCandidates = [
+                app.buttons["readerOpenSearchAction"].firstMatch,
+                app.buttons["Search"].firstMatch,
+            ]
+
+            if let directButton = directCandidates.first(where: { $0.exists && !$0.frame.isEmpty }) {
+                tapElementReliably(directButton, timeout: timeout, file: file, line: line)
+                return
+            }
+        }
+
+        tapReaderAction("readerOpenSearchAction", in: app, timeout: timeout, file: file, line: line)
     }
 
     /**
@@ -2242,6 +2346,24 @@ final class AndBibleUITests: XCTestCase {
      *   - falls back to a brief run-loop advance when no visible Search scroll surface exists
      */
     private func revealSearchControls(in app: XCUIApplication) {
+        let optionsPanel = app.descendants(matching: .any)
+            .matching(identifier: "searchOptionsPanel")
+            .firstMatch
+        if optionsPanel.exists || optionsPanel.waitForExistence(timeout: 0.2) {
+            return
+        }
+
+        let optionsToggle = app.buttons["searchOptionsToggleButton"].firstMatch
+        if optionsToggle.exists || optionsToggle.waitForExistence(timeout: 0.2) {
+            let toggleValue = String(describing: optionsToggle.value ?? "")
+            if toggleValue.localizedCaseInsensitiveContains("hidden") {
+                tapElementReliably(optionsToggle, timeout: 5)
+                if optionsPanel.waitForExistence(timeout: 2) {
+                    return
+                }
+            }
+        }
+
         let scrollableCandidates: [XCUIElement] = [
             app.descendants(matching: .any).matching(identifier: "searchResultsList").firstMatch,
             app.collectionViews.firstMatch,
@@ -2252,8 +2374,12 @@ final class AndBibleUITests: XCTestCase {
         if let visibleScrollable = scrollableCandidates.first(where: {
             $0.exists && !$0.frame.isEmpty
         }) {
-            visibleScrollable.swipeDown()
-            return
+            for _ in 0..<2 {
+                visibleScrollable.swipeDown()
+                if optionsPanel.exists || optionsPanel.waitForExistence(timeout: 0.5) {
+                    return
+                }
+            }
         }
 
         RunLoop.current.run(until: Date().addingTimeInterval(0.2))
@@ -2270,17 +2396,12 @@ final class AndBibleUITests: XCTestCase {
      *   - silently leaves focus unchanged when the keyboard or control is unavailable
      */
     private func dismissSearchFieldFocusIfNeeded(in app: XCUIApplication) {
-        let keyboard = app.keyboards.firstMatch
-        guard keyboard.exists || keyboard.waitForExistence(timeout: 0.2) else {
-            return
-        }
-
         let dismissalCandidates = [
             app.descendants(matching: .any).matching(identifier: "searchWordModeButton::allWords").firstMatch,
             app.segmentedControls.buttons["All Words"].firstMatch,
             app.buttons["All Words"].firstMatch
         ]
-        for candidate in dismissalCandidates where candidate.exists || candidate.waitForExistence(timeout: 0.2) {
+        for candidate in dismissalCandidates where candidate.exists && !candidate.frame.isEmpty {
             tapElementReliably(candidate, timeout: 5)
             return
         }
@@ -2309,16 +2430,10 @@ final class AndBibleUITests: XCTestCase {
         line: UInt = #line
     ) {
         let searchScreen = requireSearchScreen(in: app, timeout: timeout, file: file, line: line)
-        let searchField = requireSearchInput(
-            in: app,
-            timeout: timeout,
-            file: file,
-            line: line
-        )
 
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
-            let currentValue = searchField.value as? String ?? ""
+            let currentValue = resolvedSearchInputValue(in: app)
             let currentState = searchScreen.value as? String ?? ""
             if currentValue.contains(expectedQuery)
                 || currentState.contains("query=\(expectedQuery)")
@@ -2328,7 +2443,7 @@ final class AndBibleUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
-        let finalValue = searchField.value as? String ?? ""
+        let finalValue = resolvedSearchInputValue(in: app)
         let finalState = searchScreen.value as? String ?? ""
         XCTAssertTrue(
             finalValue.contains(expectedQuery) || finalState.contains("query=\(expectedQuery)"),
@@ -2362,14 +2477,11 @@ final class AndBibleUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let row = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
-        let predicate = NSPredicate(format: "exists == %@", NSNumber(value: shouldExist))
-        expectation(for: predicate, evaluatedWith: row)
-        waitForExpectations(timeout: timeout)
-        XCTAssertEqual(
-            row.exists,
-            shouldExist,
-            "Expected Search result '\(identifier)' existence to become \(shouldExist) within \(timeout) seconds.",
+        waitForElementExistence(
+            identifier,
+            in: app,
+            shouldExist: shouldExist,
+            timeout: timeout,
             file: file,
             line: line
         )
@@ -2423,17 +2535,16 @@ final class AndBibleUITests: XCTestCase {
 
 
     /**
-     Opens the workspace selector from the reader overflow menu.
+     Opens the workspace selector from the reader action surface.
      *
      * - Parameter app: Running application under test.
      * - Returns: The root accessibility-identified workspace selector screen element.
      * - Side effects:
-     *   - opens the reader overflow menu and pushes the workspace selector
+     *   - resolves the production reader action surface and pushes the workspace selector
      * - Failure modes:
      *   - fails when the workspace selector screen never appears
      */
     private func openWorkspaceSelector(in app: XCUIApplication) -> XCUIElement {
-        tapReaderMoreMenuButton(in: app)
         tapReaderAction("readerOpenWorkspacesAction", in: app)
         return requireElement("workspaceSelectorAddButton", in: app, timeout: 15)
     }
@@ -2507,7 +2618,6 @@ final class AndBibleUITests: XCTestCase {
         in app: XCUIApplication,
         timeout: TimeInterval = 10
     ) -> XCUIElement {
-        tapReaderMoreMenuButton(in: app)
         tapReaderAction("readerOpenBookmarksAction", in: app, timeout: timeout)
         return requireElement("bookmarkListScreen", in: app, timeout: timeout)
     }
@@ -2531,7 +2641,7 @@ final class AndBibleUITests: XCTestCase {
             dismissSheetByDraggingDown(requireElement("bookmarkListScreen", in: app, timeout: 10))
         }
         XCTAssertTrue(
-            requireReaderMoreMenuButton(in: app, timeout: 20).exists,
+            waitForReaderShellReady(in: app, timeout: 20),
             "Expected bookmark list dismissal to return to the reader shell."
         )
         _ = openBookmarkList(in: app, timeout: 20)
@@ -2549,7 +2659,6 @@ final class AndBibleUITests: XCTestCase {
      */
     @discardableResult
     private func openHistory(in app: XCUIApplication) -> XCUIElement {
-        tapReaderMoreMenuButton(in: app)
         tapReaderAction("readerOpenHistoryAction", in: app)
         return requireElement("historyScreen", in: app, timeout: 10)
     }
@@ -2565,7 +2674,6 @@ final class AndBibleUITests: XCTestCase {
      *   - fails if the reader menu button, downloads action, or downloads screen root never appears
      */
     private func openDownloads(in app: XCUIApplication) -> XCUIElement {
-        tapReaderMoreMenuButton(in: app)
         tapReaderAction("readerOpenDownloadsAction", in: app)
         return requireElement("moduleBrowserScreen", in: app, timeout: 10)
     }
@@ -2630,7 +2738,7 @@ final class AndBibleUITests: XCTestCase {
         }
         waitForElementToDisappear(syncScreen, timeout: 10)
         XCTAssertTrue(
-            requireReaderMoreMenuButton(in: app, timeout: 20).exists,
+            waitForReaderShellReady(in: app, timeout: 20),
             "Expected Sync Settings dismissal to return to the reader shell."
         )
     }
@@ -2780,13 +2888,19 @@ final class AndBibleUITests: XCTestCase {
      *     navigation stack
      *   - dismisses the language restart alert only when it is already present after Settings loads
      * - Failure modes:
-     *   - fails when the reader overflow menu or Settings action cannot be found
+     *   - fails when the reader action surface or Settings action cannot be found
      *   - fails when the settings form never appears
      */
     private func openSettings(in app: XCUIApplication) {
         for attempt in 1...2 {
-            tapReaderMoreMenuButton(in: app)
-            tapReaderAction("readerOpenSettingsAction", in: app, timeout: 15)
+            if !waitForReaderShellReady(in: app, timeout: 20) {
+                if attempt == 1 {
+                    continue
+                }
+                break
+            }
+
+            tapReaderAction("readerOpenSettingsAction", in: app, timeout: 20)
             if waitForSettingsReady(in: app, timeout: 20) {
                 return
             }
@@ -3011,24 +3125,135 @@ final class AndBibleUITests: XCTestCase {
             )
             .firstMatch
 
+        if identifier.hasPrefix("labelAssignmentRow::") {
+            return [
+                app.collectionViews.cells[identifier].firstMatch,
+                app.cells[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
+                anyIdentifierMatch,
+            ]
+        }
+
+        if identifier.hasPrefix("labelAssignmentToggleButton::")
+            || identifier.hasPrefix("labelAssignmentFavouriteButton::")
+        {
+            return [
+                app.buttons[identifier].firstMatch,
+                app.collectionViews.buttons[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
+                anyIdentifierMatch,
+            ]
+        }
+
+        if identifier.hasPrefix("bookmarkListFilterChip::") {
+            return [
+                app.buttons[identifier].firstMatch,
+                app.scrollViews.buttons[identifier].firstMatch,
+                app.collectionViews.buttons[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
+            ]
+        }
+
+        if identifier.hasPrefix("bookmarkListOpenStudyPadButton::") {
+            return [
+                app.buttons[identifier].firstMatch,
+                app.collectionViews.buttons[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
+            ]
+        }
+
+        if identifier.hasPrefix("bookmarkListEditLabelsButton::")
+            || identifier.hasPrefix("bookmarkListRowButton::")
+        {
+            return [
+                app.buttons[identifier].firstMatch,
+                app.collectionViews.buttons[identifier].firstMatch,
+                app.cells.buttons[identifier].firstMatch,
+                app.cells[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
+            ]
+        }
+
         switch identifier {
-        case "readerOverflowMenu":
+        case "readerNavigationDrawer":
             return [
                 app.scrollViews[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
+            ]
+        case "readerNavigationDrawerDismissArea":
+            return [
+                app.otherElements[identifier].firstMatch,
+            ]
+        case "readerNavigationDrawerButton":
+            return [
+                app.buttons[identifier].firstMatch,
+            ]
+        case "readerStudyPadTitle", "readerMyNotesTitle":
+            return [
+                app.staticTexts[identifier].firstMatch,
+                app.navigationBars.staticTexts[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
+            ]
+        case "readerOverflowMenu":
+            return [
+                app.otherElements[identifier].firstMatch,
+                app.scrollViews[identifier].firstMatch,
+            ]
+        case "readerOverflowMenuDismissArea":
+            return [
+                app.otherElements[identifier].firstMatch,
+            ]
+        case "readerOverflowSectionTitlesToggle":
+            return [
+                app.buttons[identifier].firstMatch,
+                app.buttons["Section Titles"].firstMatch,
+                app.buttons["Section titles"].firstMatch,
+                app.otherElements[identifier].firstMatch,
+                anyIdentifierMatch,
+            ]
+        case "readerOverflowStrongsModeAction":
+            return [
+                app.buttons[identifier].firstMatch,
+                app.buttons["Strong's Numbers…"].firstMatch,
+                app.buttons["Strong's Numbers..."].firstMatch,
+                app.buttons["Strong's numbers…"].firstMatch,
+                app.buttons["Strong's numbers..."].firstMatch,
+                app.otherElements[identifier].firstMatch,
+                anyIdentifierMatch,
+            ]
+        case "readerOverflowVerseNumbersToggle":
+            return [
+                app.buttons[identifier].firstMatch,
+                app.buttons["Chapter & Verse Numbers"].firstMatch,
+                app.buttons["Chapter & verse numbers"].firstMatch,
+                app.otherElements[identifier].firstMatch,
                 anyIdentifierMatch,
             ]
         case "labelManagerNewLabelNameField":
             return [
+                app.alerts.descendants(matching: .textField)
+                    .matching(identifier: identifier)
+                    .firstMatch,
                 app.textFields[identifier].firstMatch,
+                app.alerts.descendants(matching: .textField)
+                    .matching(identifier: "Label name")
+                    .firstMatch,
                 app.textFields["Label name"].firstMatch,
-                anyIdentifierMatch,
-                app.textFields.firstMatch,
             ]
         case "labelManagerCreateButton":
             return [
+                app.alerts.buttons[identifier].firstMatch,
                 app.buttons[identifier].firstMatch,
+                app.alerts.buttons["Create"].firstMatch,
                 app.buttons["Create"].firstMatch,
-                anyIdentifierMatch,
+            ]
+        case "labelAssignmentCreateNewLabelButton", "labelAssignmentDoneButton", "bookmarkListDoneButton":
+            return [
+                app.buttons[identifier].firstMatch,
+                app.navigationBars.buttons[identifier].firstMatch,
+                app.toolbars.buttons[identifier].firstMatch,
+                app.collectionViews.buttons[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
             ]
         case "aboutScreen":
             return [
@@ -3078,6 +3303,14 @@ final class AndBibleUITests: XCTestCase {
             return [
                 app.collectionViews[identifier].firstMatch,
                 app.tables[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
+                anyIdentifierMatch,
+            ]
+        case "readingPlanTemplateButton":
+            return [
+                app.buttons[identifier].firstMatch,
+                app.collectionViews.buttons[identifier].firstMatch,
+                app.cells[identifier].firstMatch,
                 app.otherElements[identifier].firstMatch,
                 anyIdentifierMatch,
             ]
@@ -3425,6 +3658,51 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Waits for the reader shell's stable navigation chrome to become interactive again.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to wait before returning `false`.
+     * - Returns: `true` when the stable reader toolbar is visible again and no drawer-only or
+     *   overflow-only action remains exposed over the shell.
+     * - Side effects:
+     *   - polls the live toolbar hierarchy while modal surfaces dismiss back to the reader shell
+     *   - avoids expensive cross-surface root queries by checking menu-only action affordances
+     * - Failure modes:
+     *   - returns `false` when the reader shell never restores its primary controls before timeout
+     */
+    private func waitForReaderShellReady(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let drawerButton = app.buttons["readerNavigationDrawerButton"].firstMatch
+            let referenceButton = app.buttons["bookChooserButton"].firstMatch
+            let moreButton = app.buttons["readerMoreMenuButton"].firstMatch
+            let referenceValue = referenceButton.value as? String ?? ""
+            let drawerActionVisible = app.buttons["readerOpenBookmarksAction"].firstMatch.exists
+            let overflowActionVisible = app.buttons["readerOpenWorkspacesAction"].firstMatch.exists
+
+            if drawerButton.exists,
+               !drawerButton.frame.isEmpty,
+               referenceButton.exists,
+               !referenceButton.frame.isEmpty,
+               moreButton.exists,
+               !moreButton.frame.isEmpty,
+               !referenceValue.isEmpty,
+               !drawerActionVisible,
+               !overflowActionVisible {
+                return true
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        return false
+    }
+
+    /**
      Waits for the primary reader reference control to change away from one previous value.
      *
      * - Parameters:
@@ -3602,6 +3880,52 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Waits for one accessibility-identified element value to stop containing a token.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier expected to appear in the UI hierarchy.
+     *   - unexpectedToken: Token that should disappear from the element value or label.
+     *   - app: Running application under test.
+     *   - timeout: Maximum time to keep polling before failing.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - repeatedly re-queries the live XCUI hierarchy until the requested token disappears from
+     *     the element value and label
+     * - Failure modes:
+     *   - fails when the element disappears or keeps reporting the token after the timeout
+     */
+    private func waitForElementValue(
+        _ identifier: String,
+        toNotContain unexpectedToken: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let currentElement = resolvedElement(identifier, in: app) {
+                let currentValue = currentElement.value as? String
+                let currentLabel = currentElement.label
+                if currentValue?.contains(unexpectedToken) != true && !currentLabel.contains(unexpectedToken) {
+                    return
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        let finalElement = unresolvedElement(identifier, in: app)
+        let finalValue = finalElement.value as? String ?? finalElement.label
+        XCTAssertFalse(
+            finalValue.contains(unexpectedToken),
+            "Expected element '\(identifier)' to stop containing '\(unexpectedToken)' within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+    }
+
+    /**
      Waits for one accessibility-identified element to reach the requested existence state.
      *
      * - Parameters:
@@ -3625,12 +3949,18 @@ final class AndBibleUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let element = unresolvedElement(identifier, in: app)
-        let predicate = NSPredicate(format: "exists == %@", NSNumber(value: shouldExist))
-        expectation(for: predicate, evaluatedWith: element)
-        waitForExpectations(timeout: timeout)
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let currentExists = resolvedElement(identifier, in: app) != nil
+            if currentExists == shouldExist {
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        let currentExists = resolvedElement(identifier, in: app) != nil
         XCTAssertEqual(
-            element.exists,
+            currentExists,
             shouldExist,
             "Expected element '\(identifier)' existence to become \(shouldExist) within \(timeout) seconds.",
             file: file,
@@ -3692,6 +4022,37 @@ final class AndBibleUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
+        if tryTapReaderMoreMenuButton(in: app, timeout: timeout, file: file, line: line) {
+            return
+        }
+
+        XCTFail(
+            "Expected the reader overflow menu to appear after tapping readerMoreMenuButton within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+    }
+
+    /**
+     Attempts to open the reader overflow menu without recording an XCTest failure on timeout.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to spend trying to open the overflow menu.
+     *   - file: Source file used for nested helper attribution.
+     *   - line: Source line used for nested helper attribution.
+     * - Returns: `true` when the production overflow menu becomes visible.
+     * - Side effects:
+     *   - taps the production more-menu button and waits for the menu surface to appear
+     * - Failure modes:
+     *   - returns `false` when the menu never appears before the local retry budget expires
+     */
+    private func tryTapReaderMoreMenuButton(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 30,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> Bool {
         _ = requireReaderReferenceValue(
             in: app,
             timeout: min(15, timeout),
@@ -3709,14 +4070,81 @@ final class AndBibleUITests: XCTestCase {
             if !button.frame.isEmpty {
                 button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
                 if waitForReaderOverflowMenu(in: app, timeout: min(3, max(1, deadline.timeIntervalSinceNow))) {
-                    return
+                    return true
                 }
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
-        XCTFail(
-            "Expected the reader overflow menu to appear after tapping readerMoreMenuButton within \(timeout) seconds.",
+        return false
+    }
+
+    /**
+     Dismisses the reader overflow menu and waits until the reader shell is visible again.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to spend dismissing the overflow menu.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - taps the explicit dismiss area when available and falls back to dragging the overflow
+     *     panel down when the overlay ignores the first tap
+     * - Failure modes:
+     *   - records an XCTest failure when the overflow menu never disappears before timeout
+     */
+    private func dismissReaderOverflowMenu(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let deadline = Date().addingTimeInterval(timeout)
+
+        repeat {
+            guard let overflowMenu = resolvedElement("readerOverflowMenu", in: app),
+                  !overflowMenu.frame.isEmpty else {
+                if waitForReaderShellReady(in: app, timeout: min(2, max(0.5, deadline.timeIntervalSinceNow))) {
+                    return
+                }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+                continue
+            }
+
+            let overflowButton = unresolvedElement("readerMoreMenuButton", in: app)
+            if overflowButton.exists && !overflowButton.frame.isEmpty {
+                tapElementReliably(
+                    overflowButton,
+                    timeout: min(3, max(0.5, deadline.timeIntervalSinceNow)),
+                    file: file,
+                    line: line
+                )
+                if !waitForReaderOverflowMenu(in: app, timeout: 1) &&
+                    waitForReaderShellReady(in: app, timeout: min(2, max(0.5, deadline.timeIntervalSinceNow))) {
+                    return
+                }
+            }
+
+            let dismissArea = unresolvedElement("readerOverflowMenuDismissArea", in: app)
+            if dismissArea.exists && !dismissArea.frame.isEmpty {
+                let backdropTapPoint = dismissArea.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.2))
+                backdropTapPoint.tap()
+                if !waitForReaderOverflowMenu(in: app, timeout: 1) &&
+                    waitForReaderShellReady(in: app, timeout: min(2, max(0.5, deadline.timeIntervalSinceNow))) {
+                    return
+                }
+            }
+
+            dismissSheetByDraggingDown(overflowMenu, file: file, line: line)
+            if !waitForReaderOverflowMenu(in: app, timeout: 1) &&
+                waitForReaderShellReady(in: app, timeout: min(2, max(0.5, deadline.timeIntervalSinceNow))) {
+                return
+            }
+        } while Date() < deadline
+
+        XCTAssertFalse(
+            waitForReaderOverflowMenu(in: app, timeout: 1),
+            "Expected the reader overflow menu to dismiss within \(timeout) seconds.",
             file: file,
             line: line
         )
@@ -3740,15 +4168,136 @@ final class AndBibleUITests: XCTestCase {
         timeout: TimeInterval
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
+        let menuCandidates = [
+            app.otherElements["readerOverflowMenu"].firstMatch,
+            app.scrollViews["readerOverflowMenu"].firstMatch,
+        ]
+        let actionCandidates = [
+            app.buttons["readerOpenWorkspacesAction"].firstMatch,
+            app.buttons["readerOverflowNightModeToggle"].firstMatch,
+            app.buttons["readerOverflowSectionTitlesToggle"].firstMatch,
+        ]
         repeat {
-            if let overflowMenu = resolvedElement("readerOverflowMenu", in: app),
-               !overflowMenu.frame.isEmpty {
+            if menuCandidates.contains(where: { $0.exists && !$0.frame.isEmpty }) ||
+                actionCandidates.contains(where: { $0.exists && !$0.frame.isEmpty }) {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
-        return resolvedElement("readerOverflowMenu", in: app) != nil
+        return menuCandidates.contains(where: { $0.exists }) ||
+            actionCandidates.contains(where: { $0.exists })
+    }
+
+    /**
+     Taps the Android-style reader navigation drawer button and waits for the drawer to appear.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to wait for the drawer to appear.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - resolves the production `readerNavigationDrawerButton`
+     *   - taps it directly and waits for the `readerNavigationDrawer` surface
+     * - Failure modes:
+     *   - records an XCTest failure if the drawer never appears in time
+     */
+    private func tapReaderNavigationDrawerButton(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 30,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        if tryTapReaderNavigationDrawerButton(in: app, timeout: timeout, file: file, line: line) {
+            return
+        }
+
+        XCTFail(
+            "Expected the reader navigation drawer to appear after tapping readerNavigationDrawerButton within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+    }
+
+    /**
+     Attempts to open the reader navigation drawer without recording an XCTest failure on timeout.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to spend trying to open the drawer.
+     *   - file: Source file used for nested helper attribution.
+     *   - line: Source line used for nested helper attribution.
+     * - Returns: `true` when the production drawer becomes visible.
+     * - Side effects:
+     *   - taps the production navigation-drawer button and waits for drawer affordances to appear
+     * - Failure modes:
+     *   - returns `false` when the drawer never appears before the local retry budget expires
+     */
+    private func tryTapReaderNavigationDrawerButton(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 30,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> Bool {
+        _ = requireReaderReferenceValue(
+            in: app,
+            timeout: min(15, timeout),
+            file: file,
+            line: line
+        )
+        _ = waitForReaderShellReady(in: app, timeout: min(10, timeout))
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let button = requireElement("readerNavigationDrawerButton", in: app, timeout: min(2, max(0.5, deadline.timeIntervalSinceNow)))
+            if !button.frame.isEmpty {
+                tapElementReliably(button, timeout: min(2, max(0.5, deadline.timeIntervalSinceNow)), file: file, line: line)
+                if waitForReaderNavigationDrawer(in: app, timeout: min(5, max(2, deadline.timeIntervalSinceNow))) {
+                    return true
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        return false
+    }
+
+    /**
+     Waits for the Android-style reader navigation drawer to appear.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum time to wait for the drawer.
+     * - Returns: `true` when the production `readerNavigationDrawer` surface appears.
+     * - Side effects:
+     *   - polls the explicit drawer accessibility identifier.
+     * - Failure modes:
+     *   - returns `false` when the drawer never appears before timeout.
+     */
+    private func waitForReaderNavigationDrawer(
+        in app: XCUIApplication,
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        let drawerCandidates = [
+            app.scrollViews["readerNavigationDrawer"].firstMatch,
+            app.otherElements["readerNavigationDrawer"].firstMatch,
+        ]
+        let actionCandidates = [
+            app.buttons["readerOpenBookmarksAction"].firstMatch,
+            app.buttons["readerOpenSettingsAction"].firstMatch,
+            app.buttons["readerOpenSearchAction"].firstMatch,
+        ]
+        repeat {
+            if drawerCandidates.contains(where: { $0.exists && !$0.frame.isEmpty }) ||
+                actionCandidates.contains(where: { $0.exists && !$0.frame.isEmpty }) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        return drawerCandidates.contains(where: { $0.exists }) ||
+            actionCandidates.contains(where: { $0.exists })
     }
 
     /**
@@ -3802,7 +4351,6 @@ final class AndBibleUITests: XCTestCase {
         line: UInt = #line
     ) {
         let deadline = Date().addingTimeInterval(timeout)
-        tapReaderMoreMenuButton(in: app, timeout: timeout, file: file, line: line)
 
         for attempt in 1...2 {
             let remaining = max(1, deadline.timeIntervalSinceNow)
@@ -3818,15 +4366,9 @@ final class AndBibleUITests: XCTestCase {
             }
 
             if attempt == 1 {
-                if resolvedElement("readerOverflowMenu", in: app) != nil {
+                if resolvedElement("readerNavigationDrawer", in: app) != nil {
                     continue
                 }
-                tapReaderMoreMenuButton(
-                    in: app,
-                    timeout: min(10, max(1, deadline.timeIntervalSinceNow)),
-                    file: file,
-                    line: line
-                )
             }
         }
 
@@ -3884,23 +4426,183 @@ final class AndBibleUITests: XCTestCase {
      */
     private func readerActionTitle(for identifier: String) -> String {
         switch identifier {
+        case "readerChooseDocumentAction":
+            return "Choose Document"
+        case "readerOpenSearchAction":
+            return "Search"
+        case "readerOpenSpeakAction":
+            return "Speak"
         case "readerOpenBookmarksAction":
             return "Bookmarks"
+        case "readerOpenStudyPadsAction":
+            return "StudyPads"
+        case "readerOpenMyNotesAction":
+            return "My Notes"
         case "readerOpenHistoryAction":
             return "History"
         case "readerOpenReadingPlansAction":
             return "Reading Plans"
         case "readerOpenSettingsAction":
-            return "Settings"
+            return "Application preferences"
         case "readerOpenWorkspacesAction":
-            return "Workspaces"
+            return "Workspaces…"
         case "readerOpenDownloadsAction":
-            return "Downloads"
+            return "Download Documents"
+        case "readerOpenImportExportAction":
+            return "Backup & Restore"
+        case "readerOpenSyncSettingsAction":
+            return "Device synchronization"
+        case "readerOpenHelpAction":
+            return "Help & Tips"
+        case "readerSponsorDevelopmentAction":
+            return "Buy development work"
+        case "readerNeedHelpAction":
+            return "Need Help"
+        case "readerContributeAction":
+            return "How to Contribute"
         case "readerOpenAboutAction":
             return "About"
+        case "readerOpenAppLicenseAction":
+            return "App Licence"
+        case "readerTellFriendAction":
+            return "Recommend to a friend"
+        case "readerRateAppAction":
+            return "Rate & Review"
+        case "readerReportBugAction":
+            return "Feedback / bug report"
         default:
             return identifier
         }
+    }
+
+    /**
+     Declares which production reader action surface should host one action identifier.
+     *
+     * - Parameter identifier: Stable accessibility identifier attached in `BibleReaderView`.
+     * - Returns: `true` when the action belongs to the left navigation drawer; otherwise `false`
+     *   and the action belongs to the overflow/options menu.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func readerActionUsesNavigationDrawer(_ identifier: String) -> Bool {
+        switch identifier {
+        case "readerOpenBookmarksAction",
+             "readerOpenHistoryAction",
+             "readerOpenReadingPlansAction",
+             "readerOpenDownloadsAction",
+             "readerOpenSettingsAction",
+             "readerOpenAboutAction",
+             "readerChooseDocumentAction",
+             "readerOpenSearchAction",
+             "readerOpenSpeakAction",
+             "readerOpenStudyPadsAction",
+             "readerOpenMyNotesAction",
+             "readerOpenImportExportAction",
+             "readerOpenSyncSettingsAction",
+             "readerOpenHelpAction",
+             "readerNeedHelpAction",
+             "readerContributeAction",
+             "readerOpenAppLicenseAction",
+             "readerTellFriendAction",
+             "readerRateAppAction",
+             "readerReportBugAction":
+            return true
+        default:
+            return false
+        }
+    }
+
+    /**
+     Ensures the correct production reader action surface is open for one action identifier.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier of the requested reader action.
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to spend dismissing conflicting surfaces and opening
+     *     the required one.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - dismisses the wrong menu surface when it is currently visible
+     *   - opens either the left navigation drawer or the overflow/options sheet
+     * - Failure modes:
+     *   - records an XCTest failure when the required action surface never becomes available
+     */
+    private func ensureReaderActionSurface(
+        for identifier: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement {
+        let deadline = Date().addingTimeInterval(timeout)
+        let prefersDrawer = readerActionUsesNavigationDrawer(identifier)
+
+        repeat {
+            if prefersDrawer {
+                if let drawer = resolvedElement("readerNavigationDrawer", in: app),
+                   !drawer.frame.isEmpty {
+                    return drawer
+                }
+                if let overflowMenu = resolvedElement("readerOverflowMenu", in: app),
+                   !overflowMenu.frame.isEmpty {
+                    dismissReaderOverflowMenu(
+                        in: app,
+                        timeout: min(8, max(5, deadline.timeIntervalSinceNow)),
+                        file: file,
+                        line: line
+                    )
+                } else {
+                    _ = tryTapReaderNavigationDrawerButton(
+                        in: app,
+                        timeout: min(12, max(5, deadline.timeIntervalSinceNow)),
+                        file: file,
+                        line: line
+                    )
+                }
+            } else {
+                if let overflowMenu = resolvedElement("readerOverflowMenu", in: app),
+                   !overflowMenu.frame.isEmpty {
+                    return overflowMenu
+                }
+                if let drawer = resolvedElement("readerNavigationDrawer", in: app),
+                   drawer.exists {
+                    let dismissArea = unresolvedElement("readerNavigationDrawerDismissArea", in: app)
+                    if dismissArea.exists {
+                        tapElementReliably(dismissArea, timeout: 5, file: file, line: line)
+                    }
+                } else {
+                    _ = tryTapReaderMoreMenuButton(
+                        in: app,
+                        timeout: min(12, max(5, deadline.timeIntervalSinceNow)),
+                        file: file,
+                        line: line
+                    )
+                }
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        if prefersDrawer {
+            let drawer = unresolvedElement("readerNavigationDrawer", in: app)
+            XCTAssertTrue(
+                drawer.exists,
+                "Expected the reader navigation drawer to appear within \(timeout) seconds before resolving '\(identifier)'.",
+                file: file,
+                line: line
+            )
+            return drawer
+        }
+
+        let overflowMenu = unresolvedElement("readerOverflowMenu", in: app)
+        XCTAssertTrue(
+            overflowMenu.exists,
+            "Expected the reader overflow menu to appear within \(timeout) seconds before resolving '\(identifier)'.",
+            file: file,
+            line: line
+        )
+        return overflowMenu
     }
 
     /**
@@ -3917,15 +4619,15 @@ final class AndBibleUITests: XCTestCase {
     private func resolveReaderActionElement(
         _ identifier: String,
         in app: XCUIApplication,
-        overflowMenu: XCUIElement
+        actionSurface: XCUIElement
     ) -> XCUIElement {
-        let scopedIdentifiedButton = overflowMenu.buttons[identifier].firstMatch
+        let scopedIdentifiedButton = actionSurface.buttons[identifier].firstMatch
         if scopedIdentifiedButton.exists && !scopedIdentifiedButton.frame.isEmpty {
             return scopedIdentifiedButton
         }
 
         let title = readerActionTitle(for: identifier)
-        let scopedTitledButton = overflowMenu.buttons[title].firstMatch
+        let scopedTitledButton = actionSurface.buttons[title].firstMatch
         if scopedTitledButton.exists && !scopedTitledButton.frame.isEmpty {
             return scopedTitledButton
         }
@@ -3936,7 +4638,7 @@ final class AndBibleUITests: XCTestCase {
         if scopedTitledButton.exists {
             return scopedTitledButton
         }
-        return overflowMenu.buttons[identifier].firstMatch
+        return actionSurface.buttons[identifier].firstMatch
     }
 
     /**
@@ -3965,32 +4667,43 @@ final class AndBibleUITests: XCTestCase {
     ) -> XCUIElement {
         let deadline = Date().addingTimeInterval(timeout)
         let title = readerActionTitle(for: identifier)
+        let prefersDrawer = readerActionUsesNavigationDrawer(identifier)
         repeat {
-            if let overflowMenu = resolvedElement("readerOverflowMenu", in: app) {
-                let action = resolveReaderActionElement(identifier, in: app, overflowMenu: overflowMenu)
+            let actionSurface = ensureReaderActionSurface(
+                for: identifier,
+                in: app,
+                timeout: min(10, max(3, deadline.timeIntervalSinceNow)),
+                file: file,
+                line: line
+            )
+            if actionSurface.exists {
+                let action = resolveReaderActionElement(identifier, in: app, actionSurface: actionSurface)
                 if action.exists {
                     if !action.frame.isEmpty {
-                        let visibleTapRegion = overflowMenu.frame.insetBy(dx: 0, dy: 16)
+                        let visibleTapRegion = actionSurface.frame.insetBy(dx: 0, dy: 16)
                         let actionMidPoint = CGPoint(x: action.frame.midX, y: action.frame.midY)
                         if visibleTapRegion.contains(actionMidPoint) {
                             return action
                         }
-                        overflowMenu.swipeUp()
+                        actionSurface.swipeUp()
                         RunLoop.current.run(until: Date().addingTimeInterval(0.2))
                         continue
                     }
                     return action
                 }
-                if overflowMenu.exists, !overflowMenu.frame.isEmpty {
-                    overflowMenu.swipeUp()
+                if actionSurface.exists, !actionSurface.frame.isEmpty {
+                    actionSurface.swipeUp()
                 }
             }
 
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
-        if let overflowMenu = resolvedElement("readerOverflowMenu", in: app) {
-            let finalAction = resolveReaderActionElement(identifier, in: app, overflowMenu: overflowMenu)
+        let finalSurface = prefersDrawer
+            ? resolvedElement("readerNavigationDrawer", in: app)
+            : resolvedElement("readerOverflowMenu", in: app)
+        if let finalSurface {
+            let finalAction = resolveReaderActionElement(identifier, in: app, actionSurface: finalSurface)
             XCTAssertTrue(
                 finalAction.exists,
                 "Expected reader action '\(identifier)' (\(title)) to exist within \(timeout) seconds.",
@@ -4000,10 +4713,18 @@ final class AndBibleUITests: XCTestCase {
             return finalAction
         }
 
-        let overflowMenu = unresolvedElement("readerOverflowMenu", in: app)
+        let directActionCandidates = [
+            app.buttons[identifier].firstMatch,
+            app.buttons[title].firstMatch,
+        ]
+        if let directAction = directActionCandidates.first(where: { $0.exists && !$0.frame.isEmpty }) {
+            return directAction
+        }
+
+        let overflowMenu = unresolvedElement(prefersDrawer ? "readerNavigationDrawer" : "readerOverflowMenu", in: app)
         XCTAssertTrue(
             overflowMenu.exists,
-            "Expected the reader overflow menu to appear within \(timeout) seconds before resolving '\(identifier)'.",
+            "Expected the reader action surface to appear within \(timeout) seconds before resolving '\(identifier)'.",
             file: file,
             line: line
         )
@@ -4036,11 +4757,7 @@ final class AndBibleUITests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
             if !element.frame.isEmpty {
-                if element.isHittable {
-                    element.tap()
-                } else {
-                    element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-                }
+                element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
                 return
             }
             let remaining = deadline.timeIntervalSinceNow
@@ -4372,6 +5089,32 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Reads the current Search input value from a freshly resolved live field.
+     *
+     * - Parameter app: Running application under test.
+     * - Returns: The current Search field value, or an empty string when no live Search field is
+     *   currently exposed.
+     * - Side effects:
+     *   - re-queries the live Search field hierarchy instead of relying on a previously resolved
+     *     XCUI element handle
+     * - Failure modes:
+     *   - returns an empty string when the Search input is temporarily absent or its value is not a
+     *     string
+     */
+    private func resolvedSearchInputValue(in app: XCUIApplication) -> String {
+        let candidates = [
+            app.searchFields.firstMatch,
+            app.textFields.firstMatch,
+        ]
+
+        for candidate in candidates where candidate.exists && !candidate.frame.isEmpty {
+            return candidate.value as? String ?? ""
+        }
+
+        return ""
+    }
+
+    /**
      Resolves the visible Create button from Search's index prompt while excluding the root Search
      screen element that XCTest may misclassify as a button on some simulator runtimes.
      *
@@ -4666,6 +5409,55 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Dismisses Label Assignment back to the bookmark list and waits for the transition to settle.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum time to wait for the sheet dismissal to complete.
+     * - Side effects:
+     *   - taps the production done button on Label Assignment
+     *   - polls the live hierarchy until the label-assignment surface disappears and the bookmark
+     *     list becomes visible again
+     * - Failure modes:
+     *   - fails if the dismiss action cannot be tapped
+     *   - fails if the sheet never dismisses fully back to the bookmark list within the timeout
+     */
+    private func dismissLabelAssignmentToBookmarkList(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 20,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        tapElementReliably(
+            requireElement("labelAssignmentDoneButton", in: app, timeout: timeout),
+            timeout: timeout
+        )
+
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let labelAssignmentVisible = resolvedElement("labelAssignmentScreen", in: app) != nil
+            let bookmarkListVisible = resolvedElement("bookmarkListScreen", in: app) != nil
+            if !labelAssignmentVisible && bookmarkListVisible {
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        } while Date() < deadline
+
+        XCTAssertFalse(
+            unresolvedElement("labelAssignmentScreen", in: app).exists,
+            "Expected Label Assignment to dismiss within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            unresolvedElement("bookmarkListScreen", in: app).exists,
+            "Expected the bookmark list to reappear within \(timeout) seconds after dismissing Label Assignment.",
+            file: file,
+            line: line
+        )
+    }
+
+    /**
      Opens the create-label prompt from Label Assignment and waits for its field or action to
      surface before returning.
      *
@@ -4688,7 +5480,7 @@ final class AndBibleUITests: XCTestCase {
         repeat {
             tapElementReliably(trigger, timeout: 5)
             if waitForAnyElement(
-                ["labelManagerNewLabelNameField", "labelManagerCreateButton"],
+                ["labelManagerNewLabelNameField"],
                 in: app,
                 timeout: 1
             ) != nil {
@@ -4752,10 +5544,7 @@ final class AndBibleUITests: XCTestCase {
         }
 
         tapElementReliably(toggleButton, timeout: 10)
-
-        let updatedPredicate = NSPredicate(format: "value == %@", "assigned,favourite")
-        expectation(for: updatedPredicate, evaluatedWith: seedRow)
-        waitForExpectations(timeout: 10)
+        waitForElementValue("labelAssignmentRow::UI_Test_Seed", toEqual: "assigned,favourite", in: app, timeout: 10)
     }
 
     /**
@@ -5047,8 +5836,53 @@ final class AndBibleUITests: XCTestCase {
      */
     private func replaceText(in element: XCUIElement, with text: String) {
         focusTextEntryElement(element, timeout: 10)
-        let deleteSequence = String(repeating: XCUIKeyboardKey.delete.rawValue, count: 64)
-        element.typeText(deleteSequence + text)
+        let existingText = currentTextEntryValue(in: element)
+        if existingText == text {
+            return
+        }
+
+        if !existingText.isEmpty {
+            let deleteSequence = String(
+                repeating: XCUIKeyboardKey.delete.rawValue,
+                count: existingText.count
+            )
+            element.typeText(deleteSequence)
+        }
+
+        if !text.isEmpty {
+            element.typeText(text)
+        }
+    }
+
+    /**
+     Resolves the current user-entered text for one text-entry control.
+     *
+     * - Parameter element: Focused text field or search field.
+     * - Returns: The editable field contents, excluding placeholder/label text when the control
+     *   is currently empty.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func currentTextEntryValue(in element: XCUIElement) -> String {
+        guard let rawValue = element.value as? String else {
+            return ""
+        }
+
+        let placeholderCandidates = Set(
+            [element.label, element.identifier]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        )
+        let normalizedValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedValue.isEmpty else {
+            return ""
+        }
+
+        if placeholderCandidates.contains(normalizedValue) {
+            return ""
+        }
+
+        return rawValue
     }
 
     /**

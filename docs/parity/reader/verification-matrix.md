@@ -1,39 +1,50 @@
 # READER-701 Verification Matrix (Android Reader -> iOS)
 
-Date: 2026-03-16
+Date: 2026-04-01
 
 ## Scope and Method
 
 - Contract baseline: `docs/parity/reader/contract.md`
 - Verification method:
   - direct code inspection of `BibleReaderView`, `BibleReaderController`, `BibleWindowPane`,
-    `HistoryView`, `WorkspaceSelectorView`, and `WebViewCoordinator`
-  - focused simulator-backed UI coverage from `AndBibleUITests`
+    `StrongsSheetView`, `HistoryView`, `WorkspaceSelectorView`, `WebViewCoordinator`,
+    `DocumentBroker.vue`, and `StrongsDocument.vue`
+  - simulator-backed UI coverage from `AndBibleUITests`
+  - reader-adjacent unit regression coverage from `AndBibleTests`
 - Regression evidence: `docs/parity/reader/regression-report.md`
+
+Use this as a current snapshot, not as a claim that every reader detail is
+already frozen forever.
+
+The goal here is to make it easy to read the reader story in one pass: what now
+feels solid, what is solid but intentionally iOS-shaped, and what is still more
+trust than proof.
 
 ## Status Legend
 
 - `Pass`: implemented and backed by direct code evidence plus current regression coverage
-- `Adapted Pass`: parity delivered with explicit iOS implementation differences documented in
+- `Adapted Pass`: parity is there, but the iOS path is intentionally different and called out in
   `dispositions.md`
-- `Partial`: implemented or exposed, but not yet backed by enough focused evidence to treat the
-  area as locked
+- `Partial`: implemented or exposed, but still not backed by enough focused evidence to treat the
+  area as truly locked
 
 ## Summary
 
 - `Pass`: 4
-- `Adapted Pass`: 0
-- `Partial`: 4
+- `Adapted Pass`: 1
+- `Partial`: 5
 
 ## Matrix
 
 | Reader Contract Area | iOS Evidence | Status | Notes |
 |---|---|---|---|
-| Reader overflow menu opens core reader-owned destinations | `BibleReaderView.swift`; UI tests `testDownloadsScreenOpensFromReaderMenu`, `testBookmarksScreenOpensFromReaderMenu`, `testAboutScreenOpensFromReaderMenu` | Pass | The top-level reader shell is regression-gated for the primary menu destinations that still depend on the active reader surface. |
-| Search result selection returns control to the reader and moves the active reference | `BibleReaderView.swift`, `BibleReaderController.swift`; UI test `testSearchResultSelectionNavigatesReaderToBundledReference` | Pass | The reader side of search integration is locked here; search query semantics remain documented under `docs/parity/search/`. |
-| History jump-back plus destructive clear/delete flows persist through reopen | `HistoryView.swift`, `BibleReaderView.swift`, `BibleReaderController.swift`; UI tests `testHistorySelectionNavigatesReaderToSeededReference`, `testHistoryClearRemovesSeededRowAcrossReopen`, `testHistoryRowDeletePreservesOtherRowsAcrossReopen` | Pass | This protects both navigation back into the reader and persisted destructive history mutations. |
-| Workspace selection and CRUD remain coordinated by the reader shell | `BibleReaderView.swift`, `WorkspaceSelectorView.swift`, `WindowManager`; UI test `testWorkspaceSelectorCreateRenameCloneDeleteFlow` | Pass | The current gate covers the reader-owned workspace selector flow rather than only lower-level persistence. |
-| Horizontal swipe modes and auto-fullscreen thresholds are implemented natively | `WebViewCoordinator.swift` native swipe/scroll callbacks; `BibleReaderView.handleNativeHorizontalSwipe(_:)` and auto-fullscreen tracking in `BibleReaderView` | Partial | The parity-sensitive code paths exist, but there is no focused regression gate yet for swipe-mode or auto-fullscreen behavior. |
-| Double-tap fullscreen remains owned by the native reader shell | `BibleReaderController.handleToggleFullscreen()` and `BibleReaderView` fullscreen state/overlay ownership; documented in `dispositions.md` | Partial | The platform adaptation is explicit, but the double-tap fullscreen branch is not yet covered by focused regression. |
-| Compare requests are presented through native iOS sheet flow | `BibleReaderController.compareSelection()`, `BibleReaderController.bridge(_:compareVerses:startOrdinal:endOrdinal:)`, `BibleReaderView.showCompare`, `presentCompareView(...)`; documented in `dispositions.md` | Partial | The reader still owns the compare entry points, but there is no focused workflow gate for compare presentation yet. |
-| Reader config pushes active-window and display state into the embedded client | `BibleReaderController.buildConfigJSON()`, `BibleReaderController.updateConfig()`, `BibleReaderView.updateDisplaySettings(...)` | Partial | The Android-parity config bridge is central to runtime behavior, but it is not yet locked by a focused regression report in this domain. |
+| Reader shell routes primary destinations through the left drawer and reader-local options through the right overflow popup | `BibleReaderView.swift`; UI tests `testSettingsScreenShowsPrimaryNavigationRows`, `testDownloadsScreenOpensFromReaderMenu`, `testBookmarksScreenOpensFromReaderMenu`, `testAboutScreenOpensFromReaderMenu` | Adapted Pass | This part now feels close to Android in day-to-day use, even though iOS gets there with native SwiftUI shells and an anchored popup instead of Android view classes. |
+| Search result selection returns control to the reader and moves the active reference | `BibleReaderView.swift`, `BibleReaderController.swift`; UI test `testSearchResultSelectionNavigatesReaderToBundledReference` | Pass | The reader side of search handoff is in a good place. Search query semantics still live under `docs/parity/search/`. |
+| History jump-back plus destructive clear/delete flows persist through reopen | `HistoryView.swift`, `BibleReaderView.swift`, `BibleReaderController.swift`; UI tests `testHistorySelectionNavigatesReaderToSeededReference`, `testHistoryClearRemovesSeededRowAcrossReopen`, `testHistoryRowDeletePreservesOtherRowsAcrossReopen` | Pass | This now protects both the jump back into the reader and the more failure-prone destructive persistence paths. |
+| Workspace selection and switching remain coordinated by the reader shell | `BibleReaderView.swift`, `WorkspaceSelectorView.swift`, `WindowManager`; UI test `testWorkspaceSelectorCreateAndSwitchFlow` | Pass | The current check is doing useful work here: it covers creation, activation, and a clean return to the reader shell, not just low-level persistence. |
+| Restored reading position avoids stale verse highlighting while explicit verse navigation preserves its target highlight | `BibleReaderController.swift`; unit tests `testLoadCurrentContentDoesNotHighlightRestoredReadingPosition`, `testLoadCurrentContentHighlightsExplicitVerseNavigationTarget` | Pass | This is a small detail, but it is a very visible one when it breaks, so it is good to have it locked at the payload-emission layer. |
+| Strong's / dictionary modal uses the dedicated Strong's document path with per-dictionary tabs and recursive in-modal navigation | `BibleReaderController.buildStrongsMultiDocJSON()`, `StrongsSheetView.swift`, `DocumentBroker.vue`, `StrongsDocument.vue`, `TabNavigation.vue` | Partial | The richer modal path is there now and it feels much better, but we are still leaning on implementation confidence more than focused regression coverage for this surface. |
+| Horizontal swipe modes and auto-fullscreen thresholds are implemented natively | `WebViewCoordinator.swift` native swipe/scroll callbacks; `BibleReaderView.handleNativeHorizontalSwipe(_:)` and auto-fullscreen tracking in `BibleReaderView` | Partial | The code paths exist, but we still do not have the kind of focused regression that would make this feel safely locked. |
+| Double-tap fullscreen remains owned by the native reader shell | `BibleReaderController.handleToggleFullscreen()` and `BibleReaderView` fullscreen state/overlay ownership; documented in `dispositions.md` | Partial | The ownership story is clear, but the dedicated regression story is not there yet. |
+| Compare requests are presented through native iOS sheet flow | `BibleReaderController.compareSelection()`, `BibleReaderController.bridge(_:compareVerses:startOrdinal:endOrdinal:)`, `BibleReaderView.showCompare`, `presentCompareView(...)`; documented in `dispositions.md` | Partial | The entry points are in place, but this is still one of the places where a future regression could slip through unless we add a focused workflow check. |
+| Reader config pushes active-window and display state into the embedded client | `BibleReaderController.buildConfigJSON()`, `BibleReaderController.updateConfig()`, `BibleReaderView.updateDisplaySettings(...)` | Partial | This bridge is central to runtime behavior, and that is exactly why it deserves better dedicated protection than it has today. |

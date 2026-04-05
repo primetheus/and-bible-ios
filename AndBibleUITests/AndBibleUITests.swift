@@ -92,10 +92,7 @@ final class AndBibleUITests: XCTestCase {
 
         _ = openSearch(in: app)
         waitForSearchQuery("earth", in: app, timeout: 20)
-        XCTAssertTrue(
-            requireElement("searchResultRow::Genesis_1_2", in: app, timeout: 20).exists,
-            "Expected the seeded Search query to surface the Genesis 1:2 result."
-        )
+        waitForSearchResultRow("searchResultRow::Genesis_1_2", in: app, shouldExist: true, timeout: 20)
     }
 
     /**
@@ -114,10 +111,7 @@ final class AndBibleUITests: XCTestCase {
 
         _ = openSearch(in: app)
         waitForSearchState(containing: "query=earth", in: app, timeout: 20)
-        XCTAssertTrue(
-            requireElement("searchResultRow::Genesis_1_2", in: app, timeout: 20).exists,
-            "Expected bundled Search results for 'earth' to include Genesis 1:2."
-        )
+        waitForSearchResultRow("searchResultRow::Genesis_1_2", in: app, shouldExist: true, timeout: 20)
     }
 
     /**
@@ -139,10 +133,7 @@ final class AndBibleUITests: XCTestCase {
         app.launch()
 
         _ = openSearch(in: app)
-        XCTAssertTrue(
-            requireElement("searchResultRow::Matthew_1_1", in: app, timeout: 20).exists,
-            "Expected whole-Bible Search hits for 'jesus' to include Matthew 1:1."
-        )
+        waitForSearchResultRow("searchResultRow::Matthew_1_1", in: app, shouldExist: true, timeout: 20)
 
         tapSearchScope(.oldTestament, in: app)
         waitForSearchState(containing: "scope=oldTestament", in: app, timeout: 20)
@@ -155,10 +146,7 @@ final class AndBibleUITests: XCTestCase {
 
         tapSearchScope(.newTestament, in: app)
         waitForSearchState(containing: "scope=newTestament", in: app, timeout: 20)
-        XCTAssertTrue(
-            requireElement("searchResultRow::Matthew_1_1", in: app, timeout: 20).exists,
-            "Expected New Testament Search hits for 'jesus' to restore Matthew 1:1."
-        )
+        waitForSearchResultRow("searchResultRow::Matthew_1_1", in: app, shouldExist: true, timeout: 20)
     }
 
     /**
@@ -178,10 +166,7 @@ final class AndBibleUITests: XCTestCase {
         app.launch()
 
         _ = openSearch(in: app)
-        XCTAssertTrue(
-            requireElement("searchResultRow::Genesis_1_2", in: app, timeout: 20).exists,
-            "Expected all-word Search hits for 'earth void' to include Genesis 1:2."
-        )
+        waitForSearchResultRow("searchResultRow::Genesis_1_2", in: app, shouldExist: true, timeout: 20)
 
         tapSearchWordMode("Phrase", in: app, timeout: 10)
         waitForSearchState(containing: "wordMode=phrase", in: app, timeout: 20)
@@ -194,10 +179,7 @@ final class AndBibleUITests: XCTestCase {
 
         tapSearchWordMode("Any Word", in: app, timeout: 10)
         waitForSearchState(containing: "wordMode=anyWord", in: app, timeout: 20)
-        XCTAssertTrue(
-            requireElement("searchResultRow::Genesis_1_2", in: app, timeout: 20).exists,
-            "Expected any-word Search hits for 'earth void' to restore Genesis 1:2."
-        )
+        waitForSearchResultRow("searchResultRow::Genesis_1_2", in: app, shouldExist: true, timeout: 20)
     }
 
     /**
@@ -520,23 +502,30 @@ final class AndBibleUITests: XCTestCase {
         let searchField = app.searchFields.firstMatch
         XCTAssertTrue(searchField.waitForExistence(timeout: 10), "Expected bookmark search field to exist.")
 
-        let exodusRow = app.descendants(matching: .any)["bookmarkListRowButton::Exodus_2_1"]
         let matthewRow = app.descendants(matching: .any)["bookmarkListRowButton::Matthew_3_1"]
 
         replaceText(in: searchField, with: "Matthew")
         searchField.typeText("\n")
+        waitForBookmarkListState(containing: "count=1", in: app, timeout: 10)
+        waitForBookmarkListState(containing: "query=Matthew", in: app, timeout: 10)
+        waitForBookmarkListState(containing: bookmarkListRowStateToken("Matthew_3_1"), in: app, timeout: 10)
+        waitForBookmarkListState(notContaining: bookmarkListRowStateToken("Exodus_2_1"), in: app, timeout: 10)
 
         XCTAssertTrue(
             matthewRow.waitForExistence(timeout: 10),
             "Expected Matthew bookmark row to appear after filtering."
         )
-        let hiddenPredicate = NSPredicate(format: "exists == false")
-        expectation(for: hiddenPredicate, evaluatedWith: exodusRow)
-        waitForExpectations(timeout: 10)
         XCTAssertTrue(matthewRow.exists, "Expected Matthew bookmark row to remain visible after filtering.")
 
         replaceText(in: searchField, with: "")
-        XCTAssertTrue(exodusRow.waitForExistence(timeout: 10), "Expected Exodus bookmark row to reappear after clearing search.")
+        waitForBookmarkListState(containing: "count=2", in: app, timeout: 10)
+        waitForBookmarkListState(notContaining: "query=Matthew", in: app, timeout: 10)
+        waitForBookmarkListState(containing: bookmarkListRowStateToken("Exodus_2_1"), in: app, timeout: 10)
+        waitForBookmarkListState(containing: bookmarkListRowStateToken("Matthew_3_1"), in: app, timeout: 10)
+        XCTAssertTrue(
+            requireBookmarkRow("Exodus_2_1", in: app, timeout: 10).exists,
+            "Expected Exodus bookmark row to reappear after clearing search."
+        )
         XCTAssertTrue(matthewRow.waitForExistence(timeout: 10), "Expected Matthew bookmark row to remain visible after clearing search.")
     }
 
@@ -561,26 +550,28 @@ final class AndBibleUITests: XCTestCase {
         app.launch()
 
         _ = openBookmarkList(in: app)
-        tapElementReliably(
-            requireElement("bookmarkListFilterChip::UI_Test_Seed", in: app, timeout: 10),
-            timeout: 10
-        )
+        selectBookmarkListFilterChip("UI_Test_Seed", in: app, timeout: 10)
+        waitForBookmarkListState(containing: "count=1", in: app, timeout: 10)
+        waitForBookmarkListState(containing: bookmarkListRowStateToken("Genesis_1_1"), in: app, timeout: 10)
+        waitForBookmarkListState(notContaining: bookmarkListRowStateToken("Exodus_2_1"), in: app, timeout: 10)
 
         let genesisRow = requireBookmarkRow("Genesis_1_1", in: app, timeout: 10)
-        let exodusRow = app.descendants(matching: .any)["bookmarkListRowButton::Exodus_2_1"].firstMatch
-        let hiddenPredicate = NSPredicate(format: "exists == false")
-        expectation(for: hiddenPredicate, evaluatedWith: exodusRow)
-        waitForExpectations(timeout: 10)
         XCTAssertTrue(genesisRow.exists, "Expected Genesis bookmark row to remain visible for the selected label.")
         XCTAssertTrue(
             requireElement("bookmarkListOpenStudyPadButton::UI_Test_Seed", in: app, timeout: 10).exists,
             "Expected the seeded label StudyPad handoff to appear while the filter is active."
         )
 
-        requireElement("bookmarkListFilterChip::all", in: app, timeout: 10).tap()
+        selectBookmarkListFilterChip("all", in: app, timeout: 10)
+        waitForBookmarkListState(containing: "count=2", in: app, timeout: 10)
+        waitForBookmarkListState(containing: bookmarkListRowStateToken("Genesis_1_1"), in: app, timeout: 10)
+        waitForBookmarkListState(containing: bookmarkListRowStateToken("Exodus_2_1"), in: app, timeout: 10)
 
         XCTAssertTrue(genesisRow.waitForExistence(timeout: 10), "Expected Genesis bookmark row to remain visible after clearing the filter.")
-        XCTAssertTrue(exodusRow.waitForExistence(timeout: 10), "Expected Exodus bookmark row to return after clearing the filter.")
+        XCTAssertTrue(
+            requireBookmarkRow("Exodus_2_1", in: app, timeout: 10).exists,
+            "Expected Exodus bookmark row to return after clearing the filter."
+        )
         XCTAssertFalse(
             app.buttons["bookmarkListOpenStudyPadButton::UI_Test_Seed"].firstMatch.exists,
             "Expected the StudyPad handoff to disappear once the label filter is cleared."
@@ -840,13 +831,14 @@ final class AndBibleUITests: XCTestCase {
         createFreshLabelFromAssignment(in: app)
 
         _ = requireElement("labelAssignmentRow::\(newLabelSegment)", in: app, timeout: 10)
-        let createdRow = requireElement("labelAssignmentRow::\(newLabelSegment)", in: app, timeout: 10)
-        let assignedPredicate = NSPredicate(format: "value == %@", "assigned,notFavourite")
-        expectation(for: assignedPredicate, evaluatedWith: createdRow)
-        waitForExpectations(timeout: 10)
+        waitForElementValue(
+            "labelAssignmentRow::\(newLabelSegment)",
+            toEqual: "assigned,notFavourite",
+            in: app,
+            timeout: 10
+        )
 
-        requireElement("labelAssignmentDoneButton", in: app, timeout: 10).tap()
-        XCTAssertTrue(requireElement("bookmarkListScreen", in: app, timeout: 10).exists)
+        dismissLabelAssignmentToBookmarkList(in: app)
         XCTAssertTrue(
             requireElement("bookmarkListFilterChip::\(newLabelSegment)", in: app, timeout: 10).exists,
             "Expected the new label to appear as a bookmark-list filter chip after dismissal."
@@ -879,19 +871,18 @@ final class AndBibleUITests: XCTestCase {
         XCTAssertEqual(seedRow.value as? String, "assigned,notFavourite")
         requireElement("labelAssignmentToggleButton::UI_Test_Seed", in: app, timeout: 10).tap()
 
-        let unassignedPredicate = NSPredicate(format: "value == %@", "unassigned,notFavourite")
-        expectation(for: unassignedPredicate, evaluatedWith: seedRow)
-        waitForExpectations(timeout: 10)
+        waitForElementValue(
+            "labelAssignmentRow::UI_Test_Seed",
+            toEqual: "unassigned,notFavourite",
+            in: app,
+            timeout: 10
+        )
 
-        requireElement("labelAssignmentDoneButton", in: app, timeout: 10).tap()
-        _ = requireElement("bookmarkListScreen", in: app, timeout: 10)
+        dismissLabelAssignmentToBookmarkList(in: app)
 
-        requireElement("bookmarkListFilterChip::UI_Test_Seed", in: app, timeout: 10).tap()
-
-        let hiddenPredicate = NSPredicate(format: "exists == false")
-        let bookmarkRow = app.descendants(matching: .any)["bookmarkListRowButton::Genesis_1_1"].firstMatch
-        expectation(for: hiddenPredicate, evaluatedWith: bookmarkRow)
-        waitForExpectations(timeout: 10)
+        selectBookmarkListFilterChip("UI_Test_Seed", in: app, timeout: 10)
+        waitForBookmarkListState(containing: "count=0", in: app, timeout: 10)
+        waitForBookmarkListState(notContaining: bookmarkListRowStateToken("Genesis_1_1"), in: app, timeout: 10)
     }
 
     /**
@@ -918,22 +909,30 @@ final class AndBibleUITests: XCTestCase {
         let searchField = app.searchFields.firstMatch
         XCTAssertTrue(searchField.waitForExistence(timeout: 10), "Expected bookmark search field to exist.")
 
-        tapElementReliably(
-            requireElement("bookmarkListFilterChip::UI_Test_Seed", in: app, timeout: 10),
-            timeout: 10
-        )
+        selectBookmarkListFilterChip("UI_Test_Seed", in: app, timeout: 10)
+        waitForBookmarkListState(containing: "count=1", in: app, timeout: 10)
+        waitForBookmarkListState(containing: bookmarkListRowStateToken("Genesis_1_1"), in: app, timeout: 10)
+        waitForBookmarkListState(notContaining: bookmarkListRowStateToken("Exodus_2_1"), in: app, timeout: 10)
         let genesisRow = requireBookmarkRow("Genesis_1_1", in: app, timeout: 10)
-        let exodusRow = app.descendants(matching: .any)["bookmarkListRowButton::Exodus_2_1"].firstMatch
         XCTAssertTrue(genesisRow.waitForExistence(timeout: 10), "Expected Genesis bookmark row to remain visible after filtering.")
-        XCTAssertFalse(exodusRow.exists, "Expected Exodus bookmark row to be hidden by the UI Test Seed filter.")
 
         replaceText(in: searchField, with: "Exodus")
         searchField.typeText("\n")
-        XCTAssertFalse(genesisRow.exists, "Expected the conflicting search query to hide the filtered Genesis row.")
+        waitForBookmarkListState(containing: "count=0", in: app, timeout: 10)
+        waitForBookmarkListState(containing: "query=Exodus", in: app, timeout: 10)
+        waitForBookmarkListState(notContaining: bookmarkListRowStateToken("Genesis_1_1"), in: app, timeout: 10)
 
         reopenBookmarkList(in: app)
+        waitForBookmarkListState(containing: "selectedLabel=all", in: app, timeout: 10)
+        waitForBookmarkListState(containing: "count=2", in: app, timeout: 10)
+        waitForBookmarkListState(notContaining: "query=Exodus", in: app, timeout: 10)
+        waitForBookmarkListState(containing: bookmarkListRowStateToken("Genesis_1_1"), in: app, timeout: 10)
+        waitForBookmarkListState(containing: bookmarkListRowStateToken("Exodus_2_1"), in: app, timeout: 10)
         XCTAssertTrue(genesisRow.waitForExistence(timeout: 10), "Expected Genesis bookmark row to reappear after reopening the bookmark list.")
-        XCTAssertTrue(exodusRow.waitForExistence(timeout: 10), "Expected Exodus bookmark row to reappear after reopening the bookmark list.")
+        XCTAssertTrue(
+            requireBookmarkRow("Exodus_2_1", in: app, timeout: 10).exists,
+            "Expected Exodus bookmark row to reappear after reopening the bookmark list."
+        )
     }
 
     /**
@@ -972,10 +971,7 @@ final class AndBibleUITests: XCTestCase {
         let renamedRowToDelete = requireLabelRow(named: renamedName, in: app, timeout: 10)
         renamedRowToDelete.swipeLeft()
         tapElementReliably(requireElement("labelManagerDeleteAction", in: app, timeout: 10), timeout: 10)
-
-        let deletedPredicate = NSPredicate(format: "exists == false")
-        expectation(for: deletedPredicate, evaluatedWith: labelRow(named: renamedName, in: app))
-        waitForExpectations(timeout: 10)
+        waitForElementExistence("labelManagerRowButton-\(renamedName)", in: app, shouldExist: false, timeout: 10)
     }
 
     /**
@@ -2190,6 +2186,18 @@ final class AndBibleUITests: XCTestCase {
                 }
             }
 
+            if let segmentIndex = searchWordModeSegmentIndex(forVisibleLabel: label),
+               let picker = resolvedElement("searchWordModePicker", in: app)
+            {
+                tapSegmentedControlSegment(
+                    picker,
+                    index: segmentIndex,
+                    segmentCount: SearchWordModeControl.segmentCount,
+                    timeout: timeout
+                )
+                return
+            }
+
             let fallbackCandidates = [
                 app.segmentedControls.buttons[label].firstMatch,
                 app.buttons[label].firstMatch,
@@ -2225,6 +2233,29 @@ final class AndBibleUITests: XCTestCase {
             return "anyWord"
         case "Phrase":
             return "phrase"
+        default:
+            return nil
+        }
+    }
+
+    /**
+     Maps one visible Search word-mode label to its deterministic segment index within the Search
+     segmented control.
+     *
+     * - Parameter label: Visible segmented-control label used by the UI test.
+     * - Returns: Zero-based segment index for the requested label, or `nil` when the label is
+     *   unknown to the test harness.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func searchWordModeSegmentIndex(forVisibleLabel label: String) -> Int? {
+        switch label {
+        case "All Words":
+            return 0
+        case "Any Word":
+            return 1
+        case "Phrase":
+            return 2
         default:
             return nil
         }
@@ -2275,6 +2306,11 @@ final class AndBibleUITests: XCTestCase {
             return
         }
 
+        dismissKeyboardIfPresent(in: app)
+        guard keyboard.exists else {
+            return
+        }
+
         let dismissalCandidates = [
             app.descendants(matching: .any).matching(identifier: "searchWordModeButton::allWords").firstMatch,
             app.segmentedControls.buttons["All Words"].firstMatch,
@@ -2283,6 +2319,15 @@ final class AndBibleUITests: XCTestCase {
         for candidate in dismissalCandidates where candidate.exists || candidate.waitForExistence(timeout: 0.2) {
             tapElementReliably(candidate, timeout: 5)
             return
+        }
+
+        if let picker = resolvedElement("searchWordModePicker", in: app) {
+            tapSegmentedControlSegment(
+                picker,
+                index: 0,
+                segmentCount: SearchWordModeControl.segmentCount,
+                timeout: 5
+            )
         }
     }
 
@@ -2362,14 +2407,26 @@ final class AndBibleUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let row = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
-        let predicate = NSPredicate(format: "exists == %@", NSNumber(value: shouldExist))
-        expectation(for: predicate, evaluatedWith: row)
-        waitForExpectations(timeout: timeout)
+        let deadline = Date().addingTimeInterval(timeout)
+        let rowToken = "|\(identifier)|"
+
+        repeat {
+            if let searchScreen = resolvedElement("searchScreen", in: app),
+               let value = searchScreen.value as? String,
+               value.contains("state=ready"),
+               value.contains("searching=false"),
+               value.contains(rowToken) == shouldExist {
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        let finalSearchScreen = requireSearchScreen(in: app, timeout: 1)
+        let finalValue = finalSearchScreen.value as? String ?? ""
         XCTAssertEqual(
-            row.exists,
+            finalValue.contains(rowToken),
             shouldExist,
-            "Expected Search result '\(identifier)' existence to become \(shouldExist) within \(timeout) seconds.",
+            "Expected Search result '\(identifier)' existence to become \(shouldExist) within \(timeout) seconds. Final Search state: '\(finalValue)'.",
             file: file,
             line: line
         )
@@ -2535,6 +2592,83 @@ final class AndBibleUITests: XCTestCase {
             "Expected bookmark list dismissal to return to the reader shell."
         )
         _ = openBookmarkList(in: app, timeout: 20)
+    }
+
+    /**
+     Activates one bookmark-list filter chip and waits for the exported bookmark-list state to
+     report the matching selected label.
+     *
+     * - Parameters:
+     *   - labelToken: Sanitized label token exported in the chip identifier and screen state.
+     *   - app: Running application whose bookmark list should change filters.
+     *   - timeout: Maximum number of seconds to wait for the selected-label state update.
+     * - Side effects:
+     *   - taps the production filter chip and waits for the bookmark-list screen state to settle
+     * - Failure modes:
+     *   - fails if the chip is unavailable or the bookmark-list state never reflects the selection
+     */
+    private func selectBookmarkListFilterChip(
+        _ labelToken: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10
+    ) {
+        tapElementReliably(
+            requireElement("bookmarkListFilterChip::\(labelToken)", in: app, timeout: timeout),
+            timeout: timeout
+        )
+        waitForBookmarkListState(containing: "selectedLabel=\(labelToken)", in: app, timeout: timeout)
+    }
+
+    /**
+     Waits for the bookmark-list screen accessibility state to contain one token.
+     *
+     * - Parameters:
+     *   - token: State fragment expected from the exported bookmark-list accessibility value.
+     *   - app: Running application whose bookmark list should reach the requested state.
+     *   - timeout: Maximum number of seconds to wait before failing.
+     * - Side effects:
+     *   - polls the bookmark-list screen accessibility export until the requested token appears
+     * - Failure modes:
+     *   - records an XCTest failure if the bookmark-list state never contains the token
+     */
+    private func waitForBookmarkListState(
+        containing token: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10
+    ) {
+        waitForElementValue("bookmarkListScreen", toContain: token, in: app, timeout: timeout)
+    }
+
+    /**
+     Waits for the bookmark-list screen accessibility state to stop containing one token.
+     *
+     * - Parameters:
+     *   - token: State fragment that should disappear from the exported bookmark-list value.
+     *   - app: Running application whose bookmark list should drop the requested token.
+     *   - timeout: Maximum number of seconds to wait before failing.
+     * - Side effects:
+     *   - polls the bookmark-list screen accessibility export until the requested token disappears
+     * - Failure modes:
+     *   - records an XCTest failure if the bookmark-list state keeps reporting the token
+     */
+    private func waitForBookmarkListState(
+        notContaining token: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10
+    ) {
+        waitForElementValue("bookmarkListScreen", toNotContain: token, in: app, timeout: timeout)
+    }
+
+    /**
+     Returns one bookmark-row token as serialized by the bookmark-list accessibility state.
+     *
+     * - Parameter referenceToken: Sanitized row reference token, such as `Genesis_1_1`.
+     * - Returns: Bookmark-list row token wrapped in delimiters for exact containment checks.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func bookmarkListRowStateToken(_ referenceToken: String) -> String {
+        "|\(referenceToken)|"
     }
 
     /**
@@ -3048,6 +3182,12 @@ final class AndBibleUITests: XCTestCase {
             return [
                 app.collectionViews[identifier].firstMatch,
                 app.tables[identifier].firstMatch,
+                app.otherElements[identifier].firstMatch,
+                anyIdentifierMatch,
+            ]
+        case "searchWordModePicker":
+            return [
+                app.segmentedControls[identifier].firstMatch,
                 app.otherElements[identifier].firstMatch,
                 anyIdentifierMatch,
             ]
@@ -3602,6 +3742,52 @@ final class AndBibleUITests: XCTestCase {
     }
 
     /**
+     Waits for one accessibility-identified element value to stop containing a token.
+     *
+     * - Parameters:
+     *   - identifier: Accessibility identifier expected to appear in the UI hierarchy.
+     *   - unexpectedToken: Token that should disappear from the element value or label.
+     *   - app: Running application under test.
+     *   - timeout: Maximum time to keep polling before failing.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - repeatedly re-queries the live XCUI hierarchy until the requested token disappears from
+     *     the element value and label
+     * - Failure modes:
+     *   - fails when the element disappears or keeps reporting the token after the timeout
+     */
+    private func waitForElementValue(
+        _ identifier: String,
+        toNotContain unexpectedToken: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let currentElement = resolvedElement(identifier, in: app) {
+                let currentValue = currentElement.value as? String
+                let currentLabel = currentElement.label
+                if currentValue?.contains(unexpectedToken) != true && !currentLabel.contains(unexpectedToken) {
+                    return
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        let finalElement = unresolvedElement(identifier, in: app)
+        let finalValue = finalElement.value as? String ?? finalElement.label
+        XCTAssertFalse(
+            finalValue.contains(unexpectedToken),
+            "Expected element '\(identifier)' to stop containing '\(unexpectedToken)' within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+    }
+
+    /**
      Waits for one accessibility-identified element to reach the requested existence state.
      *
      * - Parameters:
@@ -3625,12 +3811,18 @@ final class AndBibleUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let element = unresolvedElement(identifier, in: app)
-        let predicate = NSPredicate(format: "exists == %@", NSNumber(value: shouldExist))
-        expectation(for: predicate, evaluatedWith: element)
-        waitForExpectations(timeout: timeout)
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let currentExists = resolvedElement(identifier, in: app) != nil
+            if currentExists == shouldExist {
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        let currentExists = resolvedElement(identifier, in: app) != nil
         XCTAssertEqual(
-            element.exists,
+            currentExists,
             shouldExist,
             "Expected element '\(identifier)' existence to become \(shouldExist) within \(timeout) seconds.",
             file: file,
@@ -3692,6 +3884,37 @@ final class AndBibleUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
+        if tryTapReaderMoreMenuButton(in: app, timeout: timeout, file: file, line: line) {
+            return
+        }
+
+        XCTFail(
+            "Expected the reader overflow menu to appear after tapping readerMoreMenuButton within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+    }
+
+    /**
+     Attempts to open the reader overflow menu without recording an XCTest failure on timeout.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum number of seconds to spend trying to open the overflow menu.
+     *   - file: Source file used for nested helper attribution.
+     *   - line: Source line used for nested helper attribution.
+     * - Returns: `true` when the production overflow menu becomes visible.
+     * - Side effects:
+     *   - taps the production more-menu button and waits for the menu surface to appear
+     * - Failure modes:
+     *   - returns `false` when the menu never appears before the local retry budget expires
+     */
+    private func tryTapReaderMoreMenuButton(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 30,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> Bool {
         _ = requireReaderReferenceValue(
             in: app,
             timeout: min(15, timeout),
@@ -3709,17 +3932,13 @@ final class AndBibleUITests: XCTestCase {
             if !button.frame.isEmpty {
                 button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
                 if waitForReaderOverflowMenu(in: app, timeout: min(3, max(1, deadline.timeIntervalSinceNow))) {
-                    return
+                    return true
                 }
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
-        XCTFail(
-            "Expected the reader overflow menu to appear after tapping readerMoreMenuButton within \(timeout) seconds.",
-            file: file,
-            line: line
-        )
+        return false
     }
 
     /**
@@ -3740,15 +3959,25 @@ final class AndBibleUITests: XCTestCase {
         timeout: TimeInterval
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
+        let menuCandidates = [
+            app.otherElements["readerOverflowMenu"].firstMatch,
+            app.scrollViews["readerOverflowMenu"].firstMatch,
+        ]
+        let actionCandidates = [
+            app.buttons["readerOpenBookmarksAction"].firstMatch,
+            app.buttons["readerOpenSettingsAction"].firstMatch,
+            app.buttons["readerOpenWorkspacesAction"].firstMatch,
+        ]
         repeat {
-            if let overflowMenu = resolvedElement("readerOverflowMenu", in: app),
-               !overflowMenu.frame.isEmpty {
+            if menuCandidates.contains(where: { $0.exists && !$0.frame.isEmpty }) ||
+                actionCandidates.contains(where: { $0.exists && !$0.frame.isEmpty }) {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
-        return resolvedElement("readerOverflowMenu", in: app) != nil
+        return menuCandidates.contains(where: { $0.exists }) ||
+            actionCandidates.contains(where: { $0.exists })
     }
 
     /**
@@ -3965,6 +4194,10 @@ final class AndBibleUITests: XCTestCase {
     ) -> XCUIElement {
         let deadline = Date().addingTimeInterval(timeout)
         let title = readerActionTitle(for: identifier)
+        let directActionCandidates = [
+            app.buttons[identifier].firstMatch,
+            app.buttons[title].firstMatch,
+        ]
         repeat {
             if let overflowMenu = resolvedElement("readerOverflowMenu", in: app) {
                 let action = resolveReaderActionElement(identifier, in: app, overflowMenu: overflowMenu)
@@ -3986,6 +4219,13 @@ final class AndBibleUITests: XCTestCase {
                 }
             }
 
+            if let directAction = directActionCandidates.first(where: { $0.exists && !$0.frame.isEmpty }) {
+                return directAction
+            }
+            if let directAction = directActionCandidates.first(where: { $0.exists }) {
+                return directAction
+            }
+
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
@@ -3998,6 +4238,10 @@ final class AndBibleUITests: XCTestCase {
                 line: line
             )
             return finalAction
+        }
+
+        if let directAction = directActionCandidates.first(where: { $0.exists && !$0.frame.isEmpty }) {
+            return directAction
         }
 
         let overflowMenu = unresolvedElement("readerOverflowMenu", in: app)
@@ -4036,11 +4280,7 @@ final class AndBibleUITests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
             if !element.frame.isEmpty {
-                if element.isHittable {
-                    element.tap()
-                } else {
-                    element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-                }
+                element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
                 return
             }
             let remaining = deadline.timeIntervalSinceNow
@@ -4056,6 +4296,69 @@ final class AndBibleUITests: XCTestCase {
             file: file,
             line: line
         )
+    }
+
+    /**
+     Taps one deterministic segment within a visible segmented control by geometry instead of child
+     button queries, which SwiftUI does not expose consistently across XCTest runtimes.
+     *
+     * - Parameters:
+     *   - control: Segmented control exporting the target segments.
+     *   - index: Zero-based segment index to tap.
+     *   - segmentCount: Total number of visible segments in the control.
+     *   - timeout: Maximum number of seconds to wait for the control to expose a stable frame.
+     *   - file: Source file used for XCTest failure attribution.
+     *   - line: Source line used for XCTest failure attribution.
+     * - Side effects:
+     *   - waits for the segmented control to expose a non-empty frame, then taps the requested
+     *     segment center directly
+     * - Failure modes:
+     *   - records an XCTest failure if the control never appears or the requested segment index is
+     *     out of range
+     */
+    private func tapSegmentedControlSegment(
+        _ control: XCUIElement,
+        index: Int,
+        segmentCount: Int,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertTrue(
+            index >= 0 && index < segmentCount,
+            "Expected segmented control segment index \(index) to be within 0..<\(segmentCount).",
+            file: file,
+            line: line
+        )
+        guard index >= 0 && index < segmentCount else {
+            return
+        }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if !control.frame.isEmpty {
+                let dx = (CGFloat(index) + 0.5) / CGFloat(segmentCount)
+                control.coordinate(withNormalizedOffset: CGVector(dx: dx, dy: 0.5)).tap()
+                return
+            }
+            let remaining = deadline.timeIntervalSinceNow
+            if remaining > 0 {
+                _ = control.waitForExistence(timeout: min(0.2, remaining))
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        XCTAssertTrue(
+            !control.frame.isEmpty,
+            "Expected segmented control '\(control.identifier)' to expose a non-empty frame before tapping segment \(index) within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+    }
+
+    /// Shared geometry constants for the Search word-mode segmented control.
+    private enum SearchWordModeControl {
+        static let segmentCount = 3
     }
 
     /**
@@ -4627,7 +4930,7 @@ final class AndBibleUITests: XCTestCase {
      *   - fails if the production label-filter or StudyPad handoff controls are unavailable
      */
     private func openSeedStudyPadFromBookmarkList(in app: XCUIApplication) {
-        tapElementReliably(requireElement("bookmarkListFilterChip::UI_Test_Seed", in: app, timeout: 10), timeout: 10)
+        selectBookmarkListFilterChip("UI_Test_Seed", in: app, timeout: 10)
         tapElementReliably(requireElement("bookmarkListOpenStudyPadButton::UI_Test_Seed", in: app, timeout: 10), timeout: 10)
     }
 
@@ -4663,6 +4966,55 @@ final class AndBibleUITests: XCTestCase {
         let nameField = requireLabelManagerNewLabelField(in: app, timeout: 10)
         replaceText(in: nameField, with: "UI Test Fresh")
         tapElementReliably(requireLabelManagerCreateButton(in: app, timeout: 10), timeout: 10)
+    }
+
+    /**
+     Dismisses Label Assignment back to the bookmark list and waits for the transition to settle.
+     *
+     * - Parameters:
+     *   - app: Running application under test.
+     *   - timeout: Maximum time to wait for the sheet dismissal to complete.
+     * - Side effects:
+     *   - taps the production done button on Label Assignment
+     *   - polls the live hierarchy until the label-assignment surface disappears and the bookmark
+     *     list becomes visible again
+     * - Failure modes:
+     *   - fails if the dismiss action cannot be tapped
+     *   - fails if the sheet never dismisses fully back to the bookmark list within the timeout
+     */
+    private func dismissLabelAssignmentToBookmarkList(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 20,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        tapElementReliably(
+            requireElement("labelAssignmentDoneButton", in: app, timeout: timeout),
+            timeout: timeout
+        )
+
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let labelAssignmentVisible = resolvedElement("labelAssignmentScreen", in: app) != nil
+            let bookmarkListVisible = resolvedElement("bookmarkListScreen", in: app) != nil
+            if !labelAssignmentVisible && bookmarkListVisible {
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        } while Date() < deadline
+
+        XCTAssertFalse(
+            unresolvedElement("labelAssignmentScreen", in: app).exists,
+            "Expected Label Assignment to dismiss within \(timeout) seconds.",
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            unresolvedElement("bookmarkListScreen", in: app).exists,
+            "Expected the bookmark list to reappear within \(timeout) seconds after dismissing Label Assignment.",
+            file: file,
+            line: line
+        )
     }
 
     /**
@@ -5047,8 +5399,53 @@ final class AndBibleUITests: XCTestCase {
      */
     private func replaceText(in element: XCUIElement, with text: String) {
         focusTextEntryElement(element, timeout: 10)
-        let deleteSequence = String(repeating: XCUIKeyboardKey.delete.rawValue, count: 64)
-        element.typeText(deleteSequence + text)
+        let existingText = currentTextEntryValue(in: element)
+        if existingText == text {
+            return
+        }
+
+        if !existingText.isEmpty {
+            let deleteSequence = String(
+                repeating: XCUIKeyboardKey.delete.rawValue,
+                count: existingText.count
+            )
+            element.typeText(deleteSequence)
+        }
+
+        if !text.isEmpty {
+            element.typeText(text)
+        }
+    }
+
+    /**
+     Resolves the current user-entered text for one text-entry control.
+     *
+     * - Parameter element: Focused text field or search field.
+     * - Returns: The editable field contents, excluding placeholder/label text when the control
+     *   is currently empty.
+     * - Side effects: none.
+     * - Failure modes: This helper cannot fail.
+     */
+    private func currentTextEntryValue(in element: XCUIElement) -> String {
+        guard let rawValue = element.value as? String else {
+            return ""
+        }
+
+        let placeholderCandidates = Set(
+            [element.label, element.identifier]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        )
+        let normalizedValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedValue.isEmpty else {
+            return ""
+        }
+
+        if placeholderCandidates.contains(normalizedValue) {
+            return ""
+        }
+
+        return rawValue
     }
 
     /**

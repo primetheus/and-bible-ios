@@ -4721,11 +4721,13 @@ final class AndBibleUITests: XCTestCase {
      *     the required one.
      *   - file: Source file used for XCTest failure attribution.
      *   - line: Source line used for XCTest failure attribution.
+     * - Returns: The currently visible action surface, or `nil` when it never becomes available
+     *   inside the local retry budget.
      * - Side effects:
      *   - dismisses the wrong menu surface when it is currently visible
      *   - opens either the left navigation drawer or the overflow/options sheet
      * - Failure modes:
-     *   - records an XCTest failure when the required action surface never becomes available
+     *   - returns `nil` when the required action surface never becomes available before timeout
      */
     private func ensureReaderActionSurface(
         for identifier: String,
@@ -4733,7 +4735,7 @@ final class AndBibleUITests: XCTestCase {
         timeout: TimeInterval,
         file: StaticString = #filePath,
         line: UInt = #line
-    ) -> XCUIElement {
+    ) -> XCUIElement? {
         let deadline = Date().addingTimeInterval(timeout)
         let prefersDrawer = readerActionUsesNavigationDrawer(identifier)
 
@@ -4785,23 +4787,11 @@ final class AndBibleUITests: XCTestCase {
 
         if prefersDrawer {
             let drawer = unresolvedElement("readerNavigationDrawer", in: app)
-            XCTAssertTrue(
-                drawer.exists,
-                "Expected the reader navigation drawer to appear within \(timeout) seconds before resolving '\(identifier)'.",
-                file: file,
-                line: line
-            )
-            return drawer
+            return drawer.exists ? drawer : nil
         }
 
         let overflowMenu = unresolvedElement("readerOverflowMenu", in: app)
-        XCTAssertTrue(
-            overflowMenu.exists,
-            "Expected the reader overflow menu to appear within \(timeout) seconds before resolving '\(identifier)'.",
-            file: file,
-            line: line
-        )
-        return overflowMenu
+        return overflowMenu.exists ? overflowMenu : nil
     }
 
     /**
@@ -4872,14 +4862,13 @@ final class AndBibleUITests: XCTestCase {
             app.buttons[title].firstMatch,
         ]
         repeat {
-            let actionSurface = ensureReaderActionSurface(
+            if let actionSurface = ensureReaderActionSurface(
                 for: identifier,
                 in: app,
                 timeout: min(10, max(3, deadline.timeIntervalSinceNow)),
                 file: file,
                 line: line
-            )
-            if actionSurface.exists {
+            ) {
                 let action = resolveReaderActionElement(identifier, in: app, actionSurface: actionSurface)
                 if action.exists {
                     if !action.frame.isEmpty {

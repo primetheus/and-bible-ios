@@ -43,7 +43,7 @@ export type BibleDocumentInfo = {
     bibleBookName: string,
     bookInitials: string,
     ordinalRange: OrdinalRange,
-    originalOrdinalRange: OrdinalRange,
+    originalOrdinalRange: OrdinalRange | null,
     v11n: string
 }
 export type OsisDocumentInfo = {

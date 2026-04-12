@@ -917,12 +917,14 @@ public struct SettingsView: View {
                     strongsGreekDictionaries = all
                         .filter {
                             ($0.category == .dictionary || $0.category == .glossary) &&
+                                StrongsDictionaryPolicy.isSupportedDictionaryModuleName($0.name) &&
                                 $0.features.contains(.greekDef)
                         }
                         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
                     strongsHebrewDictionaries = all
                         .filter {
                             ($0.category == .dictionary || $0.category == .glossary) &&
+                                StrongsDictionaryPolicy.isSupportedDictionaryModuleName($0.name) &&
                                 $0.features.contains(.hebrewDef)
                         }
                         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }

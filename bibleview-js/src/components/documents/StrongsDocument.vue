@@ -22,6 +22,7 @@
           v-if="strongsDictionaries.size > 1"
           :tabs="strongsTabsConfig"
           :active-tab="selectedStrongsDict ?? ''"
+          navigation-class="strongs-tabs"
           @tab-change="handleStrongsDictChange"
       />
       <div v-for="[strongsKey, fragments] in filteredStrongsEntries" :key="strongsKey" class="strongs-group">
@@ -44,6 +45,7 @@
           v-if="morphDictionaries.size > 1"
           :tabs="morphTabsConfig"
           :active-tab="selectedMorphDict ?? ''"
+          navigation-class="morph-tabs"
           @tab-change="handleMorphDictChange"
       />
       <div v-for="frag in filteredMorphFragments" :key="frag.key" class="morph-entry">
@@ -205,6 +207,11 @@ function findAllLink(frag: OsisFragmentType): string | null {
   }
 }
 
+.strongs-column,
+.morph-column {
+  min-width: 0;
+}
+
 .strongs-group {
   margin-bottom: 0.5em;
 }
@@ -213,6 +220,13 @@ function findAllLink(frag: OsisFragmentType): string | null {
   font-weight: bold;
   font-size: 1.1em;
   margin-bottom: 0.15em;
+  color: orange;
+  .monochrome & {
+    color: black;
+  }
+  .monochrome.night & {
+    color: white;
+  }
 }
 
 .dict-label {
@@ -236,9 +250,50 @@ function findAllLink(frag: OsisFragmentType): string | null {
 .morph-header {
   font-weight: bold;
   margin-bottom: 0.15em;
+  color: orange;
+  .monochrome & {
+    color: black;
+  }
+  .monochrome.night & {
+    color: white;
+  }
 }
 
 .morph-entry {
   margin-bottom: 0.35em;
+}
+
+:deep(.strongs-tabs),
+:deep(.morph-tabs) {
+  margin-bottom: 0.85em;
+}
+
+:deep(.strongs-entry ul),
+:deep(.strongs-entry ol),
+:deep(.morph-entry ul),
+:deep(.morph-entry ol) {
+  margin: 0.15em 0 0.35em;
+  padding-inline-start: 1.25em;
+}
+
+:deep(.strongs-entry li),
+:deep(.morph-entry li) {
+  margin: 0.1em 0;
+}
+
+/* TEI dictionaries sometimes wrap a nested list in a parent item with no text.
+   Keep the nested content but hide the placeholder parent bullet. */
+:deep(.strongs-entry li:has(> ul:only-child)),
+:deep(.strongs-entry li:has(> ol:only-child)),
+:deep(.morph-entry li:has(> ul:only-child)),
+:deep(.morph-entry li:has(> ol:only-child)) {
+  list-style: none;
+}
+
+:deep(.strongs-entry li:has(> ul:only-child) > ul),
+:deep(.strongs-entry li:has(> ol:only-child) > ol),
+:deep(.morph-entry li:has(> ul:only-child) > ul),
+:deep(.morph-entry li:has(> ol:only-child) > ol) {
+  margin-top: 0;
 }
 </style>

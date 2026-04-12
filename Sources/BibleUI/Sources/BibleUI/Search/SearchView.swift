@@ -7,6 +7,40 @@ import SwiftUI
 import BibleCore
 import SwordKit
 
+/// One-shot UI-test launch query consumed by Search regardless of which presenter opens it.
+enum UITestSearchQuerySeed {
+    private static var didConsume = false
+
+    static func consume() -> String? {
+        guard !didConsume,
+              let query = resolveLaunchQuery()?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !query.isEmpty else {
+            return nil
+        }
+        didConsume = true
+        return query
+    }
+
+    private static func resolveLaunchQuery() -> String? {
+        if let environmentQuery = ProcessInfo.processInfo.environment["UITEST_SEARCH_QUERY"] {
+            return environmentQuery
+        }
+
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let flagIndex = arguments.firstIndex(of: "-UITEST_SEARCH_QUERY") else {
+            return nil
+        }
+
+        let valueIndex = arguments.index(after: flagIndex)
+        guard valueIndex < arguments.endIndex else {
+            return nil
+        }
+
+        return arguments[valueIndex]
+    }
+}
+
 /**
  Full-text search interface with index management, scope filters, and multi-translation support.
 
@@ -223,6 +257,11 @@ public struct SearchView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("searchScreen")
         .accessibilityValue(searchAccessibilityValue)
+        .overlay(alignment: .topLeading) {
+            // Export Search state through a tiny dedicated element so UI tests do not have to
+            // snapshot the full Search container while result lists are changing.
+            searchStateExport
+        }
         .navigationTitle(navigationTitle)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -238,6 +277,8 @@ public struct SearchView: View {
                     } label: {
                         Image(systemName: showOptions ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                     }
+                    .accessibilityIdentifier("searchOptionsToggleButton")
+                    .accessibilityValue(showOptions ? "visible" : "hidden")
                 }
             }
         }
@@ -248,7 +289,8 @@ public struct SearchView: View {
             if selectedModules.isEmpty, let mod = swordModule {
                 selectedModules = [mod.info.name]
             }
-            _ = applyInitialQueryIfNeeded(initialQuery)
+            let seededInitialQuery = initialQuery.isEmpty ? (UITestSearchQuerySeed.consume() ?? "") : initialQuery
+            _ = applyInitialQueryIfNeeded(seededInitialQuery)
             checkIndex()
         }
         .onChange(of: initialQuery) { _, newValue in
@@ -300,6 +342,17 @@ public struct SearchView: View {
             return baseState
         }
         return "\(baseState);rows=\(searchAccessibilityRowsToken)"
+    }
+
+    /// Compact dedicated state export used by the UI harness instead of the full Search container.
+    private var searchStateExport: some View {
+        Rectangle()
+            .fill(.clear)
+            .frame(width: 1, height: 1)
+            .allowsHitTesting(false)
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("searchStateExport")
+            .accessibilityValue(searchAccessibilityValue)
     }
 
     /// Stable search-result row tokens exported for UI automation.
@@ -532,7 +585,9 @@ public struct SearchView: View {
         .padding(.horizontal)
         .padding(.vertical, 10)
         .background(.bar)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("searchOptionsPanel")
+        .accessibilityValue("visible")
     }
 
     /**
@@ -910,6 +965,12 @@ public struct SearchView: View {
        skips index inspection, marks the view ready, and continues without indexed search setup
      */
     private func checkIndex() {
+        if StrongsSearchSupport.normalizedQueryOptions(for: query) != nil {
+            viewState = .ready
+            autoSearchIfNeeded()
+            return
+        }
+
         guard let service = searchIndexService, let mod = swordModule else {
             // No service or module — skip index check, go directly to ready
             viewState = .ready
@@ -930,7 +991,7 @@ public struct SearchView: View {
 
     /// Auto-executes a search when the view was launched with a seeded query.
     private func autoSearchIfNeeded() {
-        if !initialQuery.isEmpty && !query.isEmpty {
+        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             performSearch()
         }
     }

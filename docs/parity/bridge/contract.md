@@ -1,7 +1,9 @@
-# Android Bridge Contract (Current iOS Surface)
+# Bridge Parity Notes (Current iOS Surface)
 
-This document captures the Android-compatible bridge contract currently exposed
-by iOS through `BibleView`.
+This file explains how the iOS bridge is currently trying to stay compatible
+with the Android-facing web client.
+
+It is written as a guide to the moving parts, not as a formal transport spec.
 
 Primary code references:
 
@@ -12,9 +14,9 @@ Primary code references:
 - main native delegate implementation:
   `Sources/BibleUI/Sources/BibleUI/Bible/BibleReaderController.swift`
 
-## Core Transport Contract
+## Core Transport Shape
 
-The shared frontend still expects Android-style bridge semantics.
+The shared frontend still expects Android-style bridge semantics, even on iOS.
 
 ### JavaScript to native
 
@@ -36,7 +38,7 @@ Native code sends events back through:
 bibleView.emit(event, data)
 ```
 
-### Async response contract
+### Async responses
 
 Deferred requests use the shared `callId` pattern:
 
@@ -46,10 +48,11 @@ bibleView.response(callId, value)
 
 That contract must remain stable across Android and iOS.
 
-## Message Contract
+## Message Shape
 
-The authoritative grouped catalog is the `BibleBridgeDelegate` protocol plus the
-dispatcher switch in `BibleBridge`.
+The best place to understand the current message surface is still the
+`BibleBridgeDelegate` protocol together with the dispatcher switch in
+`BibleBridge`.
 
 Current message groups:
 
@@ -60,10 +63,10 @@ Current message groups:
 - dialogs, reference parsing, and help
 - client state/reporting messages
 
-The important parity rule is that shared method names, argument ordering, and
-response expectations must not drift casually.
+The main parity risk here is casual drift in shared method names, argument
+ordering, or response expectations.
 
-## Event Contract
+## Event Shape
 
 Current native-to-JS event groups include:
 
@@ -75,10 +78,10 @@ Current native-to-JS event groups include:
 - StudyPad updates
 - selection and active-window state
 
-If event names or payload shapes change, both iOS and Android clients must be
-treated as affected.
+If event names or payload shapes change, both iOS and Android should be treated
+as affected.
 
-## Compatibility Shim Contract
+## Compatibility Shim
 
 iOS currently preserves Android-oriented frontend assumptions by injecting:
 
@@ -86,10 +89,10 @@ iOS currently preserves Android-oriented frontend assumptions by injecting:
 - `window.android = new Proxy(...)`
 - a synchronous `getActiveLanguages()` cache via `window.__activeLanguages__`
 
-This shim is part of the parity contract, not incidental glue. The Vue bundle
+This shim is part of the parity story, not incidental glue. The Vue bundle
 still relies on Android-style bridge calls in multiple places.
 
-## Payload Contract
+## Payload Shape
 
 Swift payload definitions live in:
 
@@ -101,3 +104,27 @@ The corresponding TypeScript-side expectations live under:
 
 Payload drift is a high-risk change because it often fails at runtime without a
 compile-time signal.
+
+## Document Routing
+
+The embedded client now relies on document routing that is broader than the
+top-level `type` field alone.
+
+Important current examples:
+
+- generic multi-fragment content still routes through `type: "multi"`
+- Strong's / dictionary modal content routes through:
+  - `type: "multi"`
+  - `contentType: "strongs"`
+  - optional Strong's modal state such as selected dictionary tabs
+
+In other words, it is no longer enough to think "this is just a multi
+document." The safe mental model is:
+
+- emit the correct multi-document content type
+- preserve the route-specific state fields the client expects
+- keep the Swift payload shape aligned with the corresponding TypeScript types
+
+This matters most for the Strong's modal because losing
+`contentType: "strongs"` silently drops the richer Android-style tabbed path
+and falls back to generic multi-document rendering.

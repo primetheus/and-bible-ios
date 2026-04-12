@@ -1,7 +1,10 @@
-# Android Reader Contract (Current iOS Surface)
+# Reader Parity Notes (Current iOS Surface)
 
-This document captures the Android-aligned reader behaviors currently driven by
-the iOS reading shell.
+This file describes what "reader parity" currently means in practice on iOS.
+
+It is not trying to be a formal spec. The point is to make it obvious which
+reader behaviors are meant to feel Android-like today, even when the native
+implementation is different.
 
 Primary code references:
 
@@ -14,17 +17,40 @@ Primary code references:
 - pane shell:
   `Sources/BibleUI/Sources/BibleUI/Bible/BibleWindowPane.swift`
 
-## Core Reader Contract
+## Core Reader Shape
 
-The iOS reader preserves the Android-style split between:
+The current iOS reader keeps the same basic split Android users expect:
 
 - a document-rendering surface in the WebView
 - native coordination for windows, sheets, toolbars, and overlays
+- a left navigation drawer for primary reader destinations
+- a right overflow popup for reader-local toggles and configuration actions
 - Android-parity settings that drive runtime reader behavior
+
+## Reader Shell and Toolbar
+
+At the shell level, iOS is now aiming for the same overall structure and
+affordance order as Android:
+
+- a compact toolbar with previous/next navigation bracketing the current
+  reference title
+- a left hamburger drawer for primary destinations such as Choose Document,
+  Search, Speak, Bookmarks, StudyPads, My Notes, Reading Plan, History,
+  Downloads, Backup & Restore, Device synchronization, and Application
+  preferences
+- a right overflow popup for reader-local actions such as Fullscreen, Night
+  mode, Workspaces, Tilt to Scroll, split/pinning toggles, Label Settings,
+  Section titles, Strong's numbers, Chapter & verse numbers, and All text
+  options
+- Android-style title/subtitle semantics in the toolbar: the current reference
+  plus the active module description
+
+The goal here is the same user-facing structure and flow, not a literal copy of
+Android view classes.
 
 ## Preference-Driven Reader Behaviors
 
-The following Android-origin settings directly affect reader behavior on iOS:
+These Android-origin settings materially affect how the iOS reader behaves:
 
 - `navigate_to_verse_pref`
 - `open_links_in_special_window_pref`
@@ -38,12 +64,12 @@ The following Android-origin settings directly affect reader behavior on iOS:
 - `hide_bible_reference_overlay`
 - `show_active_window_indicator`
 
-These behaviors are documented in detail in the settings parity matrix, but the
-reader is where they are actually consumed.
+The settings docs go into more detail, but the reader is where these values
+actually become visible.
 
-## Navigation Contract
+## Navigation
 
-iOS currently preserves Android-oriented reader navigation semantics for:
+The reader is also trying to preserve Android-oriented navigation semantics for:
 
 - chapter/page/none swipe modes
 - active-window tracking
@@ -51,19 +77,32 @@ iOS currently preserves Android-oriented reader navigation semantics for:
 - history updates and jump-back navigation
 - fullscreen transitions triggered from document interaction
 
-## Bookmarking Contract
+## Chapter-Top and Restore Behavior
 
-Reader-side bookmark actions preserve Android-oriented behavior for:
+These chapter-top and restore details are easy to miss, but they are part of
+the current parity expectation:
+
+- chapter separators remain structural content rather than a toggleable visual
+  option
+- section titles remain preference-driven
+- normal restored reading positions must not highlight the current verse as if
+  it were an explicit navigation target
+- explicit verse-target navigation may still highlight the requested verse/range
+
+## Bookmarking
+
+Reader-side bookmark actions are expected to keep these Android-oriented
+behaviors:
 
 - one-step vs two-step bookmarking
 - whole-verse vs selection bookmarks
 - bridge-driven label assignment entry points
 - bookmark updates reflected back into the WebView document
 
-## Display Contract
+## Display Behavior
 
-The reader still pushes a shared config payload into the WebView surface,
-including Android-parity display options such as:
+The reader still pushes a shared config payload into the WebView surface. That
+payload carries several Android-parity display options, including:
 
 - night mode state
 - monochrome mode
@@ -72,10 +111,26 @@ including Android-parity display options such as:
 - bookmark modal button disablement
 - active-window indicator visibility
 
-## Window and Comparison Contract
+## Strong's and Dictionary Modal
 
-The reader continues to preserve multi-window and comparison-oriented behavior
-through:
+The Strong's / dictionary flow is now part of reader parity too. On iOS it is
+expected to preserve the richer Android-style experience through:
+
+- native bottom-sheet presentation from the reader shell
+- a dedicated `contentType: "strongs"` route into the embedded client instead
+  of treating Strong's content as generic multi-document content
+- per-dictionary tab selection when multiple Strong's dictionaries are installed
+- morphology fragments rendered alongside definition fragments when available
+- recursive Strong's navigation and `Find all occurrences` handoff from inside
+  the modal
+
+This surface is partly native shell and partly embedded-client rendering, so
+both layers matter.
+
+## Windows and Compare
+
+The reader is also expected to preserve these multi-window and comparison
+behaviors:
 
 - focused window tracking
 - special links windows

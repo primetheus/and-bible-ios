@@ -4,7 +4,8 @@ Date: 2026-03-16
 
 ## Scope
 
-Regression verification for the current bridge-adjacent surface, covering:
+This is the current validation snapshot for the bridge-adjacent surface. It
+covers:
 
 - embedded My Notes document rendering plus note mutation persistence
 - StudyPad document handoff and note creation from a real bookmark workflow
@@ -44,7 +45,7 @@ Related domain references:
 - `AndBibleUITests/testBookmarkListOpensStudyPadForSelectedLabel`
 - `AndBibleUITests/testBookmarkStudyPadCreateNoteFromLabelWorkflow`
 
-## Expected Assertions Covered
+## What This Validation Actually Covers
 
 ### Embedded note surfaces
 
@@ -73,21 +74,27 @@ Focused bridge-adjacent validation passed on 2026-03-16:
 - UI: `5` tests, `0` failures
 - UI runtime: `161.543s`
 
-This gives the bridge domain current regression evidence for:
+Taken together, this gives the bridge domain current regression evidence for:
 
 - embedded My Notes document lifecycle and note persistence
 - StudyPad document handoff plus note creation
 - bookmark-note persistence feeding those embedded surfaces
 
-## Remaining Gap
+So the bridge story is not "everything is shaky." It is more specific than
+that: the note-backed embedded surfaces are in decent shape, while the rawer
+transport edges still need more direct protection.
 
-The current bridge-domain gap is not document-backed note surfaces. It is:
+## What Is Still Not Well Locked Yet
+
+The note-backed document surfaces are in decent shape. The pieces that still
+need tighter protection are:
 
 - raw `window.android.*` compatibility-shim behavior on a per-method basis
 - `callId` async request/response flows for content expansion and native dialogs
-- Strong's sheet bridge coverage
+- Strong's sheet bridge coverage, especially the dedicated `contentType: "strongs"` route
 - fullscreen, compare, help, and reference-dialog bridge workflows
 - explicit payload-shape guardrails between `BridgeTypes.swift` and `bibleview-js/src/types/`
 
-Those branches are implemented and documented, but they are not yet locked by focused bridge-domain
-regression coverage, so they remain `Partial` in `verification-matrix.md`.
+Those areas are implemented and documented, but they are not yet locked by
+focused bridge-domain regression coverage, so they still show up as `Partial`
+in [verification-matrix.md](verification-matrix.md).

@@ -302,7 +302,7 @@ public struct TextDisplaySettings: Codable, Sendable, Equatable {
         s.marginRight = 2
         s.maxWidth = 600
         s.topMargin = 0
-        s.strongsMode = 2
+        s.strongsMode = 0
         s.showMorphology = false
         s.showFootNotes = false
         s.showFootNotesInline = false

@@ -82,7 +82,7 @@ export interface BibleDocumentType extends BaseOsisDocument {
     bibleBookName: string
     addChapter: boolean
     chapterNumber: number
-    originalOrdinalRange: OrdinalRange
+    originalOrdinalRange: Nullable<OrdinalRange>
 }
 
 export interface MyNotesDocument extends BaseDocument {

@@ -264,7 +264,7 @@ final class StrongsSheetDelegate: NSObject, BibleBridgeDelegate {
         if (!document.getElementById('ios-strongs-fix')) {
             var s = document.createElement('style');
             s.id = 'ios-strongs-fix';
-            s.textContent = '#content { padding-left: 16px !important; padding-right: 16px !important; max-width: none !important; } .sense { display: block; margin-left: 1.5em; margin-top: 0.15em; } .entryFree { display: none; } ol, ul { padding-left: 1.5em; margin: 0.3em 0; } li { margin: 0.15em 0; } dl { margin: 0.3em 0; } dd { margin-left: 1.5em; } blockquote { margin-left: 1.5em; padding-left: 0.5em; border-left: 2px solid rgba(128,128,128,0.3); }';
+            s.textContent = '#content { padding-left: 16px !important; padding-right: 16px !important; max-width: none !important; } ol, ul { padding-left: 1.5em; margin: 0.3em 0; } li { margin: 0.15em 0; } dl { margin: 0.3em 0; } dd { margin-left: 1.5em; } blockquote { margin-left: 1.5em; padding-left: 0.5em; border-left: 2px solid rgba(128,128,128,0.3); }';
             document.head.appendChild(s);
         }
         // Debug logging for click events in Strong's sheet
@@ -332,6 +332,22 @@ final class StrongsSheetDelegate: NSObject, BibleBridgeDelegate {
         if link.hasPrefix("ab-find-all://") {
             logger.info("StrongsSheet: handling as find-all link")
             handleFindAllLink(link)
+            return
+        }
+        // Android-style missing-document fallbacks route to Downloads.
+        if link.hasPrefix("download://") {
+            logger.info("StrongsSheet: handling as downloads link")
+            if let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene }).first,
+               let rootVC = windowScene.windows.first?.rootViewController {
+                var topVC = rootVC
+                while let presented = topVC.presentedViewController {
+                    topVC = presented
+                }
+                topVC.dismiss(animated: true) { [weak controller] in
+                    controller?.bridgeDidRequestOpenDownloads(bridge)
+                }
+            }
             return
         }
         // External links

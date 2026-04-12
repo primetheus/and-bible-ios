@@ -63,17 +63,21 @@ public struct HistoryView: View {
      Builds the empty state or filtered history list with destructive toolbar actions.
      */
     public var body: some View {
+        let historySnapshot = history
         Group {
-            if history.isEmpty {
-                ContentUnavailableView(
-                    String(localized: "history_no_history"),
-                    systemImage: "clock",
-                    description: Text(String(localized: "history_no_history_description"))
-                )
-                .accessibilityIdentifier("historyEmptyState")
+            if historySnapshot.isEmpty {
+                VStack {
+                    ContentUnavailableView(
+                        String(localized: "history_no_history"),
+                        systemImage: "clock",
+                        description: Text(String(localized: "history_no_history_description"))
+                    )
+                    .accessibilityIdentifier("historyEmptyState")
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
-                    ForEach(Array(history.enumerated()), id: \.element.id) { index, item in
+                    ForEach(Array(historySnapshot.enumerated()), id: \.element.id) { index, item in
                         Button {
                             navigateTo(item)
                         } label: {
@@ -118,7 +122,7 @@ public struct HistoryView: View {
                 Button(String(localized: "done")) { dismiss() }
                     .accessibilityIdentifier("historyDoneButton")
             }
-            if !history.isEmpty {
+            if !historySnapshot.isEmpty {
                 ToolbarItem(placement: .destructiveAction) {
                     Button(String(localized: "clear"), role: .destructive) {
                         clearHistory()
@@ -150,7 +154,7 @@ public struct HistoryView: View {
     }
 
     /**
-     Resolves the deterministic accessibility identifier for one persisted history row.
+     * Resolves the deterministic accessibility identifier for one persisted history row.
      *
      * - Parameter item: History row whose durable key should back the identifier.
      * - Returns: Accessibility identifier stable across row reordering for the same history key.
@@ -242,7 +246,8 @@ public struct HistoryView: View {
      Deletes every currently visible history row for the active window scope.
      */
     private func clearHistory() {
-        for item in history {
+        let visibleHistory = history
+        for item in visibleHistory {
             modelContext.delete(item)
         }
         try? modelContext.save()

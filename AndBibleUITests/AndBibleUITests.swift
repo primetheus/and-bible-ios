@@ -6021,13 +6021,8 @@ final class AndBibleUITests: XCTestCase {
      *   - silently leaves focus unchanged when no software keyboard or dismissal action exists
      */
     private func dismissKeyboardIfPresent(in app: XCUIApplication) {
-        let keyboard = app.keyboards.firstMatch
-        guard keyboard.exists || keyboard.waitForExistence(timeout: 0.2) else {
-            return
-        }
-
         for title in ["Done", "Return", "Go", "Search", "OK"] {
-            let button = keyboard.buttons[title].firstMatch
+            let button = app.keyboards.buttons[title].firstMatch
             if button.exists || button.waitForExistence(timeout: 0.2) {
                 if waitForElementToBecomeHittable(button, timeout: 0.5) {
                     button.tap()
@@ -7226,21 +7221,35 @@ final class AndBibleUITests: XCTestCase {
             return ""
         }
 
-        let placeholderCandidates = Set(
-            [element.label, element.identifier, element.placeholderValue ?? ""]
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-        )
         let normalizedValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedValue.isEmpty else {
             return ""
         }
 
+        let placeholderCandidates = Set(
+            ([element.identifier] + textEntryPlaceholderHints(for: element.identifier))
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        )
         if placeholderCandidates.contains(normalizedValue) {
             return ""
         }
 
         return rawValue
+    }
+
+    /// Returns static placeholder hints for text-entry controls without querying XCUI metadata.
+    private func textEntryPlaceholderHints(for identifier: String) -> [String] {
+        switch identifier {
+        case "searchQueryField":
+            return ["Search"]
+        case "labelManagerNewLabelNameField", "labelEditNameField":
+            return ["Label name"]
+        case "syncNextCloudServerURLField":
+            return ["Server URI"]
+        default:
+            return []
+        }
     }
 
     /**

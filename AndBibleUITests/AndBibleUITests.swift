@@ -368,7 +368,11 @@ final class AndBibleUITests: XCTestCase {
         let originalActiveWorkspaceName = requireActiveWorkspaceRow(in: app, timeout: 10).label
 
         tapElementReliably(requireElement("workspaceSelectorAddButton", in: app, timeout: 10), timeout: 10)
-        replaceText(in: requireAlertTextField(in: app, timeout: 10), with: createdName)
+        replaceText(
+            in: requireAlertTextField(in: app, timeout: 10),
+            with: createdName,
+            placeholderHints: ["Name"]
+        )
         tapAlertButton("Create", in: app, timeout: 10)
 
         XCTAssertTrue(
@@ -663,7 +667,7 @@ final class AndBibleUITests: XCTestCase {
 
         let matthewRow = app.descendants(matching: .any)["bookmarkListRowButton::Matthew_3_1"]
 
-        replaceText(in: searchField, with: "Matthew")
+        replaceText(in: searchField, with: "Matthew", placeholderHints: ["Search bookmarks"])
         searchField.typeText("\n")
         waitForBookmarkListState(containing: "count=1", in: app, timeout: 10)
         waitForBookmarkListState(containing: "query=Matthew", in: app, timeout: 10)
@@ -676,7 +680,7 @@ final class AndBibleUITests: XCTestCase {
         )
         XCTAssertTrue(matthewRow.exists, "Expected Matthew bookmark row to remain visible after filtering.")
 
-        replaceText(in: searchField, with: "")
+        replaceText(in: searchField, with: "", placeholderHints: ["Search bookmarks"])
         waitForBookmarkListState(containing: "count=2", in: app, timeout: 10)
         waitForBookmarkListState(notContaining: "query=Matthew", in: app, timeout: 10)
         waitForBookmarkListState(containing: bookmarkListRowStateToken("Exodus_2_1"), in: app, timeout: 10)
@@ -1091,7 +1095,7 @@ final class AndBibleUITests: XCTestCase {
         let genesisRow = requireBookmarkRow("Genesis_1_1", in: app, timeout: 10)
         XCTAssertTrue(genesisRow.waitForExistence(timeout: 10), "Expected Genesis bookmark row to remain visible after filtering.")
 
-        replaceText(in: searchField, with: "Exodus")
+        replaceText(in: searchField, with: "Exodus", placeholderHints: ["Search bookmarks"])
         searchField.typeText("\n")
         waitForBookmarkListState(containing: "count=0", in: app, timeout: 10)
         waitForBookmarkListState(containing: "query=Exodus", in: app, timeout: 10)
@@ -7190,14 +7194,18 @@ final class AndBibleUITests: XCTestCase {
      *   - if the field reports a non-string value, the helper falls back to appending `text`
      *     instead of first deleting existing content
      */
-    private func replaceText(in element: XCUIElement, with text: String) {
-        let existingText = currentTextEntryValue(in: element)
+    private func replaceText(
+        in element: XCUIElement,
+        with text: String,
+        placeholderHints: [String] = []
+    ) {
+        let existingText = currentTextEntryValue(in: element, placeholderHints: placeholderHints)
         if existingText == text {
             return
         }
 
         let app = trackedApp ?? XCUIApplication()
-        if !clearTextEntryElement(element, app: app) {
+        if !clearTextEntryElement(element, app: app, placeholderHints: placeholderHints) {
             XCTFail("Expected text input '\(element.identifier)' to clear before typing replacement text.")
             return
         }
@@ -7216,7 +7224,10 @@ final class AndBibleUITests: XCTestCase {
      * - Side effects: none.
      * - Failure modes: This helper cannot fail.
      */
-    private func currentTextEntryValue(in element: XCUIElement) -> String {
+    private func currentTextEntryValue(
+        in element: XCUIElement,
+        placeholderHints: [String] = []
+    ) -> String {
         guard let rawValue = element.value as? String else {
             return ""
         }
@@ -7227,7 +7238,7 @@ final class AndBibleUITests: XCTestCase {
         }
 
         let placeholderCandidates = Set(
-            ([element.identifier] + textEntryPlaceholderHints(for: element.identifier))
+            ([element.identifier] + textEntryPlaceholderHints(for: element.identifier) + placeholderHints)
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
         )
@@ -7350,9 +7361,10 @@ final class AndBibleUITests: XCTestCase {
      */
     private func clearTextEntryElement(
         _ element: XCUIElement,
-        app: XCUIApplication
+        app: XCUIApplication,
+        placeholderHints: [String] = []
     ) -> Bool {
-        let existingText = currentTextEntryValue(in: element)
+        let existingText = currentTextEntryValue(in: element, placeholderHints: placeholderHints)
         if existingText.isEmpty {
             focusTextEntryElement(element, timeout: 10)
             return true
@@ -7363,33 +7375,33 @@ final class AndBibleUITests: XCTestCase {
         let clearButton = element.buttons["Clear text"].firstMatch
         if waitForElementToBecomeHittable(clearButton, timeout: 0.5) {
             clearButton.tap()
-            if currentTextEntryValue(in: element).isEmpty {
+            if currentTextEntryValue(in: element, placeholderHints: placeholderHints).isEmpty {
                 return true
             }
         }
 
-        var remainingText = currentTextEntryValue(in: element)
+        var remainingText = currentTextEntryValue(in: element, placeholderHints: placeholderHints)
         for _ in 0..<2 where !remainingText.isEmpty {
             let deleteSequence = String(
                 repeating: XCUIKeyboardKey.delete.rawValue,
                 count: remainingText.count
             )
             element.typeText(deleteSequence)
-            remainingText = currentTextEntryValue(in: element)
+            remainingText = currentTextEntryValue(in: element, placeholderHints: placeholderHints)
             if remainingText.isEmpty {
                 return true
             }
         }
 
         if selectAllTextIfAvailable(in: element, app: app) {
-            let selectionLength = max(currentTextEntryValue(in: element).count, 1)
+            let selectionLength = max(currentTextEntryValue(in: element, placeholderHints: placeholderHints).count, 1)
             element.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: selectionLength))
-            if currentTextEntryValue(in: element).isEmpty {
+            if currentTextEntryValue(in: element, placeholderHints: placeholderHints).isEmpty {
                 return true
             }
         }
 
-        return currentTextEntryValue(in: element).isEmpty
+        return currentTextEntryValue(in: element, placeholderHints: placeholderHints).isEmpty
     }
 
     /**

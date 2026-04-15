@@ -124,6 +124,15 @@ final class AndBibleTests: XCTestCase {
     }
 
     #if os(iOS)
+    func testWindowingControlPolicyUsesMinimalStyleOnlyOnIPad() {
+        XCTAssertTrue(
+            AndBibleWindowingControlPolicy.shouldUseMinimalStyle(userInterfaceIdiom: .pad)
+        )
+        XCTAssertFalse(
+            AndBibleWindowingControlPolicy.shouldUseMinimalStyle(userInterfaceIdiom: .phone)
+        )
+    }
+
     func testColorARGBByteClampsIntermediatePickerComponents() {
         XCTAssertEqual(Color.clampedARGBByte(-0.25), 0)
         XCTAssertEqual(Color.clampedARGBByte(0.5), 128)

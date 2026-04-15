@@ -1,3 +1,4 @@
+#if os(iOS)
 import UIKit
 
 public enum AndBibleWindowingControlStyleChoice {
@@ -69,3 +70,4 @@ public final class AndBibleWindowSceneDelegate: NSObject, UIWindowSceneDelegate 
         Self.preferredWindowingControlStyle(userInterfaceIdiom: windowScene.traitCollection.userInterfaceIdiom)
     }
 }
+#endif

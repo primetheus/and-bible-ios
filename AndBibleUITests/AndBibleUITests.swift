@@ -5279,6 +5279,7 @@ final class AndBibleUITests: XCTestCase {
         line: UInt = #line
     ) {
         let deadline = Date().addingTimeInterval(timeout)
+        let prefersDrawer = readerActionUsesNavigationDrawer(identifier)
 
         repeat {
             guard let button = tryResolveReaderActionControl(
@@ -5291,8 +5292,10 @@ final class AndBibleUITests: XCTestCase {
             }
             if waitForElementToBecomeHittable(button, timeout: min(1.5, max(0.5, deadline.timeIntervalSinceNow))) {
                 button.tap()
-            } else if let overflowMenu = resolvedElement("readerOverflowMenu", in: app),
-                      isElementVisible(button, within: overflowMenu)
+            } else if let actionSurface = prefersDrawer
+                ? resolvedElement("readerNavigationDrawer", in: app)
+                : resolvedElement("readerOverflowMenu", in: app),
+                      isElementVisible(button, within: actionSurface)
             {
                 button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
             } else {
@@ -5302,10 +5305,15 @@ final class AndBibleUITests: XCTestCase {
 
             let settleDeadline = Date().addingTimeInterval(min(2, max(0.5, deadline.timeIntervalSinceNow)))
             repeat {
-                if resolvedElement("readerOverflowMenu", in: app) == nil {
+                let actionSurfaceDismissed =
+                    prefersDrawer
+                    ? resolvedElement("readerNavigationDrawer", in: app) == nil
+                    : resolvedElement("readerOverflowMenu", in: app) == nil
+                if actionSurfaceDismissed {
                     return
                 }
-                if let refreshedButton = resolvedElement(identifier, in: app), !refreshedButton.exists {
+                let refreshedButton = unresolvedElement(identifier, in: app)
+                if !refreshedButton.exists {
                     return
                 }
                 RunLoop.current.run(until: Date().addingTimeInterval(0.2))

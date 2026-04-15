@@ -133,6 +133,29 @@ final class AndBibleTests: XCTestCase {
         )
     }
 
+    func testApplicationDelegateSceneConfigurationUsesWindowSceneDelegate() {
+        let configuration = AndBibleApplicationDelegate.sceneConfiguration(
+            sessionRole: UISceneSession.Role.windowApplication
+        )
+
+        XCTAssertEqual(
+            ObjectIdentifier(configuration.delegateClass!),
+            ObjectIdentifier(AndBibleWindowSceneDelegate.self)
+        )
+        XCTAssertNil(configuration.name)
+    }
+
+    func testWindowingControlPolicyChoosesMinimalStyleOnlyOnIPad() {
+        XCTAssertEqual(
+            AndBibleWindowingControlPolicy.preferredWindowingControlStyleChoice(userInterfaceIdiom: .pad),
+            .minimal
+        )
+        XCTAssertEqual(
+            AndBibleWindowingControlPolicy.preferredWindowingControlStyleChoice(userInterfaceIdiom: .phone),
+            .automatic
+        )
+    }
+
     func testColorARGBByteClampsIntermediatePickerComponents() {
         XCTAssertEqual(Color.clampedARGBByte(-0.25), 0)
         XCTAssertEqual(Color.clampedARGBByte(0.5), 128)

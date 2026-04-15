@@ -133,34 +133,6 @@ private enum PendingRemoteSyncConfirmation: Identifiable, Equatable {
     }
 }
 
-#if os(iOS)
-/// iOS app delegate used to attach a scene delegate for iPadOS 26 window-control customization.
-private final class AndBibleApplicationDelegate: NSObject, UIApplicationDelegate {
-    func application(
-        _ application: UIApplication,
-        configurationForConnecting connectingSceneSession: UISceneSession,
-        options: UIScene.ConnectionOptions
-    ) -> UISceneConfiguration {
-        let configuration = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
-        configuration.delegateClass = AndBibleWindowSceneDelegate.self
-        return configuration
-    }
-}
-
-/// Scene delegate that opts iPadOS 26 windows into the minimal system window-control style.
-private final class AndBibleWindowSceneDelegate: NSObject, UIWindowSceneDelegate {
-    @available(iOS 26.0, *)
-    func preferredWindowingControlStyle(for windowScene: UIWindowScene) -> UIWindowScene.WindowingControlStyle {
-        guard AndBibleWindowingControlPolicy.shouldUseMinimalStyle(
-            userInterfaceIdiom: windowScene.traitCollection.userInterfaceIdiom
-        ) else {
-            return .automatic
-        }
-        return .minimal
-    }
-}
-#endif
-
 @main
 struct AndBibleApp: App {
     /// SwiftData model container for all persisted entities.

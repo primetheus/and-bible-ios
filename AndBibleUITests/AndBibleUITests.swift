@@ -3417,7 +3417,7 @@ final class AndBibleUITests: XCTestCase {
                     if let dismissArea = resolvedElement("readerNavigationDrawerDismissArea", in: app) {
                         tapElementReliably(dismissArea, timeout: min(5, timeout))
                     }
-                } else if resolvedElement("readerOverflowMenu", in: app) != nil {
+                } else if isReaderOverflowMenuLikelyVisible(in: app) {
                     dismissReaderOverflowMenu(
                         in: app,
                         timeout: min(8, timeout),
@@ -5564,8 +5564,7 @@ final class AndBibleUITests: XCTestCase {
                    !drawer.frame.isEmpty {
                     return drawer
                 }
-                if let overflowMenu = resolvedElement("readerOverflowMenu", in: app),
-                   !overflowMenu.frame.isEmpty {
+                if isReaderOverflowMenuLikelyVisible(in: app) {
                     dismissReaderOverflowMenu(
                         in: app,
                         timeout: min(8, max(5, deadline.timeIntervalSinceNow)),
@@ -5585,8 +5584,7 @@ final class AndBibleUITests: XCTestCase {
                    !overflowMenu.frame.isEmpty {
                     return overflowMenu
                 }
-                if let drawer = resolvedElement("readerNavigationDrawer", in: app),
-                   drawer.exists {
+                if isReaderNavigationDrawerLikelyVisible(in: app) {
                     let dismissArea = unresolvedElement("readerNavigationDrawerDismissArea", in: app)
                     if dismissArea.exists {
                         tapElementReliably(dismissArea, timeout: 5, file: file, line: line)
@@ -5611,6 +5609,33 @@ final class AndBibleUITests: XCTestCase {
 
         let overflowMenu = unresolvedElement("readerOverflowMenu", in: app)
         return overflowMenu.exists ? overflowMenu : nil
+    }
+
+    /**
+     Returns `true` when drawer-only controls indicate that the left navigation drawer is exposed.
+     */
+    private func isReaderNavigationDrawerLikelyVisible(in app: XCUIApplication) -> Bool {
+        let drawerSignals = [
+            app.buttons["readerOpenBookmarksAction"].firstMatch,
+            app.buttons["readerOpenSettingsAction"].firstMatch,
+            app.buttons["readerOpenSearchAction"].firstMatch,
+            app.otherElements["readerNavigationDrawerDismissArea"].firstMatch,
+        ]
+
+        return drawerSignals.contains(where: { $0.exists && ($0.isHittable || !$0.frame.isEmpty) })
+    }
+
+    /**
+     Returns `true` when overflow-only controls indicate that the reader overflow menu is exposed.
+     */
+    private func isReaderOverflowMenuLikelyVisible(in app: XCUIApplication) -> Bool {
+        let overflowSignals = [
+            app.buttons["readerOpenWorkspacesAction"].firstMatch,
+            app.buttons["readerOverflowSectionTitlesToggle"].firstMatch,
+            app.otherElements["readerOverflowMenuDismissArea"].firstMatch,
+        ]
+
+        return overflowSignals.contains(where: { $0.exists && ($0.isHittable || !$0.frame.isEmpty) })
     }
 
     /**
@@ -7127,7 +7152,7 @@ final class AndBibleUITests: XCTestCase {
         }
 
         if !text.isEmpty {
-            element.typeText(text)
+            app.typeText(text)
         }
     }
 
@@ -7284,7 +7309,7 @@ final class AndBibleUITests: XCTestCase {
                 repeating: XCUIKeyboardKey.delete.rawValue,
                 count: remainingText.count
             )
-            element.typeText(deleteSequence)
+            app.typeText(deleteSequence)
             remainingText = currentTextEntryValue(in: element)
             if remainingText.isEmpty {
                 return true
@@ -7293,7 +7318,7 @@ final class AndBibleUITests: XCTestCase {
 
         if selectAllTextIfAvailable(in: element, app: app) {
             let selectionLength = max(currentTextEntryValue(in: element).count, 1)
-            element.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: selectionLength))
+            app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: selectionLength))
             if currentTextEntryValue(in: element).isEmpty {
                 return true
             }

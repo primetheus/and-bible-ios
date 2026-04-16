@@ -156,6 +156,17 @@ final class AndBibleTests: XCTestCase {
         )
     }
 
+    func testWindowSceneDelegateSelectorChoiceChoosesMinimalStyleOnlyOnIPad() {
+        XCTAssertEqual(
+            AndBibleWindowSceneDelegate.preferredWindowingControlStyleSelectorName(userInterfaceIdiom: .pad),
+            "minimalStyle"
+        )
+        XCTAssertEqual(
+            AndBibleWindowSceneDelegate.preferredWindowingControlStyleSelectorName(userInterfaceIdiom: .phone),
+            "automaticStyle"
+        )
+    }
+
     func testColorARGBByteClampsIntermediatePickerComponents() {
         XCTAssertEqual(Color.clampedARGBByte(-0.25), 0)
         XCTAssertEqual(Color.clampedARGBByte(0.5), 128)

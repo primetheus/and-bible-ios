@@ -17,18 +17,6 @@ public struct AndBibleWindowingControlPolicy {
     ) -> AndBibleWindowingControlStyleChoice {
         shouldUseMinimalStyle(userInterfaceIdiom: userInterfaceIdiom) ? .minimal : .automatic
     }
-
-    @available(iOS 26.0, *)
-    public static func preferredWindowingControlStyle(
-        userInterfaceIdiom: UIUserInterfaceIdiom
-    ) -> UIWindowScene.WindowingControlStyle {
-        switch preferredWindowingControlStyleChoice(userInterfaceIdiom: userInterfaceIdiom) {
-        case .automatic:
-            return .automatic
-        case .minimal:
-            return .minimal
-        }
-    }
 }
 
 /// Shared app delegate used to attach the window-scene delegate for iPadOS 26 window-control customization.
@@ -54,20 +42,49 @@ public final class AndBibleApplicationDelegate: NSObject, UIApplicationDelegate 
 
 /// Scene delegate that opts iPadOS 26 windows into the minimal system window-control style.
 public final class AndBibleWindowSceneDelegate: NSObject, UIWindowSceneDelegate {
+    private static let automaticStyleSelectorName = "automaticStyle"
+    private static let minimalStyleSelectorName = "minimalStyle"
+    private static let windowingControlStyleClassName = "UISceneWindowingControlStyle"
+
     public override init() {
         super.init()
     }
 
-    @available(iOS 26.0, *)
-    public static func preferredWindowingControlStyle(
+    public static func preferredWindowingControlStyleSelectorName(
         userInterfaceIdiom: UIUserInterfaceIdiom
-    ) -> UIWindowScene.WindowingControlStyle {
-        AndBibleWindowingControlPolicy.preferredWindowingControlStyle(userInterfaceIdiom: userInterfaceIdiom)
+    ) -> String {
+        switch AndBibleWindowingControlPolicy.preferredWindowingControlStyleChoice(
+            userInterfaceIdiom: userInterfaceIdiom
+        ) {
+        case .automatic:
+            return automaticStyleSelectorName
+        case .minimal:
+            return minimalStyleSelectorName
+        }
     }
 
-    @available(iOS 26.0, *)
-    public func preferredWindowingControlStyle(for windowScene: UIWindowScene) -> UIWindowScene.WindowingControlStyle {
-        Self.preferredWindowingControlStyle(userInterfaceIdiom: windowScene.traitCollection.userInterfaceIdiom)
+    private static func resolvedWindowingControlStyle(
+        userInterfaceIdiom: UIUserInterfaceIdiom
+    ) -> AnyObject? {
+        let selectorName = preferredWindowingControlStyleSelectorName(
+            userInterfaceIdiom: userInterfaceIdiom
+        )
+        let selector = NSSelectorFromString(selectorName)
+
+        guard let styleClass = NSClassFromString(windowingControlStyleClassName) as? NSObject.Type,
+              styleClass.responds(to: selector),
+              let unmanagedStyle = styleClass.perform(selector) else {
+            return nil
+        }
+
+        return unmanagedStyle.takeUnretainedValue()
+    }
+
+    @objc(preferredWindowingControlStyleForScene:)
+    public func preferredWindowingControlStyleForScene(_ windowScene: UIWindowScene) -> AnyObject? {
+        Self.resolvedWindowingControlStyle(
+            userInterfaceIdiom: windowScene.traitCollection.userInterfaceIdiom
+        )
     }
 }
 #endif

@@ -4223,7 +4223,6 @@ final class AndBibleUITests: XCTestCase {
         case "searchStateExport":
             return [
                 app.staticTexts[identifier].firstMatch,
-                app.otherElements[identifier].firstMatch,
             ]
         case "searchResultsList":
             return [
@@ -5752,7 +5751,6 @@ final class AndBibleUITests: XCTestCase {
             app.buttons["readerOpenBookmarksAction"].firstMatch,
             app.buttons["readerOpenSettingsAction"].firstMatch,
             app.buttons["readerOpenSearchAction"].firstMatch,
-            app.otherElements["readerNavigationDrawerDismissArea"].firstMatch,
         ]
 
         return drawerSignals.contains(where: { $0.exists && ($0.isHittable || !$0.frame.isEmpty) })
@@ -5765,7 +5763,6 @@ final class AndBibleUITests: XCTestCase {
         let overflowSignals = [
             app.buttons["readerOpenWorkspacesAction"].firstMatch,
             app.buttons["readerOverflowSectionTitlesToggle"].firstMatch,
-            app.otherElements["readerOverflowMenuDismissArea"].firstMatch,
         ]
 
         return overflowSignals.contains(where: { $0.exists && ($0.isHittable || !$0.frame.isEmpty) })
@@ -7318,7 +7315,11 @@ final class AndBibleUITests: XCTestCase {
         }
 
         let placeholderCandidates = Set(
-            ([element.identifier] + textEntryPlaceholderHints(for: element.identifier) + placeholderHints)
+            (
+                [element.identifier, element.placeholderValue ?? ""]
+                    + textEntryPlaceholderHints(for: element.identifier)
+                    + placeholderHints
+            )
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
         )

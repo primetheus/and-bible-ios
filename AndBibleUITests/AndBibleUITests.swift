@@ -5735,12 +5735,10 @@ final class AndBibleUITests: XCTestCase {
         } while Date() < deadline
 
         if prefersDrawer {
-            let drawer = unresolvedElement("readerNavigationDrawer", in: app)
-            return drawer.exists ? drawer : nil
+            return resolvedElement("readerNavigationDrawer", in: app)
         }
 
-        let overflowMenu = unresolvedElement("readerOverflowMenu", in: app)
-        return overflowMenu.exists ? overflowMenu : nil
+        return resolvedElement("readerOverflowMenu", in: app)
     }
 
     /**
@@ -5853,10 +5851,9 @@ final class AndBibleUITests: XCTestCase {
             return directAction
         }
 
-        let actionSurface = unresolvedElement(
-            prefersDrawer ? "readerNavigationDrawer" : "readerOverflowMenu",
-            in: app
-        )
+        let preferredSurfaceIdentifier = prefersDrawer ? "readerNavigationDrawer" : "readerOverflowMenu"
+        let actionSurface = resolvedElement(preferredSurfaceIdentifier, in: app)
+            ?? unresolvedElement(preferredSurfaceIdentifier, in: app)
         XCTAssertTrue(
             actionSurface.exists,
             "Expected the reader action surface to appear within \(timeout) seconds before resolving '\(identifier)'.",
@@ -6500,7 +6497,8 @@ final class AndBibleUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         } while Date() < deadline
 
-        let fallback = app.alerts.firstMatch.textFields["labelManagerNewLabelNameField"].firstMatch
+        let fallback = resolvedElement("labelManagerNewLabelNameField", in: app)
+            ?? unresolvedElement("labelManagerNewLabelNameField", in: app)
         XCTAssertTrue(
             fallback.exists,
             "Expected the Label Manager create prompt text field to appear within \(timeout) seconds.",
@@ -6896,17 +6894,15 @@ final class AndBibleUITests: XCTestCase {
         if let prompt = resolvedLabelCreationPrompt(in: app) {
             let promptCandidates = [
                 prompt.textFields["labelManagerNewLabelNameField"].firstMatch,
-                prompt.textFields.firstMatch,
+                prompt.textFields["Label name"].firstMatch,
             ]
             if let field = promptCandidates.first(where: { $0.exists }) {
                 return field
             }
         }
 
-        let appCandidates = [
-            app.textFields["labelManagerNewLabelNameField"].firstMatch,
-        ]
-        return appCandidates.first(where: { $0.exists })
+        return elementCandidates(for: "labelManagerNewLabelNameField", in: app)
+            .first(where: { $0.exists })
     }
 
     /// Resolves the create-label prompt action button by scoping queries to the live prompt first.

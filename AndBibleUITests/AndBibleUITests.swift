@@ -245,7 +245,7 @@ final class AndBibleUITests: XCTestCase {
         app.launch()
 
         _ = openSearch(in: app)
-        XCTAssertTrue(requireElement("searchQueryField", in: app, timeout: 5).exists)
+        XCTAssertTrue(requireSearchInput(in: app, timeout: 5).exists)
         waitForSearchState(containing: "query=H00430", in: app, timeout: 20)
         waitForSearchResultCount(atLeast: 1, in: app, timeout: 20)
     }
@@ -369,7 +369,7 @@ final class AndBibleUITests: XCTestCase {
 
         tapElementReliably(requireElement("workspaceSelectorAddButton", in: app, timeout: 10), timeout: 10)
         replaceText(
-            in: requireAlertTextField(in: app, timeout: 10),
+            in: requireAlertTextField(in: app, titles: ["Name"], timeout: 10),
             with: createdName,
             placeholderHints: ["Name"]
         )
@@ -723,8 +723,7 @@ final class AndBibleUITests: XCTestCase {
         app.launch()
 
         _ = openBookmarkList(in: app)
-        let searchField = app.searchFields.firstMatch
-        XCTAssertTrue(searchField.waitForExistence(timeout: 10), "Expected bookmark search field to exist.")
+        let searchField = requireBookmarkListSearchField(in: app, timeout: 10)
 
         let matthewRow = app.descendants(matching: .any)["bookmarkListRowButton::Matthew_3_1"]
 
@@ -1146,8 +1145,7 @@ final class AndBibleUITests: XCTestCase {
 
         _ = openBookmarkList(in: app)
 
-        let searchField = app.searchFields.firstMatch
-        XCTAssertTrue(searchField.waitForExistence(timeout: 10), "Expected bookmark search field to exist.")
+        let searchField = requireBookmarkListSearchField(in: app, timeout: 10)
 
         selectBookmarkListFilterChip("UI_Test_Seed", in: app, timeout: 10)
         waitForBookmarkListState(containing: "count=1", in: app, timeout: 10)
@@ -4242,7 +4240,12 @@ final class AndBibleUITests: XCTestCase {
             ]
         case "searchQueryField":
             return [
+                app.searchFields[identifier].firstMatch,
                 app.textFields[identifier].firstMatch,
+                app.navigationBars.searchFields["Search"].firstMatch,
+                app.navigationBars.textFields["Search"].firstMatch,
+                app.searchFields["Search"].firstMatch,
+                app.textFields["Search"].firstMatch,
                 app.otherElements[identifier].firstMatch,
             ]
         case
@@ -6143,6 +6146,7 @@ final class AndBibleUITests: XCTestCase {
      */
     private func requireAlertTextField(
         in app: XCUIApplication,
+        titles: [String] = [],
         timeout: TimeInterval = 10,
         file: StaticString = #filePath,
         line: UInt = #line
@@ -6154,9 +6158,30 @@ final class AndBibleUITests: XCTestCase {
             file: file,
             line: line
         )
-        let textField = alert.textFields.firstMatch
+
+        let normalizedTitles = titles
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let deadline = Date().addingTimeInterval(timeout)
+
+        repeat {
+            let candidates = normalizedTitles.flatMap { title in
+                [
+                    alert.textFields[title].firstMatch,
+                    app.alerts.textFields[title].firstMatch,
+                ]
+            }
+
+            if let textField = candidates.first(where: { $0.exists || $0.waitForExistence(timeout: 0.2) }) {
+                return textField
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        let textField = alert.textFields.element(boundBy: 0)
         XCTAssertTrue(
-            textField.waitForExistence(timeout: timeout),
+            textField.exists,
             "Expected the presented alert to expose a text field within \(timeout) seconds.",
             file: file,
             line: line
@@ -6353,6 +6378,74 @@ final class AndBibleUITests: XCTestCase {
         )
     }
 
+    /// Returns the first visible candidate from one explicit XCUI query list.
+    private func firstVisibleCandidate(
+        from candidates: [XCUIElement],
+        waitTimeout: TimeInterval = 0
+    ) -> XCUIElement? {
+        for candidate in candidates {
+            let exists = candidate.exists || (waitTimeout > 0 && candidate.waitForExistence(timeout: waitTimeout))
+            if exists && (candidate.isHittable || !candidate.frame.isEmpty) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    /// Resolves the bookmark-list search field through explicit titled queries.
+    private func requireBookmarkListSearchField(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement {
+        let bookmarkListScreen = requireElement("bookmarkListScreen", in: app, timeout: timeout, file: file, line: line)
+        let candidates = [
+            bookmarkListScreen.searchFields["Search bookmarks"].firstMatch,
+            bookmarkListScreen.textFields["Search bookmarks"].firstMatch,
+            app.searchFields["Search bookmarks"].firstMatch,
+            app.textFields["Search bookmarks"].firstMatch,
+        ]
+
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let field = firstVisibleCandidate(from: candidates, waitTimeout: 0.2) {
+                return field
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        XCTFail(
+            "Expected bookmark search field to exist.",
+            file: file,
+            line: line
+        )
+        return candidates.first ?? app.searchFields["Search bookmarks"].firstMatch
+    }
+
+    /// Returns explicit Search input candidates without falling back to broad first-match scans.
+    private func searchInputCandidates(in app: XCUIApplication) -> [XCUIElement] {
+        var candidates: [XCUIElement] = []
+        if let searchScreen = resolvedElement("searchScreen", in: app) {
+            candidates.append(contentsOf: [
+                searchScreen.searchFields["searchQueryField"].firstMatch,
+                searchScreen.textFields["searchQueryField"].firstMatch,
+                searchScreen.searchFields["Search"].firstMatch,
+                searchScreen.textFields["Search"].firstMatch,
+            ])
+        }
+        candidates.append(contentsOf: elementCandidates(for: "searchQueryField", in: app))
+        return candidates
+    }
+
+    /// Returns the first visible Search input candidate.
+    private func resolveVisibleSearchInput(
+        in app: XCUIApplication,
+        waitTimeout: TimeInterval = 0
+    ) -> XCUIElement? {
+        firstVisibleCandidate(from: searchInputCandidates(in: app), waitTimeout: waitTimeout)
+    }
+
     /**
      Resolves the visible text-entry control for Search across system search-field variants.
      *
@@ -6378,25 +6471,7 @@ final class AndBibleUITests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
 
         while Date() < deadline {
-            if let identifiedField = resolvedElement("searchQueryField", in: app),
-               identifiedField.exists,
-               (identifiedField.isHittable || !identifiedField.frame.isEmpty)
-            {
-                return identifiedField
-            }
-            let fieldCandidates = [
-                app.textFields["searchQueryField"].firstMatch,
-                app.otherElements["searchQueryField"].firstMatch,
-                app.searchFields["searchQueryField"].firstMatch,
-                app.navigationBars.searchFields.firstMatch,
-                app.searchFields.firstMatch,
-                app.navigationBars.textFields.firstMatch,
-                app.textFields.firstMatch,
-            ]
-
-            if let field = fieldCandidates.first(where: {
-                ($0.exists || $0.waitForExistence(timeout: 0.2)) && ($0.isHittable || !$0.frame.isEmpty)
-            }) {
+            if let field = resolveVisibleSearchInput(in: app, waitTimeout: 0.2) {
                 return field
             }
             revealSearchControls(in: app)
@@ -6408,7 +6483,7 @@ final class AndBibleUITests: XCTestCase {
             file: file,
             line: line
         )
-        return unresolvedElement("searchQueryField", in: app)
+        return resolveVisibleSearchInput(in: app) ?? unresolvedElement("searchQueryField", in: app)
     }
 
     /**
@@ -6425,12 +6500,7 @@ final class AndBibleUITests: XCTestCase {
      *     string
      */
     private func resolvedSearchInputValue(in app: XCUIApplication) -> String {
-        let candidates = [
-            app.searchFields.firstMatch,
-            app.textFields.firstMatch,
-        ]
-
-        for candidate in candidates where candidate.exists && !candidate.frame.isEmpty {
+        if let candidate = resolveVisibleSearchInput(in: app) {
             return candidate.value as? String ?? ""
         }
 
